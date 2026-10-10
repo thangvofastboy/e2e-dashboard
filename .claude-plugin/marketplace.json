@@ -10,10 +10,10 @@
       "source": {
         "source": "github",
         "repo": "thangvofastboy/e2e-dashboard",
-        "ref": "v0.2.2"
+        "ref": "v0.3.0"
       },
       "description": "/e2e-dashboard: live, history and debugging dashboard for e2e test runs",
-      "version": "0.2.2"
+      "version": "0.3.0"
     }
   ]
 }
