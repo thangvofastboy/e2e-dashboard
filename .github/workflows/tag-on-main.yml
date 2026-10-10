@@ -1,0 +1,31 @@
+# When main moves (a merged PR or a pushed release), make sure the version in
+# .claude-plugin/plugin.json has its vX.Y.Z tag: `/e2e-dashboard update` follows tags.
+name: tag-on-main
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+      - name: Tag the manifest version if it is new
+        run: |
+          version=$(node -p "require('./.claude-plugin/plugin.json').version")
+          tag="v$version"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "$tag already exists"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$tag" -m "$tag"
+            git push origin "$tag"
+          fi

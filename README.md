@@ -9,10 +9,11 @@
 ![Node](https://img.shields.io/badge/Node-%E2%89%A5%2020-339933?style=for-the-badge&logo=node.js&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-16a34a?style=for-the-badge)
 ![Build](https://img.shields.io/badge/build-kh%C3%B4ng%20c%E1%BA%A7n-2563eb?style=for-the-badge)
-![Tests](https://img.shields.io/badge/tests-135%20passing-16a34a?style=for-the-badge&logo=checkmarx&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-167%20passing-16a34a?style=for-the-badge&logo=checkmarx&logoColor=white)
+![AI](https://img.shields.io/badge/AI-claude%20--p-a855f7?style=for-the-badge&logo=anthropic&logoColor=white)
 ![Database](https://img.shields.io/badge/database-kh%C3%B4ng%20c%E1%BA%A7n-8b5cf6?style=for-the-badge)
 
-[✨ Tính năng](#-tính-năng) · [📸 Ảnh chụp](#-ảnh-chụp) · [🚀 Cài đặt](#-cài-đặt) · [⌨️ Lệnh](#️-lệnh) · [🚦 Trạng thái](#-trạng-thái--ngưỡng) · [⚙️ Cấu hình](#️-cấu-hình) · [🔒 Bảo mật](#-bảo-mật) · [🛠️ Phát triển](#️-phát-triển) · [🗺️ Roadmap](#️-roadmap)
+[✨ Tính năng](#-tính-năng) · [📸 Ảnh chụp](#-ảnh-chụp) · [🚀 Cài đặt](#-cài-đặt) · [⌨️ Lệnh](#️-lệnh) · [✨ AI](#-phân-tích-bằng-ai) · [🚦 Trạng thái](#-trạng-thái--ngưỡng) · [⚙️ Cấu hình](#️-cấu-hình) · [🔄 Cập nhật](#-cập-nhật--phát-hành) · [🔒 Bảo mật](#-bảo-mật) · [🛠️ Phát triển](#️-phát-triển) · [🗺️ Roadmap](#️-roadmap)
 
 <img src="docs/images/overview-light.jpeg" alt="Trang Overview ở chế độ sáng: 5 thẻ KPI có màu trạng thái, biểu đồ pass rate, donut, kết quả theo run, heatmap test × run" width="100%">
 
@@ -27,6 +28,8 @@
 | 📡 | **Theo dõi live** | Tiến độ từng test và step, biểu đồ Gantt theo làn, ước lượng thời gian còn lại (ETA) |
 | 🗂️ | **Lịch sử không cần database** | Mỗi run là một thư mục file (`report.json`, `meta.json`, trace, artifact). Giữ 50 run gần nhất, run đã ghim được giữ mãi |
 | 🚦 | **KPI có màu sức khoẻ** | Pass rate, run gần nhất, thời gian, token, replay cache tự chuyển 🟢 Tốt · 🟡 Cần chú ý · 🔴 Có vấn đề |
+| ▶️ | **Chạy & chạy lại test** | Chọn test (hoặc *Chọn tất cả fail*) → hộp thoại Run: target, agent, retries, repeat-each, `--no-cache` → xem live ngay; run mới ghi lại là chạy lại của run nào |
+| ✨ | **Phân tích bằng AI** | Nút *Phân tích lỗi* / *Phân tích run* gọi `claude -p` (không cần API key): phân loại lỗi app / test / flaky / môi trường, bằng chứng `file:line`, gợi ý sửa, hỏi tiếp |
 | 🔍 | **Debug test fail** | Timeline của agent (suy nghĩ, thao tác, chuyển trang), video đồng bộ theo step, screenshot lúc fail, log, trace |
 | 📊 | **Biểu đồ hiện đại** | Area có gradient, donut, sparkline, stacked bar, heatmap test × run, thanh ngang test chậm nhất |
 | 🧮 | **Ma trận test × target** | Thấy ngay lỗi chỉ xảy ra trên một trình duyệt hoặc thiết bị |
@@ -34,6 +37,7 @@
 | 📤 | **Export HTML** | Một file tự chứa (ảnh nhúng base64, có CSP) để gửi qua chat, email hoặc đính kèm issue |
 | 🌗 | **Sáng / Tối** | Tự theo hệ điều hành, có nút chuyển và nhớ lựa chọn |
 | 🔗 | **Deep link** | Mỗi run và mỗi test có URL riêng (`#/run/<id>/test/<id>`) |
+| 🔄 | **Tự cập nhật** | `/e2e-dashboard update` lấy tag mới nhất rồi tự `/reload-plugins` |
 
 > [!TIP]
 > **Không cài thêm gì.** Plugin chỉ cần Node (e2e vốn đã cần), không có dependency npm, không bước build, không tải CDN, nên chạy được cả khi không có mạng.
@@ -49,7 +53,7 @@
   </tr>
   <tr>
     <td width="50%"><b>📡 Live — Gantt theo làn, ETA</b><br><img src="docs/images/live.jpeg" alt="Trang Live đang chạy với thanh tiến độ, ETA và Gantt"></td>
-    <td width="50%"><b>☀️ Overview — chế độ sáng</b><br><img src="docs/images/overview-light.jpeg" alt="Overview chế độ sáng"></td>
+    <td width="50%"><b>✨ Phân tích lỗi bằng AI (claude -p)</b><br><img src="docs/images/ai-panel.jpeg" alt="Panel AI phân tích một test fail: phân loại, nguyên nhân, bằng chứng, gợi ý sửa"></td>
   </tr>
 </table>
 
@@ -94,10 +98,26 @@ Lệnh này copy `e2e-dashboard.reporter.mjs` (kèm `.d.mts`) vào project và t
 | `/e2e-dashboard setup` | 🔌 | Gắn reporter vào `e2e.config.ts` để xem live |
 | `/e2e-dashboard export [runId]` | 📤 | Xuất một run (mặc định là run mới nhất) thành HTML tự chứa |
 | `/e2e-dashboard status` | ℹ️ | Xem server có đang chạy không |
+| `/e2e-dashboard version` | 🏷️ | Version đang cài và có bản mới không (chạy local, không tốn token) |
+| `/e2e-dashboard update` | 🔄 | Cập nhật lên tag mới nhất rồi tự `/reload-plugins` |
 | `/e2e-dashboard stop` | ⏹️ | Tắt server |
 
 > [!TIP]
 > Nếu Claude Code báo trùng tên lệnh, gõ tên đầy đủ `/e2e-dashboard:e2e-dashboard`.
+
+---
+
+## ✨ Phân tích bằng AI
+
+Trên trang run: **✨ Phân tích run** (tóm tắt, gom nhóm lỗi, ưu tiên xử lý) hoặc, ở test fail, **✨ Phân tích lỗi**. Kết quả chạy dần trong panel bên phải; *Phân tích lại* bỏ qua cache; ô *Hỏi thêm* tiếp tục cùng phiên (`--resume`).
+
+| | |
+|:-:|---|
+| 🧠 | Dùng Claude Code CLI bạn đang đăng nhập (`claude -p`), **không cần API key** |
+| 🧾 | Prompt gồm lỗi, timeline step, log app, đường dẫn trace và **commit giữa lần pass gần nhất với run này** |
+| 🗃️ | Kết quả cache theo run (`runs/<run>/ai/`), xoá theo retention, **nhúng vào file export** |
+| 🛡️ | Sandbox: `--restricted`, chỉ có `Read/Grep/Glob`, không MCP, từ chối mọi quyền khác; text của app được rào bằng thẻ có nonce |
+| ⏱️ | Tối đa 2 phân tích cùng lúc, timeout 5 phút, đóng panel là dừng |
 
 ---
 
@@ -126,6 +146,7 @@ Mọi thứ đều tuỳ chọn. Tạo `.e2e-dashboard/config.json` trong projec
   "output": ".e2e",        // thư mục output của e2e (nếu bạn đổi --output)
   "retention": 50,         // số run giữ lại (run đã ghim không tính)
   "port": 4477,            // port ưu tiên; bận thì tự lấy port kế tiếp
+  "ai": { "model": "sonnet", "language": "vi" },  // model và ngôn ngữ trả lời của AI
   "thresholds": {          // ghi đè ngưỡng trạng thái (tỉ lệ 0–1)
     "passRate": { "good": 0.98, "warn": 0.9 },
     "duration": { "good": 0.05, "warn": 0.2 }
@@ -173,6 +194,21 @@ Ba nguồn (reporter, watcher, hook) cùng gọi một hàm `archive()`. Hàm n�
 
 ---
 
+## 🔄 Cập nhật & phát hành
+
+**Người dùng:** gõ `/e2e-dashboard version` để xem có bản mới, `/e2e-dashboard update` để cập nhật. Lệnh chạy `claude plugin marketplace update` + `claude plugin update`, rồi tự gọi `/reload-plugins`: không cần khởi động lại Claude Code.
+
+**Người phát hành:** mỗi lần merge vào `main` là một bản phát hành có tag `vX.Y.Z`.
+
+```bash
+npm run release -- minor          # patch | minor | major | X.Y.Z
+npm run release -- minor --push   # đẩy luôn main + tag lên GitHub
+```
+
+Script kiểm tra (`npm test`, `claude plugin validate`, `claude plugin test`), nâng version ở `plugin.json`, `package.json`, reporter, **ghim `marketplace.json` vào tag mới**, commit và tạo tag. Workflow `.github/workflows/tag-on-main.yml` tự gắn tag cho version trên `main` nếu còn thiếu (ví dụ khi merge PR trên GitHub).
+
+---
+
 ## 🔒 Bảo mật
 
 | | Biện pháp |
@@ -183,13 +219,16 @@ Ba nguồn (reporter, watcher, hook) cùng gọi một hàm `archive()`. Hàm n�
 | 🧼 | Mọi nội dung lấy từ report (lỗi, log, reasoning) đều được escape. Link Markdown chỉ nhận `http(s)` |
 | 📄 | Artifact HTML/SVG được trả về dạng text kèm `CSP: sandbox`. File export có CSP riêng dựa trên hash |
 | 🤐 | Reporter tự tắt trên CI và không bao giờ throw hay làm hỏng run của e2e |
+| ▶️ | Lệnh chạy test được dựng từ danh sách tham số đã kiểm tra (`file:line`, tên target/agent, số nguyên có giới hạn), không qua shell, mỗi project một run |
+| ✨ | `claude -p` chạy sandbox: không shell, không MCP, chỉ đọc file; dữ liệu report được rào và đánh dấu không tin cậy |
 
 ---
 
 ## 🛠️ Phát triển
 
 ```bash
-npm test                   # node --test — 135 test, không dependency
+npm test                   # node --test — 165 test, không dependency
+claude plugin test .       # test của mod (update / version)
 node test/seed-demo.mjs    # tạo project demo với 12 run để xem UI
 ```
 
@@ -201,8 +240,10 @@ node test/seed-demo.mjs    # tạo project demo với 12 run để xem UI
 | `reporter/` | Reporter tự chứa + `archive()` + retention (được copy vào project người dùng) |
 | `server/` | HTTP server, store, live state, watcher, export |
 | `bin/` | CLI `dashboard.mjs`, hook `archive.mjs` |
+| `hooks/` | Hook PostToolUse + mod `register.ts` (`update` / `version`) |
+| `scripts/` | `release.mjs` — nâng version, ghim marketplace, tạo tag |
 | `ui/` | ES module thuần (gộp bằng `ui/bundle.mjs`), icon SVG, chart SVG |
-| `commands/`, `hooks/` | Lệnh `/e2e-dashboard` và hook PostToolUse của plugin |
+| `commands/` | Lệnh `/e2e-dashboard` |
 | `docs/superpowers/` | Spec và plan thiết kế |
 
 </details>
@@ -212,7 +253,7 @@ node test/seed-demo.mjs    # tạo project demo với 12 run để xem UI
 ## 🗺️ Roadmap
 
 - [x] **M1a — Thu thập & xem:** lịch sử, live, Overview / Runs / Run detail / Live / Tests, export HTML, giao diện mới
-- [ ] **M1b — Điều khiển & AI:** chạy và rerun test (chọn test fail) từ dashboard, nút ✨ *Phân tích lỗi* / *Phân tích run* qua `claude -p`
+- [x] **M1b — Điều khiển & AI:** chạy và rerun test (chọn test fail) từ dashboard, nút ✨ *Phân tích lỗi* / *Phân tích run* qua `claude -p`, tự cập nhật theo tag
 - [ ] **M2 — Phân tích:** flaky, so sánh 2 run, nhóm lỗi, chi phí & cache, visual diff, bản đồ route, so sánh branch, nhiều project, health score
 - [ ] **M3 — Tích hợp:** gửi issue Linear (chống trùng), digest tuần, status line, thông báo desktop, đề xuất chuyển agent step thành locator
 
