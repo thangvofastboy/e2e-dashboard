@@ -167,7 +167,7 @@ export async function writeAi(root, runId, key, { action, resultId, markdown, cr
   const dir = await findRunDir(root, runId);
   if (!dir || !AI_KEY.test(key)) return false;
   // resultId ends up in a file; only a real result id (64 hex) for a failure analysis is stored
-  const perResult = action === 'analyze-failure' || action === 'suggest-locator';
+  const perResult = action === 'analyze-failure' || action === 'suggest-locator' || action === 'why-flaky';
   if (perResult && !RESULT_ID.test(resultId ?? '')) return false;
   const aiDir = join(dir, 'ai');
   if (isLink(aiDir)) return false;

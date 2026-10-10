@@ -11,6 +11,8 @@ import { archive } from '../reporter/e2e-dashboard.reporter.mjs';
 const dir = process.argv[2] ?? mkdtempSync(join(tmpdir(), 'e2e-demo-'));
 mkdirSync(dir, { recursive: true });
 writeFileSync(join(dir, 'e2e.config.ts'), 'export default {\n  targets: [],\n};\n');
+mkdirSync(join(dir, '.github'), { recursive: true });
+writeFileSync(join(dir, '.github/CODEOWNERS'), '* @team-web\ntests/ @team-qa @ana\n');
 mkdirSync(join(dir, '.e2e-dashboard'), { recursive: true });
 writeFileSync(join(dir, '.e2e-dashboard/config.json'), JSON.stringify({ pricing: { inputPerMTok: 3, outputPerMTok: 15 }, budget: { tokensPerRun: 2000 } }, null, 2));
 const base = JSON.parse(readFileSync(new URL('./fixtures/report-v1.valid.json', import.meta.url), 'utf8'));
@@ -104,6 +106,11 @@ for (let i = 0; i < 12; i++) {
       ...(i > 1 ? [] : step.events.filter((e) => e.kind === 'model').map((e) => ({ ...e, inputTokens: 300 + i * 40 + k * 90, outputTokens: 60 }))),
       ...NAV[k === 2 ? 1 : 0].map((detail) => ({ kind: 'navigation', detail })),
     ];
+    step.model = { provider: 'anthropic', model: k === 2 ? 'claude-haiku-4.5' : 'claude-sonnet-4.5', endpoint: 'provider-default', adapterVersion: '1', policyVersion: '1', calls: 1, tokenAccounting: 'provider', peakTokensPerCall: 400, inputTokens: 300 + k * 90, outputTokens: 60, estimatedCostUsd: k === 2 ? 0.0006 : 0.0018 };
+    if (k === 2) {
+      step.label = 'log in and then open the orders page and check everything works properly';
+      step.cache = { ...step.cache, write: 'unconfirmed' };
+    }
     a.steps = [step, a.steps[1] && { ...a.steps[1], status: failing ? 'failed' : 'passed', error: failing ? a.error : undefined }].filter(Boolean);
     a.artifacts = [];
     if (failing) {

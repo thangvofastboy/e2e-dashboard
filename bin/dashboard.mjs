@@ -3,16 +3,16 @@
 import { spawn } from 'node:child_process';
 import { readFile, writeFile, copyFile, mkdir, rm, appendFile, lstat } from 'node:fs/promises';
 import { existsSync, openSync, closeSync } from 'node:fs';
-import { join, basename, dirname } from 'node:path';
+import { join, basename, dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DATA_DIR, readServerInfo, ensureDataDir } from '../reporter/e2e-dashboard.reporter.mjs';
 import { findProjectRoot, findConfig } from './project.mjs';
 import { exportRun } from '../server/export.mjs';
-import { loadHistory } from '../server/store.mjs';
-import { digest, flakyTests } from '../server/analytics.mjs';
+import { buildDigest } from '../server/digest.mjs';
 import { projectSummaries, homeDir } from '../server/projects.mjs';
-import { healthScore } from '../ui/health.js';
+import { readQuarantine, quarantineFlags } from '../server/quarantine.mjs';
+import { importReport, importFromGithub, sharePush, sharePull } from '../server/share.mjs';
 
 const PLUGIN = fileURLToPath(new URL('..', import.meta.url));
 const MAIN = join(PLUGIN, 'server/main.mjs');
@@ -167,12 +167,7 @@ export async function stop(root) {
 
 // Weekly digest as Markdown: printed, and kept in .e2e-dashboard/digests/<date>.md.
 export async function writeDigest(root, days = 7, now = Date.now()) {
-  const history = await loadHistory(root, 200);
-  const recent = history.slice(0, 20);
-  const keys = new Set(recent.flatMap((h) => (h.report.run.results ?? []).map((r) => `${r.testId}|${r.targetId}|${r.agent ?? 'default'}`)));
-  const flaky = flakyTests(recent).filter((f) => f.score >= 0.1).length;
-  const health = healthScore(recent.map((h) => h.meta), { flakyShare: keys.size ? flaky / keys.size : null });
-  const out = digest(history, { days, now, project: basename(root), health });
+  const out = await buildDigest(root, { days, now });
   const dir = join(root, DATA_DIR, 'digests');
   await refuseSymlink(join(root, DATA_DIR));
   await ensureDataDir(root);
@@ -248,12 +243,55 @@ export async function main(argv, cwd) {
     const p = await exportRun(root, argv[1]);
     return p ? { code: 0, out: `Đã xuất: ${p}` } : { code: 1, out: argv[1] ? `Không tìm thấy run ${argv[1]}.` : 'Chưa có run nào để xuất.' };
   }
+  if (cmd === 'quarantine') {
+    const q = quarantineFlags(await readQuarantine(root));
+    if (!q.active.length && !q.expired.length) return { code: 0, out: 'Không có test nào đang cách ly. Cách ly từ trang Flaky của dashboard.' };
+    return {
+      code: 0,
+      out: [
+        ...q.active.map((x) => `🔒 ${x.title} — đến ${x.until.slice(0, 10)}${x.reason ? ` (${x.reason})` : ''}`),
+        ...q.expired.map((x) => `⚠️ ${x.title} — quá hạn từ ${x.until.slice(0, 10)}: sửa hoặc gỡ cách ly`),
+        '',
+        q.command ? `Chạy bỏ qua test đang cách ly (dùng được trong CI):\n${q.command}` : '',
+      ].join('\n').trim(),
+    };
+  }
+  if (cmd === 'import') {
+    const gh = argv.indexOf('--gh');
+    if (gh >= 0) {
+      const name = argv.indexOf('--name') >= 0 ? argv[argv.indexOf('--name') + 1] : null;
+      const res = await importFromGithub(root, argv[gh + 1], { artifact: name });
+      if (!res.length) return { code: 1, out: 'Artifact không có report.json nào.' };
+      return { code: 0, out: res.map((r) => `${r.report}: ${r.status}${r.reason ? ` (${r.reason})` : ''}`).join('\n') };
+    }
+    if (!argv[1]) return { code: 1, out: 'Dùng: /e2e-dashboard import <report.json | thư mục output> hoặc import --gh <run id> [--name <artifact>]' };
+    const r = await importReport(root, resolve(cwd, argv[1]));
+    return { code: r.status === 'skipped' ? 1 : 0, out: r.status === 'archived' ? `Đã nhập run vào lịch sử (${r.runDir}).` : r.status === 'exists' ? 'Run này đã có trong lịch sử.' : `Không nhập được: ${r.reason}` };
+  }
+  if (cmd === 'share') {
+    const [, sub, dirArg] = argv;
+    let dir = dirArg;
+    if (!dir) {
+      try {
+        dir = JSON.parse(await readFile(join(homeDir(), 'config.json'), 'utf8'))?.share?.dir;
+      } catch {
+        dir = null;
+      }
+    }
+    if ((sub !== 'push' && sub !== 'pull') || typeof dir !== 'string' || !dir) return { code: 1, out: 'Dùng: /e2e-dashboard share push|pull <thư mục chung> (hoặc đặt "share": { "dir": … } trong ~/.e2e-dashboard/config.json)' };
+    if (sub === 'push') {
+      const r = await sharePush(root, dir);
+      return { code: 0, out: `Đã đẩy ${r.pushed} run lên ${r.dir}.` };
+    }
+    const r = await sharePull(root, dir, { by: process.env.USER ?? null });
+    return { code: 0, out: `Đã lấy ${r.pulled} run từ ${r.dir}${r.skipped ? ` (bỏ qua ${r.skipped} run không hợp lệ)` : ''}.` };
+  }
   if (cmd === 'digest') {
     const days = Number.parseInt(argv[1] ?? '7', 10);
     const r = await writeDigest(root, Number.isInteger(days) && days > 0 && days <= 90 ? days : 7);
     return { code: 0, out: `${r.markdown}\nĐã lưu: ${r.file}` };
   }
-  return { code: 1, out: 'Dùng: /e2e-dashboard [setup|export [runId]|stop|status|digest [ngày]|projects|statusline [install]]' };
+  return { code: 1, out: 'Dùng: /e2e-dashboard [setup|export [runId]|stop|status|digest [ngày]|projects|statusline [install]|quarantine|import …|share push|pull [dir]]' };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

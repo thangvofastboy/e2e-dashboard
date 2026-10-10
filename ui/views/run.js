@@ -3,6 +3,7 @@ import { flattenResults, facets, applyFilters, matrix, isFailure, stepVideoOffse
 import { openRunDialog } from './run-dialog.js';
 import { openAiPanel } from './ai-panel.js';
 import { openLinearDialog } from './linear.js';
+import { openBisectDialog } from './actions.js';
 import { errorGroupHtml } from './errors.js';
 import { visualCompareHtml, attachVisualCompare, screenshotTriplets } from '../visual.js';
 import { fmtDuration, fmtTokens, statusBadge, countChips, escapeHtml } from '../format.js';
@@ -13,7 +14,7 @@ import { donutChart, legend } from '../charts.js';
 import { passRate } from '../health.js';
 
 // View state survives re-renders of the same run (filters, matrix toggle, chosen attempt, tab).
-const ui = { runId: null, data: null, filters: {}, matrix: false, attempt: new Map(), tab: 'media', selected: new Set(), saved: [], compareWith: null, groups: [] };
+const ui = { runId: null, data: null, filters: {}, matrix: false, attempt: new Map(), tab: 'media', selected: new Set(), saved: [], compareWith: null, groups: [], anomalies: [], owners: {} };
 const TABS = [['media', 'Video & ảnh', 'video'], ['log', 'Log', 'terminal'], ['trace', 'Trace', 'route'], ['source', 'Source', 'code']];
 const FILTERS = [['statuses', 'Status'], ['targets', 'Target'], ['agents', 'Agent'], ['tags', 'Tag'], ['files', 'File']];
 
@@ -81,7 +82,16 @@ function header(meta, report) {
       <div class="actions">${actions}</div>
     </div>
     <section class="panel run-summary">${donutChart({ segments: keys.map((k) => ({ key: k, value: s[k] ?? 0 })), center: rate == null ? '—' : `${Math.round(rate * 100)}%`, ariaLabel: 'Kết quả run' })}
-      <div><div>${countChips(s)}</div>${legend(keys.filter((k) => s[k]))}</div></section>${runErrors}${groupsPanel()}`;
+      <div><div>${countChips(s)}</div>${legend(keys.filter((k) => s[k]))}</div></section>${runErrors}${anomaliesPanel()}${groupsPanel()}`;
+}
+
+// Tests far slower or costlier than their own history.
+function anomaliesPanel() {
+  const a = ui.anomalies;
+  if (!a.length) return '';
+  const val = (x, v) => (x.metric === 'durationMs' ? fmtDuration(v) : x.metric === 'tokens' ? fmtTokens(v) : String(v));
+  return `<section class="panel anomalies"><strong>${icon('zap', { size: 15 })} ${a.length} bất thường</strong> <span class="muted small">so với lịch sử của chính test đó (TB + 2σ)</span>
+    <ul>${a.map((x) => `<li><a href="${runHref(x.runId, x.resultId)}">${escapeHtml(x.title)}</a> <span class="muted small">${escapeHtml(x.target)}</span>: ${escapeHtml(x.label)} ${escapeHtml(val(x, x.value))} <span class="muted">(TB ${escapeHtml(val(x, x.mean))}, ${escapeHtml(x.samples)} run)</span></li>`).join('')}</ul></section>`;
 }
 
 // Failures of this run grouped by error shape: one fix, several tests.
@@ -184,7 +194,7 @@ function detail(row, meta, runId) {
       .join('')}</div>`
     : '';
   const head = `<h2>${escapeHtml(row.title)} ${statusBadge(row.status)}</h2>
-    <div class="muted"><code>${escapeHtml(row.file)}:${escapeHtml(row.line)}</code> · ${escapeHtml(row.target)} · ${escapeHtml(row.agent)}${row.tags.map((t) => ` <span class="tag">${escapeHtml(t)}</span>`).join('')}</div>`;
+    <div class="muted"><code>${escapeHtml(row.file)}:${escapeHtml(row.line)}</code> · ${escapeHtml(row.target)} · ${escapeHtml(row.agent)}${row.tags.map((t) => ` <span class="tag">${escapeHtml(t)}</span>`).join('')}${ui.owners[row.file]?.length ? ` · <span class="owners" title="CODEOWNERS">${icon('users', { size: 13 })}${escapeHtml(ui.owners[row.file].join(', '))}</span>` : ''}</div>`;
   if (!attempt) return `${head}<p class="muted">Test không có attempt nào${row.status === 'skipped' ? ' (bị skip)' : ''}.</p>`;
   const { video } = artifactsOf(attempt);
   const skip = attempt.skip?.reason ? `<p class="muted">Skip: ${escapeHtml(attempt.skip.reason)}</p>` : '';
@@ -198,7 +208,7 @@ function detail(row, meta, runId) {
     ? `<button type="button" class="btn-ai" data-ai="analyze-failure" data-result="${escapeHtml(row.id)}">${icon('sparkles', { size: 14 })}${isExport() ? 'Xem phân tích lỗi' : 'Phân tích lỗi'}</button>`
     : '';
   const linearBtn = isFailure(row.status) && !isExport()
-    ? `<button type="button" data-linear="${escapeHtml(row.id)}">${icon('ticket', { size: 14 })}Gửi Linear</button>`
+    ? `<button type="button" data-linear="${escapeHtml(row.id)}">${icon('ticket', { size: 14 })}Gửi Linear</button><button type="button" data-bisect="${escapeHtml(row.id)}">${icon('commit', { size: 14 })}Tìm commit gây lỗi</button>`
     : '';
   return `${head}${pills}${skip}${errorBox(attempt.error)}${aiBtn}${linearBtn}
     <ol class="timeline">${steps || '<li class="muted">Không có step.</li>'}</ol>
@@ -213,12 +223,21 @@ export async function renderRun(main, route) {
     ui.saved = (await getJson(`/api/runs/${encodeURIComponent(runId)}/ai`).catch(() => ({ entries: [] }))).entries ?? [];
     ui.compareWith = null;
     ui.groups = [];
+    ui.anomalies = [];
+    ui.owners = {};
     if (!isExport()) {
       const [metas, errs] = await Promise.all([getJson('/api/runs').catch(() => []), getJson(`/api/errors?runId=${encodeURIComponent(runId)}`).catch(() => ({ groups: [] }))]);
       const i = metas.findIndex((m) => m.runId === runId);
       const base = metas.find((m) => m.baseline && m.runId !== runId);
       ui.compareWith = base ?? (i >= 0 ? metas[i + 1] ?? null : null);
       ui.groups = errs.groups ?? [];
+      const files = [...new Set(flattenResults(ui.data.report).map((r) => r.file).filter(Boolean))].slice(0, 200);
+      const [an, own] = await Promise.all([
+        getJson(`/api/anomalies?runId=${encodeURIComponent(runId)}`).catch(() => ({ anomalies: [] })),
+        getJson(`/api/owners?files=${encodeURIComponent(files.join(','))}`).catch(() => ({ owners: {} })),
+      ]);
+      ui.anomalies = an.anomalies ?? [];
+      ui.owners = own.owners ?? {};
     }
   }
   const { meta, report } = ui.data;
@@ -282,6 +301,7 @@ export async function renderRun(main, route) {
       const row = all.find((r) => r.id === resultId);
       openAiPanel({ action, runId, resultId, saved, title: action === 'analyze-run' ? 'Phân tích run' : `Phân tích lỗi · ${row?.title ?? ''}` });
     }));
+  main.querySelectorAll('[data-bisect]').forEach((el) => el.addEventListener('click', () => openBisectDialog({ runId, resultId: el.dataset.bisect })));
   main.querySelectorAll('[data-linear]').forEach((el) => el.addEventListener('click', () => openLinearDialog({ runId, resultId: el.dataset.linear })));
   main.querySelectorAll('[data-locator]').forEach((el) =>
     el.addEventListener('click', () => {

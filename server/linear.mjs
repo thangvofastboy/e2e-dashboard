@@ -23,7 +23,7 @@ export function fingerprint(r, err) {
   return `e2ed-${createHash('sha256').update(`${testKey(r)}\0${sig}`).digest('hex').slice(0, 12)}`;
 }
 
-export function issueDraft({ meta, report, resultId, commits = [], analysis = null, project = '' }) {
+export function issueDraft({ meta, report, resultId, commits = [], analysis = null, project = '', owners = [] }) {
   const r = (report.run.results ?? []).find((x) => x.id === resultId);
   if (!r) return null;
   const err = resultError(report, r);
@@ -36,6 +36,7 @@ export function issueDraft({ meta, report, resultId, commits = [], analysis = nu
     `**File:** \`${md(r.source?.file ?? r.file, 300)}:${md(r.source?.line ?? '?', 10)}\` · target \`${md(r.targetId, 80)}\` · agent \`${md(r.agent ?? 'default', 80)}\``,
     `**Run:** \`${md(meta.runId, 80)}\` · ${md(meta.startedAt, 40)}${meta.git?.commit ? ` · \`${md(meta.git.branch ?? '?', 120)}@${md(String(meta.git.commit).slice(0, 10), 10)}\`${meta.git.dirty ? ' (có thay đổi chưa commit)' : ''}` : ''}`,
     `**Kết quả:** ${md(r.status, 40)} sau ${resultAttempts(report, r).length} attempt`,
+    ...(owners.length ? [`**Owners (CODEOWNERS):** ${owners.slice(0, 10).map((o) => md(o, 100)).join(', ')}`] : []),
     '',
     '### Lỗi',
     '```',

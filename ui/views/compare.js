@@ -1,4 +1,5 @@
 import { getJson } from '../api.js';
+import { openPrDialog } from './actions.js';
 import { flattenResults } from '../model.js';
 import { artifactsOf, mediaSrc } from './run.js';
 import { visualCompareHtml, attachVisualCompare, screenshotTriplets } from '../visual.js';
@@ -73,7 +74,7 @@ export async function renderCompare(main, route) {
     const rows = cmp.rows.map((r) => ({ ...r, _aRun: cmp.base.runId, _bRun: cmp.head.runId })).filter((r) => show === 'all' || r.change !== 'unchanged');
     const chips = Object.entries(cmp.counts).filter(([, n]) => n).map(([k, n]) => `<span class="chip tone-${CHANGES[k].tone}">${icon(CHANGES[k].icon, { size: 12 })}${CHANGES[k].label}: ${n}</span>`).join(' ');
     const d = cmp.deltas;
-    main.innerHTML = `${pageHead('So sánh 2 run', 'columns', 'A là run gốc (cũ hơn), B là run cần xem.', `<button type="button" data-swap>${icon('shuffle', { size: 14 })}Đổi A ↔ B</button>`)}
+    main.innerHTML = `${pageHead('So sánh 2 run', 'columns', 'A là run gốc (cũ hơn), B là run cần xem.', `<button type="button" data-swap>${icon('shuffle', { size: 14 })}Đổi A ↔ B</button><button type="button" data-pr>${icon('send', { size: 14 })}Đăng lên PR</button>`)}
       <section class="cmp-head">
         <div class="panel"><div class="muted small">Run A</div>${pick(cmp.base.runId, 'a')}<div><a href="${runHref(cmp.base.runId)}">${statusBadge(cmp.base.status)}</a> ${fmtDuration(cmp.base.durationMs)}</div></div>
         <div class="panel"><div class="muted small">Run B</div>${pick(cmp.head.runId, 'b')}<div><a href="${runHref(cmp.head.runId)}">${statusBadge(cmp.head.status)}</a> ${fmtDuration(cmp.head.durationMs)}</div></div>
@@ -85,6 +86,7 @@ export async function renderCompare(main, route) {
       show = e.target.checked ? 'all' : 'changed';
       draw();
     });
+    main.querySelector('[data-pr]').addEventListener('click', () => openPrDialog({ a: cmp.base.runId, b: cmp.head.runId }));
     main.querySelector('[data-swap]').addEventListener('click', () => (location.hash = compareHref(cmp.head.runId, cmp.base.runId)));
     main.querySelectorAll('[data-pick]').forEach((s) =>
       s.addEventListener('change', () => {

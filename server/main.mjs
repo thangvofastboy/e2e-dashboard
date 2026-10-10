@@ -9,7 +9,8 @@ import { createNotifier, notifyMode } from './notify.mjs';
 import { registerProject } from './projects.mjs';
 import { createRunner } from './runner.mjs';
 import { createAi } from './ai.mjs';
-import { annotateRun } from './store.mjs';
+import { annotateRun, loadHistory } from './store.mjs';
+import { anomalies } from './insights.mjs';
 import { createApp } from './app.mjs';
 import { createLive } from './live.mjs';
 import { watchReport, outputFromArtifactsRoot } from './watch.mjs';
@@ -101,7 +102,10 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
     last = r;
     if (r.runDir && (r.status === 'archived' || r.status === 'exists')) {
       const meta = await readMeta(r.runDir);
-      if (meta && Date.parse(meta.finishedAt ?? meta.startedAt) >= startedAt - 5000) notifier.runFinished(meta);
+      if (meta && Date.parse(meta.finishedAt ?? meta.startedAt) >= startedAt - 5000) {
+        const found = await loadHistory(projectRoot, 31).then((h) => anomalies(h, { runId: meta.runId })).catch(() => []);
+        notifier.runFinished(meta, { anomalies: found.length });
+      }
     }
   };
   const watcher = watchReport({ projectRoot, outputDir: resolve(projectRoot, cfg.output ?? '.e2e'), onResult: (r) => void onArchive(r) });

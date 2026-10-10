@@ -11,6 +11,9 @@ import { renderBranches } from './views/branches.js';
 import { renderProjects } from './views/projects.js';
 import { renderDigest } from './views/digest.js';
 import { renderLocators } from './views/locators.js';
+import { renderModels } from './views/models.js';
+import { renderLint } from './views/lint.js';
+import { openSearch, bindSearchShortcut } from './views/search.js';
 import { getJson, isExport, liveStream } from './api.js';
 import { attachTooltips } from './charts.js';
 import { escapeHtml } from './format.js';
@@ -20,14 +23,14 @@ import { icon, ICON_SPRITE } from './icons.js';
 // [view, href, label, icon]; groups after the first get a heading. Analysis pages need the server.
 const NAV = [
   [null, [['overview', '#/', 'Overview', 'grid'], ['runs', '#/runs', 'Runs', 'list'], ['live', '#/live', 'Live', 'activity'], ['tests', '#/tests', 'Tests', 'flask']]],
-  ['Phân tích', [['flaky', '#/flaky', 'Flaky', 'shuffle'], ['errors', '#/errors', 'Nhóm lỗi', 'layers'], ['cost', '#/cost', 'Chi phí & cache', 'coins'], ['routes', '#/routes', 'Bản đồ route', 'route'], ['branches', '#/branches', 'Branch', 'branch'], ['locators', '#/locators', 'Gợi ý locator', 'crosshair']]],
+  ['Phân tích', [['flaky', '#/flaky', 'Flaky', 'shuffle'], ['errors', '#/errors', 'Nhóm lỗi', 'layers'], ['cost', '#/cost', 'Chi phí & cache', 'coins'], ['routes', '#/routes', 'Bản đồ route', 'route'], ['branches', '#/branches', 'Branch', 'branch'], ['models', '#/models', 'Model & ngân sách', 'cpu'], ['locators', '#/locators', 'Gợi ý locator', 'crosshair'], ['lint', '#/lint', 'Lint agent', 'lint']]],
   ['Tích hợp', [['projects', '#/projects', 'Projects', 'folder'], ['digest', '#/digest', 'Digest tuần', 'newspaper']]],
 ];
 const EXPORT_VIEWS = new Set(['overview', 'runs', 'run']);
 const VIEWS = {
   overview: renderOverview, runs: renderRunsPage, run: renderRun, live: renderLive, tests: renderTests,
   flaky: renderFlaky, compare: renderCompare, errors: renderErrors, cost: renderCost, routes: renderRoutes,
-  branches: renderBranches, projects: renderProjects, digest: renderDigest, locators: renderLocators,
+  branches: renderBranches, projects: renderProjects, digest: renderDigest, locators: renderLocators, models: renderModels, lint: renderLint,
 };
 let cleanup = null;
 let lastStatus = null;
@@ -68,11 +71,14 @@ function shell() {
   document.getElementById('app').innerHTML = `
     <aside class="nav">
       <a class="brand" href="#/"><span class="logo">${icon('flask', { size: 17 })}</span>e2e <span>dashboard</span></a>
+      ${isExport() ? '' : `<button type="button" class="nav-search" data-search>${icon('search', { size: 15 })}Tìm kiếm <kbd>Ctrl K</kbd></button>`}
       <nav aria-label="Điều hướng">${nav}</nav>
       <div class="nav-foot"><button class="theme-toggle" type="button" aria-label="Chuyển giao diện sáng / tối">${icon('sun')}Sáng / Tối</button><div id="nav-foot"></div></div>
     </aside>
     <main id="main" tabindex="-1"></main>`;
   document.querySelector('.theme-toggle').addEventListener('click', toggleTheme);
+  document.querySelector('[data-search]')?.addEventListener('click', openSearch);
+  if (!isExport()) bindSearchShortcut();
 }
 
 async function footer() {

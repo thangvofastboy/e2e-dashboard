@@ -277,4 +277,16 @@ Phạm vi theo roadmap rút gọn: M2 = flaky, so sánh 2 run, nhóm lỗi, chi 
 | Thông báo | `server/notify.mjs` | Khi watcher thấy run mới kết thúc; argv/env, không shell |
 | Digest | `analytics.digest()`, `bin/dashboard.mjs digest` | Markdown, lưu `.e2e-dashboard/digests/<ngày>.md` |
 
-Chưa làm (để sau): AI "vì sao flaky", hỏi AI tự do, CODEOWNERS, lint câu lệnh agent, so sánh model + ngân sách theo model, tìm kiếm, setup timing.
+Chưa làm (để sau): hỏi AI tự do, setup timing.
+
+## 12. M4 — Vận hành (v0.4.0)
+
+| Phần | File | Ghi chú |
+|---|---|---|
+| Tìm kiếm, bất thường, lint, model, bisect | `server/insights.mjs` | Thuần như analytics. Bất thường: > TB + 2σ và > 125% TB của chính test, ≥ 4 run lịch sử. Bisect chỉ sinh lệnh, không checkout |
+| CODEOWNERS | `server/owners.mjs` | `.github/`, gốc, `docs/`; mẫu kiểu gitignore, dòng khớp cuối thắng |
+| Cách ly | `server/quarantine.mjs` | `.e2e-dashboard/quarantine.json`; runner thêm `--grep-invert '^<title>$'` khi chạy với `excludeQuarantined` |
+| AI vì sao flaky | `ai.mjs` action `why-flaky` | Cache theo (run, result, run mới nhất) vì câu trả lời phụ thuộc lịch sử |
+| CI + team | `server/share.mjs` | `importReport` / `importFromGithub` (gh run download) / `sharePush` / `sharePull` |
+| Comment PR | `server/github.mjs` | `gh pr list --head <branch>` rồi `gh pr comment --body-file -` |
+| Digest | `server/digest.mjs` | Thêm bất thường, test cách ly (quá hạn), owner của test mới fail |

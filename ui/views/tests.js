@@ -21,13 +21,16 @@ export function historyCells(history, n = 10) {
 const distinct = (xs) => [...new Set(xs)].sort();
 
 export function testRowHtml(t) {
-  return `<tr><td>${isExport() ? '' : `<input type="checkbox" class="sel" data-pick="${escapeHtml(t.key)}" ${picked.has(t.key) ? 'checked' : ''} aria-label="Chọn ${escapeHtml(t.title)}"> `}${escapeHtml(t.title)} <span class="muted">:${escapeHtml(t.line ?? '?')}</span>${t.tags.map((g) => ` <span class="tag">${escapeHtml(g)}</span>`).join('')}</td>
+  return `<tr><td>${isExport() ? '' : `<input type="checkbox" class="sel" data-pick="${escapeHtml(t.key)}" ${picked.has(t.key) ? 'checked' : ''} aria-label="Chọn ${escapeHtml(t.title)}"> `}${escapeHtml(t.title)} <span class="muted">:${escapeHtml(t.line ?? '?')}</span>${lockedKeys.has(t.key) ? ` <span class="lock-badge">${icon('lock', { size: 11 })}cách ly</span>` : ''}${t.tags.map((g) => ` <span class="tag">${escapeHtml(g)}</span>`).join('')}</td>
     <td>${escapeHtml(t.target)}${t.agent !== 'default' ? ` · ${escapeHtml(t.agent)}` : ''}</td>
     <td>${historyCells(t.history)}</td><td class="num">${fmtDuration(t.avgDurationMs)}</td></tr>`;
 }
 
+let lockedKeys = new Set();
+
 export async function renderTests(main) {
-  const all = await getJson('/api/tests');
+  const [all, q] = await Promise.all([getJson('/api/tests'), isExport() ? { list: [] } : getJson('/api/quarantine').catch(() => ({ list: [] }))]);
+  lockedKeys = new Set(q.list.map((x) => x.key));
   const draw = () => {
     const rows = all.filter((r) => (!filter.file || r.file === filter.file) && (!filter.tag || r.tags.includes(filter.tag)) && (!filter.target || r.target === filter.target));
     const sel = (k, values, label) => `<label>${label} <select name="${k}" data-f="${k}"><option value="">Tất cả</option>${values

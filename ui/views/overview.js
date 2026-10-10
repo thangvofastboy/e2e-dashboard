@@ -1,4 +1,5 @@
 import { getJson, isExport } from '../api.js';
+import { openImportDialog } from './actions.js';
 import { lineChart, stackedBarChart, legend, donutChart, sparkline, heatmap, hbarChart } from '../charts.js';
 import { fmtDuration, fmtTokens, fmtRelative, statusBadge, countChips, escapeHtml, STATUS } from '../format.js';
 import { runHref, compareHref } from '../router.js';
@@ -151,6 +152,7 @@ export async function renderOverview(main) {
     getJson('/api/tests').catch(() => []),
     isExport() ? null : getJson('/api/health').then((r) => r.health).catch(() => null),
   ]);
+  const anomalies = isExport() ? [] : (await getJson('/api/anomalies').catch(() => ({ anomalies: [] }))).anomalies;
   if (!metas.length) {
     main.innerHTML = EMPTY_RUNS;
     return;
@@ -166,6 +168,7 @@ export async function renderOverview(main) {
   main.innerHTML = `
     <h1>Overview</h1>
     ${healthPanel(health)}
+    ${anomalies.length ? `<section class="panel anomalies"><strong>${icon('zap', { size: 15 })} Run gần nhất có ${anomalies.length} bất thường</strong> <span class="muted small">chậm hoặc tốn hơn hẳn lịch sử của chính test (TB + 2σ)</span><ul>${anomalies.slice(0, 5).map((a) => `<li><a href="${runHref(a.runId, a.resultId)}">${escapeHtml(a.title)}</a>: ${escapeHtml(a.label)} ${escapeHtml(a.metric === 'durationMs' ? fmtDuration(a.value) : a.metric === 'tokens' ? fmtTokens(a.value) : a.value)} <span class="muted">(TB ${escapeHtml(a.metric === 'durationMs' ? fmtDuration(a.mean) : a.metric === 'tokens' ? fmtTokens(a.mean) : a.mean)})</span></li>`).join('')}</ul></section>` : ''}
     <section class="kpis">${cards.map(kpiCard).join('')}</section>
     ${thresholdsPanel(cards, t)}
     <section class="charts">
@@ -196,16 +199,23 @@ export async function renderOverview(main) {
 }
 
 const compareSel = new Set();
+let runSource = '';
 
 export async function renderRunsPage(main) {
   const metas = await getJson('/api/runs');
   for (const id of compareSel) if (!metas.some((m) => m.runId === id)) compareSel.delete(id);
   const selectable = !isExport() && metas.length > 1;
+  const sources = [...new Set(metas.map((m) => m.source).filter(Boolean))].sort();
   const draw = () => {
-    const tools = selectable
-      ? `<div class="filters"><button type="button" class="primary" data-compare ${compareSel.size === 2 ? '' : 'disabled'}>${icon('columns', { size: 14 })}So sánh 2 run</button><span class="muted small">${compareSel.size === 2 ? 'Run cũ hơn là A.' : 'Chọn đúng 2 run để so sánh.'}</span></div>`
-      : '';
-    main.innerHTML = `<h1>Runs</h1><p class="muted">Bảng này cũng là dạng bảng số liệu của các biểu đồ ở Overview.</p>${tools}${runTable(metas, { selectable, selected: compareSel })}`;
+    const shown = metas.filter((m) => !runSource || m.source === runSource);
+    const srcSel = sources.length > 1 ? `<label>Nguồn <select data-src><option value="">Tất cả</option>${sources.map((x) => `<option ${x === runSource ? 'selected' : ''}>${escapeHtml(x)}</option>`).join('')}</select></label>` : '';
+    const tools = isExport() ? '' : `<div class="filters">${selectable ? `<button type="button" class="primary" data-compare ${compareSel.size === 2 ? '' : 'disabled'}>${icon('columns', { size: 14 })}So sánh 2 run</button><span class="muted small">${compareSel.size === 2 ? 'Run cũ hơn là A.' : 'Chọn đúng 2 run để so sánh.'}</span>` : ''}${srcSel}<button type="button" data-import>${icon('upload', { size: 14 })}Nhập từ GitHub Actions</button></div>`;
+    main.innerHTML = `<h1>Runs</h1><p class="muted">Bảng này cũng là dạng bảng số liệu của các biểu đồ ở Overview.</p>${tools}${runTable(shown, { selectable, selected: compareSel })}`;
+    main.querySelector('[data-src]')?.addEventListener('change', (e) => {
+      runSource = e.target.value;
+      draw();
+    });
+    main.querySelector('[data-import]')?.addEventListener('click', () => openImportDialog(() => renderRunsPage(main)));
     main.querySelectorAll('[data-cmp]').forEach((el) =>
       el.addEventListener('change', () => {
         if (el.checked) {

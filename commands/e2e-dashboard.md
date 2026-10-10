@@ -1,6 +1,6 @@
 ---
-description: Mở dashboard e2e (live, lịch sử, debug, phân tích). Tham số tuỳ chọn: setup | export [runId] | stop | status | digest [ngày] | projects | statusline [install]
-argument-hint: "[setup|export [runId]|stop|status|digest [ngày]|projects|statusline [install]]"
+description: Mở dashboard e2e (live, lịch sử, debug, phân tích). Tham số tuỳ chọn: setup | export [runId] | stop | status | digest [ngày] | projects | statusline [install] | quarantine | import <path> | share push|pull
+argument-hint: "[setup|export [runId]|stop|status|digest [ngày]|projects|statusline [install]|quarantine|import <path>|share push|pull]"
 allowed-tools: Bash(node:*), Read, Edit
 ---
 
