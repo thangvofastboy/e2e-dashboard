@@ -23,7 +23,7 @@ const cookieToken = (req) =>
 
 function send(res, status, body, headers = {}) {
   const isText = typeof body === 'string';
-  res.writeHead(status, { 'content-type': isText ? 'text/plain; charset=utf-8' : 'application/json', ...headers });
+  res.writeHead(status, { 'content-type': isText ? 'text/plain; charset=utf-8' : 'application/json', 'referrer-policy': 'no-referrer', ...headers });
   res.end(isText ? body : JSON.stringify(body));
 }
 
@@ -46,6 +46,7 @@ async function serveFile(req, res, path) {
     'accept-ranges': 'bytes',
     'x-content-type-options': 'nosniff',
     'content-security-policy': 'sandbox',
+    'referrer-policy': 'no-referrer',
   };
   const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '');
   if (m && (m[1] || m[2])) {
@@ -87,7 +88,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {} 
     const urlToken = url.searchParams.get('token');
     if (urlToken !== null) {
       if (!same(urlToken, token)) return send(res, 401, 'token sai');
-      res.writeHead(302, { 'set-cookie': `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/`, location: url.pathname });
+      res.writeHead(302, { 'set-cookie': `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/`, location: url.pathname, 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
       return res.end();
     }
     if (!same(req.headers['x-e2e-dashboard-token'], token) && !same(cookieToken(req), token))

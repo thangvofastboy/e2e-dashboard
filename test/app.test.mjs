@@ -105,3 +105,11 @@ test('serves the UI bundle', async () => {
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type'), /javascript/);
 });
+
+test('token redirect is not cached and pages never send a referrer', async () => {
+  const redirect = await fetch(`${base}/?token=${TOKEN}`, { redirect: 'manual' });
+  assert.match(redirect.headers.get('cache-control') ?? '', /no-store/);
+  assert.equal(redirect.headers.get('referrer-policy'), 'no-referrer');
+  const page = await fetch(`${base}/`, { headers: auth });
+  assert.equal(page.headers.get('referrer-policy'), 'no-referrer');
+});
