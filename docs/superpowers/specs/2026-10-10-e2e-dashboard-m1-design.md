@@ -162,7 +162,7 @@ KPI (pass rate, run gần nhất, thời gian TB, token/run); chart pass rate + 
 - Thanh lọc: tag, file, target, agent, status. Chọn test: checkbox, "Chọn tất cả fail", nút **Rerun đã chọn** (mở hộp thoại Run). Nút **Ma trận** chuyển danh sách thành lưới test × target.
 - Danh sách test bên trái; bên phải: **timeline agent** theo attempt (chọn attempt), mỗi step có kind/api/label/status/thời lượng/model calls/cache; mở ra thấy events (💭 reasoning, engine action, navigation, poll) và lỗi kèm nút ✨ **Phân tích lỗi**.
 - Video: bấm step → `currentTime` = `step.startedAt − attempt.startedAt` (giây); nếu thiếu mốc thì không tua.
-- Tab: Screenshot, Log (event `output` theo test, chỉ có khi run có reporter), Trace (`trace.md` render Markdown), Source (`file:line`).
+- Tab: Screenshot, Log (`attempt.appLog`: log network/console của app có trong report; stdout/stderr `output` chỉ xem được ở Live vì không được lưu vào report), Trace (`trace.md` render Markdown), Source (`file:line`).
 
 ### Live
 Tiến độ `done/total`, ETA, nút Dừng; Gantt làn; step đang chạy của test được chọn. Không có reporter: hiện stdout và gợi ý `/e2e-dashboard setup`.
