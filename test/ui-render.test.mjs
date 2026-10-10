@@ -53,3 +53,9 @@ test('markdown drops links whose URL hides a scheme behind control characters', 
     assert.doesNotMatch(html, /<a /, JSON.stringify(url));
   }
 });
+
+test('markdown accepts indented code fences (e.g. inside a list item)', () => {
+  const html = renderMarkdown('- Sửa dòng 13:\n\n   ```ts\n   await expect(x).toHaveText("a")\n   ```\n\nXong.');
+  assert.match(html, /<pre><code>await expect\(x\)\.toHaveText\(&quot;a&quot;\)\n<\/code><\/pre>/);
+  assert.match(html, /<p>Xong\.<\/p>/);
+});

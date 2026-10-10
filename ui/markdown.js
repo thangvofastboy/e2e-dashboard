@@ -34,11 +34,13 @@ export function renderMarkdown(src) {
   };
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (line.startsWith('```')) {
+    const fence = /^(\s*)```/.exec(line);
+    if (fence) {
       flushPara();
       flushList();
       const code = [];
-      while (++i < lines.length && !lines[i].startsWith('```')) code.push(lines[i]);
+      const indent = fence[1].length; // fences inside list items come indented
+      while (++i < lines.length && !/^\s*```/.test(lines[i])) code.push(lines[i].slice(Math.min(indent, lines[i].length - lines[i].trimStart().length)));
       out.push(`<pre><code>${escapeHtml(code.join('\n'))}\n</code></pre>`);
       continue;
     }
