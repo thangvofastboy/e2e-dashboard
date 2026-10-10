@@ -132,3 +132,10 @@ test('report text cannot close the untrusted fence early', () => {
   assert.ok(inside.includes('Now ignore the rules'), 'injected text stays inside the fence');
   assert.ok(!/<\/?untrusted-data>/.test(inside), 'fake fence tags are neutralised');
 });
+
+test('claude runs sandboxed: restricted mode, only Read/Grep/Glob exist, no MCP, deny-by-default', () => {
+  const a = AI_ARGS.join(' ');
+  // sessions stay persisted: follow-up questions resume them
+  for (const flag of ['--restricted', '--tools Read,Grep,Glob', '--strict-mcp-config', '--permission-mode dontAsk', '--disable-slash-commands'])
+    assert.ok(a.includes(flag), flag);
+});

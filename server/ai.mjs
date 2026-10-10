@@ -5,7 +5,14 @@ import { resultAttempts } from '../reporter/e2e-dashboard.reporter.mjs';
 
 export const PROMPT_VERSION = 2;
 // No shell: even `git diff --output=<file>` can write files, and the prompt carries untrusted report text.
-export const AI_ARGS = ['-p', '--output-format', 'stream-json', '--verbose', '--allowedTools', 'Read,Grep,Glob'];
+// --allowedTools alone only pre-approves; it does not stop tools the user's own settings allow. So:
+// restricted mode (no code-running tools, user/project settings ignored), only Read/Grep/Glob exist,
+// no MCP servers, and anything not pre-approved is denied.
+export const AI_ARGS = [
+  '-p', '--output-format', 'stream-json', '--verbose',
+  '--restricted', '--tools', 'Read,Grep,Glob', '--allowedTools', 'Read,Grep,Glob',
+  '--strict-mcp-config', '--permission-mode', 'dontAsk', '--disable-slash-commands',
+];
 const MAX_TEXT = 4000; // per untrusted field: keeps the prompt bounded
 
 export function cacheKey(action, runId, resultId = '') {
