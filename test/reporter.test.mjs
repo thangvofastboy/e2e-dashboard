@@ -62,3 +62,14 @@ test('skips archive when the signal is already aborted', async () => {
   ac.abort();
   assert.equal(await r.onRunFinished(finished(root), ac.signal), undefined);
 });
+
+test('server.json with a non-numeric port or odd token is ignored (no request leaves localhost)', async () => {
+  for (const bad of [{ port: '80@evil.example', token: 't0k' }, { port: 0, token: 't0k' }, { port: 70000, token: 't0k' }, { port: 4477, token: 'a\r\nX: y' }]) {
+    const root = project({ server: false });
+    writeFileSync(join(root, '.e2e-dashboard/server.json'), JSON.stringify({ ...bad, pid: 1 }));
+    const calls = [];
+    const r = createReporter({ env: {}, fetchImpl: async (url) => { calls.push(url); return { ok: true }; } });
+    r.onEvent(started(root));
+    assert.deepEqual(calls, [], JSON.stringify(bad));
+  }
+});

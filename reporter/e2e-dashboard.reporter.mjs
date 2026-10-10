@@ -224,7 +224,9 @@ export async function applyRetention(projectRoot, keep = 50) {
 export function readServerInfo(projectRoot) {
   try {
     const s = JSON.parse(readFileSync(join(projectRoot, DATA_DIR, 'server.json'), 'utf8'));
-    return s.port && s.token ? s : null;
+    // server.json is a file in the user's repo: only a real port and a plain token may reach a URL or header
+    const ok = Number.isInteger(s.port) && s.port > 0 && s.port < 65536 && typeof s.token === 'string' && /^[A-Za-z0-9_-]+$/.test(s.token);
+    return ok ? s : null;
   } catch {
     return null;
   }
