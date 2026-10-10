@@ -26,9 +26,10 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
   const cfg = readConfig(projectRoot);
   const preferred = port ?? cfg.port ?? 4477;
   const live = createLive();
-  const watcher = watchReport({ projectRoot, outputDir: resolve(projectRoot, cfg.output ?? '.e2e') });
+  let last = null; // shown in /api/info so a skipped report (bad schema, unsafe path) is not silent
+  const watcher = watchReport({ projectRoot, outputDir: resolve(projectRoot, cfg.output ?? '.e2e'), onResult: (r) => (last = r) });
   const app = createApp({
-    projectRoot, token, uiDir, live,
+    projectRoot, token, uiDir, live, lastArchive: () => last,
     onEvent: (e) => {
       if (e?.type === 'run-started' && e.artifactsRoot) watcher.retarget(outputFromArtifactsRoot(e.artifactsRoot), e.artifactsRoot);
     },

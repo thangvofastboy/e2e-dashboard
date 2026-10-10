@@ -1,6 +1,6 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { DATA_DIR } from '../reporter/e2e-dashboard.reporter.mjs';
+import { DATA_DIR, resultAttempts } from '../reporter/e2e-dashboard.reporter.mjs';
 
 const runsDir = (root) => join(root, DATA_DIR, 'runs');
 const readJson = async (p) => JSON.parse(await readFile(p, 'utf8'));
@@ -54,7 +54,7 @@ export async function setFlag(root, runId, flag, value) {
   return writeMeta(dir, { ...meta, [flag]: Boolean(value) });
 }
 
-const resultDuration = (r) => (r.attempts ?? []).reduce((s, a) => s + (a.durationMs ?? 0), 0);
+const resultDuration = (report, r) => resultAttempts(report, r).reduce((s, a) => s + (a.durationMs ?? 0), 0);
 
 export async function testHistory(root, n = 10) {
   const rows = new Map();
@@ -83,7 +83,7 @@ export async function testHistory(root, n = 10) {
         });
       const row = rows.get(key);
       row.history.push({ runId: m.runId, status: r.status });
-      if (r.status !== 'skipped') row.durations.push(resultDuration(r));
+      if (r.status !== 'skipped') row.durations.push(resultDuration(report, r));
     }
   }
   return [...rows.values()].map(({ durations, ...row }) => ({

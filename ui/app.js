@@ -40,7 +40,10 @@ async function footer() {
     : r.version !== r.latest
       ? `<p class="hint">Reporter trong project là ${escapeHtml(r.version)}, bản mới là ${escapeHtml(r.latest)} — chạy lại <code>/e2e-dashboard setup</code>.</p>`
       : '';
-  el.innerHTML = `<div class="muted">${escapeHtml(info.project)} · v${escapeHtml(info.version)}</div>${hint}`;
+  const skipped = info.lastArchive?.status === 'skipped' && info.lastArchive.reason !== 'no-report'
+    ? `<p class="hint">Report gần nhất không được lưu: ${escapeHtml(info.lastArchive.reason)}.</p>`
+    : '';
+  el.innerHTML = `<div class="muted">${escapeHtml(info.project)} · v${escapeHtml(info.version)}</div>${hint}${skipped}`;
 }
 
 async function route() {

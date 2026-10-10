@@ -77,7 +77,8 @@ export function createLive({ throttleMs = 250 } = {}) {
         if (!t) break;
         Object.assign(t, {
           status: r.status, finishedAt: e.at, activity: null,
-          durationMs: (r.attempts ?? []).reduce((sum, a) => sum + (a.durationMs ?? 0), 0),
+          // serial members finish with no attempts of their own: fall back to wall-clock time
+          durationMs: (r.attempts ?? []).reduce((sum, a) => sum + (a.durationMs ?? 0), 0) || Math.max(0, Date.parse(e.at) - Date.parse(t.startedAt)) || 0,
         });
         busy[t.lane] = false;
         break;

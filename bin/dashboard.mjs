@@ -18,6 +18,10 @@ const TYPES = "import type { Reporter } from 'e2e';\ndeclare const reporter: Rep
 export function patchConfig(source) {
   if (source.includes('e2e-dashboard.reporter')) return { source, patched: false, reason: 'already' };
   let out = source;
+  const arr = /reporters\s*:\s*\[([^\]]*)\]/.exec(out);
+  const odd = (s, q) => (s.split(q).length - 1) % 2 === 1;
+  if (arr && (/[[\](){}]|\/\/|\/\*/.test(arr[1]) || odd(arr[1], "'") || odd(arr[1], '"') || odd(arr[1], '`')))
+    return { source, patched: false, reason: 'unknown-shape' }; // nested or commented arrays: leave it to a human
   if (/reporters\s*:\s*\[/.test(out)) {
     out = out.replace(/(reporters\s*:\s*\[)([^\]]*)\]/, (_m, open, items) =>
       `${open}${items.trim() ? `${items.replace(/,?\s*$/, '')}, ` : ''}dashboardReporter]`);

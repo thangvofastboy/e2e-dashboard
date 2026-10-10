@@ -1,7 +1,7 @@
 // e2e-dashboard reporter. Self-contained: imports only node:* so it can be copied into any e2e project.
 // Exported archive() is also used by the e2e-dashboard plugin (hook + server).
 import { mkdir, readFile, writeFile, copyFile, rename, rm, readdir, stat } from 'node:fs/promises';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, realpathSync, lstatSync } from 'node:fs';
 import { join, dirname, basename, resolve, relative, sep, isAbsolute } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -77,6 +77,36 @@ export function safeJoin(root, rel) {
   return r && !r.startsWith('..') && !isAbsolute(r) ? p : null;
 }
 
+// The project may be a hostile clone: symlinks it planted must never redirect our reads or writes.
+export function realInside(root, p) {
+  try {
+    const r = realpathSync(root);
+    const q = realpathSync(p);
+    return q.startsWith(r + sep);
+  } catch {
+    return false;
+  }
+}
+
+const isLink = (p) => {
+  try {
+    return lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
+};
+
+// Attempts of a result; serial-group members keep theirs on the group, not on the result.
+export function resultAttempts(report, r) {
+  if (r.attempts?.length) return r.attempts;
+  const g = (report.run.serialGroups ?? []).find((x) =>
+    r.serialGroupId
+      ? x.id === r.serialGroupId
+      : x.memberTestIds?.includes(r.testId) && x.targetId === r.targetId &&
+        (x.agent ?? 'default') === (r.agent ?? 'default') && (x.repeat ?? 0) === (r.repeat ?? 0));
+  return (g?.attempts ?? []).flatMap((ga) => (ga.members ?? []).filter((m) => m.testId === r.testId));
+}
+
 export function readConfig(projectRoot) {
   try {
     return JSON.parse(readFileSync(join(projectRoot, DATA_DIR, 'config.json'), 'utf8'));
@@ -111,7 +141,7 @@ function nonPassedArtifacts(report) {
 async function copyInto(srcRoot, dstRoot, rel) {
   const src = safeJoin(srcRoot, rel);
   const dst = safeJoin(dstRoot, rel);
-  if (!src || !dst || !existsSync(src)) return false;
+  if (!src || !dst || !realInside(srcRoot, src)) return false;
   await mkdir(dirname(dst), { recursive: true });
   await copyFile(src, dst);
   return true;
@@ -127,7 +157,7 @@ async function findFiles(dir, name, out = []) {
   for (const e of entries) {
     const p = join(dir, e.name);
     if (e.isDirectory()) await findFiles(p, name, out);
-    else if (e.name === name) out.push(p);
+    else if (e.isFile() && e.name === name) out.push(p);
   }
   return out;
 }
@@ -166,8 +196,12 @@ export async function archive(projectRoot, { source, rerunOf = null, report, rep
   }
   if (report?.schemaVersion !== 'report-1' || !RUN_ID.test(report.run?.id ?? '')) return { status: 'skipped', reason: 'unsupported-schema' };
 
-  const runsDir = join(projectRoot, DATA_DIR, 'runs');
+  const dataDir = join(projectRoot, DATA_DIR);
+  const runsDir = join(dataDir, 'runs');
+  if (isLink(dataDir) || isLink(runsDir)) return { status: 'skipped', reason: 'unsafe-path' };
   await mkdir(runsDir, { recursive: true });
+  // run data holds page text and logs: keep it out of git even when nobody ran setup
+  if (!existsSync(join(dataDir, '.gitignore'))) await writeFile(join(dataDir, '.gitignore'), '*\n');
   const name = runDirName(report);
   const existing = (await readdir(runsDir)).find((d) => d.endsWith(`_${report.run.id}`));
   if (existing) return { status: 'exists', runDir: join(runsDir, existing) };
@@ -180,7 +214,7 @@ export async function archive(projectRoot, { source, rerunOf = null, report, rep
     await writeFile(join(tmp, 'report.json'), JSON.stringify(report));
     const traceMeta = {};
     for (const [id, abs] of await resolveTraces(projectRoot, report, artRoot, traces)) {
-      if (!RESULT_ID.test(id) || !existsSync(abs)) continue;
+      if (!RESULT_ID.test(id) || !realInside(projectRoot, abs)) continue;
       await mkdir(join(tmp, 'traces'), { recursive: true });
       await copyFile(abs, join(tmp, 'traces', `${id}.md`));
       traceMeta[id] = `traces/${id}.md`;
@@ -199,6 +233,7 @@ export async function archive(projectRoot, { source, rerunOf = null, report, rep
 }
 
 export async function applyRetention(projectRoot, keep = 50) {
+  if (!Number.isInteger(keep) || keep < 1) keep = 50; // config.json is repo-controlled
   const runsDir = join(projectRoot, DATA_DIR, 'runs');
   let names;
   try {

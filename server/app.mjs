@@ -2,13 +2,12 @@ import { readFile, stat } from 'node:fs/promises';
 import { createReadStream, readFileSync } from 'node:fs';
 import { join, extname, basename } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
-import { safeJoin, VERSION } from '../reporter/e2e-dashboard.reporter.mjs';
+import { safeJoin, realInside, VERSION } from '../reporter/e2e-dashboard.reporter.mjs';
 import { listRuns, getRun, findRunDir, setFlag, testHistory } from './store.mjs';
 import { estimateEta } from './live.mjs';
 import { bundleUi } from '../ui/bundle.mjs';
 import { buildExportHtml } from './export.mjs';
 
-const COOKIE = 'e2ed';
 const MAX_BODY = 1024 * 1024;
 const FILE_TYPES = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif',
@@ -19,8 +18,10 @@ const FILE_TYPES = {
 const UI_CSP = "default-src 'self'; img-src 'self' data:; media-src 'self' https:; style-src 'self' 'unsafe-inline'";
 
 const same = (a, b) => typeof a === 'string' && a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+// one cookie per port: several project dashboards can be open at once
+const cookieName = (req) => `e2ed_${req.socket.localPort}`;
 const cookieToken = (req) =>
-  (req.headers.cookie ?? '').split(/;\s*/).map((c) => c.split('=')).find(([k]) => k === COOKIE)?.[1];
+  (req.headers.cookie ?? '').split(/;\s*/).map((c) => c.split('=')).find(([k]) => k === cookieName(req))?.[1];
 
 function send(res, status, body, headers = {}) {
   const isText = typeof body === 'string';
@@ -70,7 +71,7 @@ function reporterStatus(projectRoot) {
   }
 }
 
-export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {} }) {
+export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null }) {
   let avgByKey = new Map();
   const refreshAverages = () =>
     testHistory(projectRoot, 10)
@@ -89,7 +90,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {} 
     const urlToken = url.searchParams.get('token');
     if (urlToken !== null) {
       if (!same(urlToken, token)) return send(res, 401, 'token sai');
-      res.writeHead(302, { 'set-cookie': `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/`, location: url.pathname, 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
+      res.writeHead(302, { 'set-cookie': `${cookieName(req)}=${token}; HttpOnly; SameSite=Strict; Path=/`, location: url.pathname, 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
       return res.end();
     }
     if (!same(req.headers['x-e2e-dashboard-token'], token) && !same(cookieToken(req), token))
@@ -103,7 +104,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {} 
       if (p === '/') return send(res, 200, await readFile(join(uiDir, 'index.html'), 'utf8'), { ...ui, 'content-type': 'text/html; charset=utf-8' });
       if (p === '/app.js') return send(res, 200, await bundleUi(uiDir), { ...ui, 'content-type': 'text/javascript; charset=utf-8' });
       if (p === '/style.css') return send(res, 200, await readFile(join(uiDir, 'style.css'), 'utf8'), { ...ui, 'content-type': 'text/css; charset=utf-8' });
-      if (p === '/api/info') return send(res, 200, { version: VERSION, pid: process.pid, project: basename(projectRoot), reporter: reporterStatus(projectRoot) });
+      if (p === '/api/info') return send(res, 200, { version: VERSION, pid: process.pid, project: basename(projectRoot), reporter: reporterStatus(projectRoot), lastArchive: lastArchive() });
       if (p === '/api/runs') return send(res, 200, await listRuns(projectRoot));
       if (p === '/api/tests') return send(res, 200, await testHistory(projectRoot, 10));
       if (p === '/api/live') {
@@ -136,7 +137,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {} 
       if (m) {
         const dir = await findRunDir(projectRoot, m[1]);
         const file = dir && safeJoin(dir, decodeURIComponent(m[2]));
-        return file ? serveFile(req, res, file) : send(res, 404, 'not found');
+        return file && realInside(dir, file) ? serveFile(req, res, file) : send(res, 404, 'not found');
       }
     }
     if (req.method === 'POST') {

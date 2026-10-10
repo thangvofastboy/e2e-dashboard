@@ -20,7 +20,8 @@ export function artifactsOf(attempt) {
 
 export function mediaSrc(runId, artifact) {
   if (artifact?.path) return fileUrl(runId, `artifacts/${artifact.path}`);
-  return artifact?.url ?? null;
+  const url = artifact?.url;
+  return typeof url === 'string' && /^https?:\/\//i.test(url) && !/[\u0000-\u0020\u007f]/.test(url) ? url : null;
 }
 
 export function eventLine(e) {
