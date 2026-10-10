@@ -1,11 +1,13 @@
-// Mod module: `/e2e-dashboard update` and `/e2e-dashboard version` run locally (no model turn).
-// Every other `/e2e-dashboard …` falls through to the markdown command (commands/e2e-dashboard.md).
+// Mod module. Plugin markdown commands are namespaced (`/e2e-dashboard:e2e-dashboard`), so the mod
+// registers the bare `/e2e-dashboard` and runs the CLI itself (no model turn). `update` and `version`
+// run here for both names; the namespaced one otherwise falls through to commands/e2e-dashboard.md.
 import type { EngineInterface, Register } from 'claude-code'
 
 // HTTPS: works without a GitHub SSH key (the marketplace itself is added over HTTPS)
 const REPO = 'https://github.com/thangvofastboy/e2e-dashboard.git'
 const MARKETPLACE = 'e2e-dashboard'
 const PLUGIN_ID = `e2e-dashboard@${MARKETPLACE}`
+const BARE = 'e2e-dashboard'
 const OURS = /^(e2e-dashboard:)?e2e-dashboard$/
 
 // Version the plugin manager now has installed, from `claude plugin list --json`.
@@ -106,15 +108,36 @@ async function updatePlugin($: EngineInterface) {
   return [...outputs, `✓ v${current} → v${installed ?? latest ?? 'mới nhất'}`, '🔄 Đang nạp lại plugin (/reload-plugins)...'].join('\n')
 }
 
+// start | setup | stop | status | export [runId]: the same CLI the markdown command runs, argv without a shell.
+async function runCli($: EngineInterface, argv: string[]) {
+  const run = await $.process.run(['node', `${$.plugin.root}/bin/dashboard.mjs`, ...argv], {
+    timeoutMs: 60000,
+    env: { CLAUDE_PLUGIN_ROOT: $.plugin.root },
+  })
+  const out = `${run.stdout}${run.stderr}`.trim() || `dashboard.mjs thoát mã ${run.exitCode}`
+  // the config edit needs the model: the namespaced markdown command hands it to Claude
+  return out.includes('NEEDS_MANUAL_EDIT') ? `${out}\n\nChạy /${BARE}:${BARE} setup để Claude sửa config giúp.` : out
+}
+
 export const register: Register = on => {
+  on('session.start', async ($, e, next) => {
+    await $.command
+      .register({ name: BARE, description: 'Mở dashboard e2e (live, lịch sử, debug)', argumentHint: '[setup|export [runId]|stop|status|update|version]' })
+      .catch(() => undefined)
+    return next(e)
+  })
+
   on('command.run', async ($, e, next) => {
     if (!OURS.test(e.command)) return next(e)
-    const sub = e.args.trim().split(/\s+/)[0]
-    if (sub !== 'update' && sub !== 'version') return next(e)
+    const argv = e.args.trim() ? e.args.trim().split(/\s+/) : []
+    const sub = argv[0]
+    if (sub !== 'update' && sub !== 'version' && e.command !== BARE) return next(e)
     try {
-      return { text: sub === 'update' ? await updatePlugin($) : await versionText($) }
+      if (sub === 'update') return { text: await updatePlugin($) }
+      if (sub === 'version') return { text: await versionText($) }
+      return { text: await runCli($, argv) }
     } catch (error) {
-      return { text: `✗ ${sub} thất bại: ${error instanceof Error ? error.message : String(error)}` }
+      return { text: `✗ ${sub ?? 'start'} thất bại: ${error instanceof Error ? error.message : String(error)}` }
     }
   })
 }

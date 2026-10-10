@@ -69,6 +69,7 @@
 ```text
 /plugin marketplace add thangvofastboy/e2e-dashboard
 /plugin install e2e-dashboard@e2e-dashboard
+/reload-plugins
 ```
 
 **2️⃣ Mở dashboard** ở thư mục project e2e:
@@ -103,7 +104,7 @@ Lệnh này copy `e2e-dashboard.reporter.mjs` (kèm `.d.mts`) vào project và t
 | `/e2e-dashboard stop` | ⏹️ | Tắt server |
 
 > [!TIP]
-> Nếu Claude Code báo trùng tên lệnh, gõ tên đầy đủ `/e2e-dashboard:e2e-dashboard`.
+> Tất cả lệnh trên chạy local, không tốn token. Nếu cần Claude tự sửa `e2e.config.ts` (config có dạng lạ), dùng tên đầy đủ `/e2e-dashboard:e2e-dashboard setup`: lệnh này nhờ Claude chèn reporter giúp.
 
 ---
 
