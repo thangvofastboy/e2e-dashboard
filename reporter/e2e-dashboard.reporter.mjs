@@ -64,3 +64,155 @@ export function summarize(report, { source, rerunOf = null, git = null }) {
 export function runDirName(report) {
   return `${report.run.startedAt.replace(/[:.]/g, '-')}_${report.run.id}`;
 }
+
+export function safeJoin(root, rel) {
+  if (typeof rel !== 'string' || rel === '' || isAbsolute(rel)) return null;
+  const base = resolve(root);
+  const p = resolve(base, rel);
+  const r = relative(base, p);
+  return r && !r.startsWith('..') && !isAbsolute(r) ? p : null;
+}
+
+export function readConfig(projectRoot) {
+  try {
+    return JSON.parse(readFileSync(join(projectRoot, DATA_DIR, 'config.json'), 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function gitInfo(cwd) {
+  try {
+    const git = (args) =>
+      execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000 }).trim();
+    return { commit: git(['rev-parse', 'HEAD']), branch: git(['rev-parse', '--abbrev-ref', 'HEAD']), dirty: git(['status', '--porcelain']) !== '' };
+  } catch {
+    return null;
+  }
+}
+
+// Attempts (normal + serial group) whose result did not pass, with their attempt- and step-level artifacts.
+function nonPassedArtifacts(report) {
+  const out = [];
+  const take = (a) => {
+    out.push(...(a.artifacts ?? []));
+    for (const s of a.steps ?? []) out.push(...(s.artifacts ?? []));
+    for (const m of a.members ?? []) for (const s of m.steps ?? []) out.push(...(s.artifacts ?? []));
+  };
+  for (const r of report.run.results ?? []) if (r.status !== 'passed') (r.attempts ?? []).forEach(take);
+  for (const g of report.run.serialGroups ?? []) if (g.status !== 'passed') (g.attempts ?? []).forEach(take);
+  return out;
+}
+
+async function copyInto(srcRoot, dstRoot, rel) {
+  const src = safeJoin(srcRoot, rel);
+  const dst = safeJoin(dstRoot, rel);
+  if (!src || !dst || !existsSync(src)) return false;
+  await mkdir(dirname(dst), { recursive: true });
+  await copyFile(src, dst);
+  return true;
+}
+
+async function findFiles(dir, name, out = []) {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const e of entries) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) await findFiles(p, name, out);
+    else if (e.name === name) out.push(p);
+  }
+  return out;
+}
+
+// resultId -> absolute trace.md path. Without an explicit map, a trace belongs to the result
+// whose artifact paths live under the trace's directory.
+// ponytail: directory-prefix heuristic, verified against a real run in Task 12.
+async function resolveTraces(projectRoot, report, artRoot, traces) {
+  const map = new Map();
+  if (traces) {
+    for (const [id, p] of traces instanceof Map ? traces : Object.entries(traces)) map.set(id, resolve(projectRoot, p));
+    return map;
+  }
+  const found = await findFiles(artRoot, 'trace.md');
+  for (const r of report.run.results ?? []) {
+    const paths = (r.attempts ?? []).flatMap((a) => (a.artifacts ?? []).map((x) => x.path).filter(Boolean));
+    const hit = found.find((t) => {
+      const dir = relative(artRoot, dirname(t)).split(sep).join('/');
+      return paths.some((p) => p.startsWith(`${dir}/`));
+    });
+    if (hit) map.set(r.id, hit);
+  }
+  return map;
+}
+
+export async function archive(projectRoot, { source, rerunOf = null, report, reportPath, artifactsRoot, traces, outputDir, keep } = {}) {
+  const cfg = readConfig(projectRoot);
+  const output = resolve(projectRoot, outputDir ?? cfg.output ?? '.e2e');
+  if (!report) {
+    try {
+      report = JSON.parse(await readFile(reportPath ?? join(output, 'report.json'), 'utf8'));
+    } catch (e) {
+      return { status: 'skipped', reason: e.code === 'ENOENT' ? 'no-report' : 'unreadable' };
+    }
+  }
+  if (report?.schemaVersion !== 'report-1' || !report.run?.id) return { status: 'skipped', reason: 'unsupported-schema' };
+
+  const runsDir = join(projectRoot, DATA_DIR, 'runs');
+  await mkdir(runsDir, { recursive: true });
+  const name = runDirName(report);
+  const existing = (await readdir(runsDir)).find((d) => d.endsWith(`_${report.run.id}`));
+  if (existing) return { status: 'exists', runDir: join(runsDir, existing) };
+
+  const artRoot = resolve(projectRoot, artifactsRoot ?? join(output, 'results'));
+  const tmp = join(runsDir, `.tmp-${randomBytes(6).toString('hex')}`);
+  const final = join(runsDir, name);
+  await mkdir(tmp);
+  try {
+    await writeFile(join(tmp, 'report.json'), JSON.stringify(report));
+    const traceMeta = {};
+    for (const [id, abs] of await resolveTraces(projectRoot, report, artRoot, traces)) {
+      if (!existsSync(abs)) continue;
+      await mkdir(join(tmp, 'traces'), { recursive: true });
+      await copyFile(abs, join(tmp, 'traces', `${id}.md`));
+      traceMeta[id] = `traces/${id}.md`;
+    }
+    for (const a of nonPassedArtifacts(report)) if (a.path) await copyInto(artRoot, join(tmp, 'artifacts'), a.path);
+    const meta = { ...summarize(report, { source, rerunOf, git: report.run.vcs ? null : gitInfo(projectRoot) }), traces: traceMeta };
+    await writeFile(join(tmp, 'meta.json'), JSON.stringify(meta, null, 2));
+    await rename(tmp, final);
+  } catch (e) {
+    await rm(tmp, { recursive: true, force: true });
+    if (e.code === 'ENOTEMPTY' || e.code === 'EEXIST') return { status: 'exists', runDir: final };
+    throw e;
+  }
+  await applyRetention(projectRoot, keep ?? cfg.retention ?? 50);
+  return { status: 'archived', runDir: final };
+}
+
+export async function applyRetention(projectRoot, keep = 50) {
+  const runsDir = join(projectRoot, DATA_DIR, 'runs');
+  let names;
+  try {
+    names = (await readdir(runsDir)).filter((n) => !n.startsWith('.')).sort().reverse(); // names start with ISO time
+  } catch {
+    return [];
+  }
+  const removed = [];
+  let kept = 0;
+  for (const n of names) {
+    let meta;
+    try {
+      meta = JSON.parse(await readFile(join(runsDir, n, 'meta.json'), 'utf8'));
+    } catch {
+      continue; // being written or removed by a concurrent archive
+    }
+    if (meta.pinned || ++kept <= keep) continue;
+    await rm(join(runsDir, n), { recursive: true, force: true });
+    removed.push(n);
+  }
+  return removed;
+}
