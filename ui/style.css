@@ -143,3 +143,19 @@ button[aria-pressed="true"] { background: var(--border); font-weight: 600; }
   .run-body { grid-template-columns: 1fr; }
   .run-head { flex-direction: column; }
 }
+
+.progress { height: 6px; background: var(--grid); border-radius: 3px; overflow: hidden; }
+.progress .bar { height: 100%; background: var(--series-1); transition: width 0.3s; }
+.gantt { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
+.lane { display: grid; grid-template-columns: 56px 1fr; align-items: center; gap: 8px; }
+.lane-label { color: var(--muted); font-size: 12px; }
+.lane-track { position: relative; height: 22px; background: var(--page); border-radius: 4px; }
+.block { position: absolute; top: 2px; bottom: 2px; padding: 0; border: 0; border-radius: 4px; background: var(--status); box-shadow: 0 0 0 1px var(--surface); }
+.block.s-running { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .block.s-running { animation: none; } }
+.small { font-size: 12px; }
+.history { display: inline-flex; gap: 3px; }
+.history .cell { width: 12px; height: 12px; border-radius: 3px; background: var(--status); display: inline-block; }
+.history .empty-cell { background: var(--grid); }
+.table tr.group td { background: var(--page); }

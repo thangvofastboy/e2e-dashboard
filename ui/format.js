@@ -35,7 +35,7 @@ export const STATUS = {
   blocked: { icon: '⛔', label: 'blocked' },
   cancelled: { icon: '⊘', label: 'cancelled' },
   error: { icon: '✗', label: 'error' },
-  running: { icon: '●', label: 'running' },
+  running: { icon: '⟳', label: 'running' },
 };
 
 export function statusBadge(status) {
