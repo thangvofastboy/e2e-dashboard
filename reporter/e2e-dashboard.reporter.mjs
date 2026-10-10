@@ -61,8 +61,12 @@ export function summarize(report, { source, rerunOf = null, git = null }) {
   };
 }
 
+// run.id and result ids come from report.json and end up in file names: only accept their documented shapes.
+const RUN_ID = /^[0-9a-f-]{8,}$/i;
+const RESULT_ID = /^[0-9a-f]{64}$/i;
+
 export function runDirName(report) {
-  return `${report.run.startedAt.replace(/[:.]/g, '-')}_${report.run.id}`;
+  return `${String(report.run.startedAt).replace(/[^0-9A-Za-z]/g, '-')}_${report.run.id}`;
 }
 
 export function safeJoin(root, rel) {
@@ -159,7 +163,7 @@ export async function archive(projectRoot, { source, rerunOf = null, report, rep
       return { status: 'skipped', reason: e.code === 'ENOENT' ? 'no-report' : 'unreadable' };
     }
   }
-  if (report?.schemaVersion !== 'report-1' || !report.run?.id) return { status: 'skipped', reason: 'unsupported-schema' };
+  if (report?.schemaVersion !== 'report-1' || !RUN_ID.test(report.run?.id ?? '')) return { status: 'skipped', reason: 'unsupported-schema' };
 
   const runsDir = join(projectRoot, DATA_DIR, 'runs');
   await mkdir(runsDir, { recursive: true });
@@ -175,7 +179,7 @@ export async function archive(projectRoot, { source, rerunOf = null, report, rep
     await writeFile(join(tmp, 'report.json'), JSON.stringify(report));
     const traceMeta = {};
     for (const [id, abs] of await resolveTraces(projectRoot, report, artRoot, traces)) {
-      if (!existsSync(abs)) continue;
+      if (!RESULT_ID.test(id) || !existsSync(abs)) continue;
       await mkdir(join(tmp, 'traces'), { recursive: true });
       await copyFile(abs, join(tmp, 'traces', `${id}.md`));
       traceMeta[id] = `traces/${id}.md`;

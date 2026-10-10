@@ -114,3 +114,29 @@ test('retention keeps the newest N and every pinned run', async () => {
   assert.equal(runs(root).length, 3);
   assert.deepEqual(await applyRetention(root, 2), []);
 });
+
+test('run ids that are not uuids are rejected before touching the filesystem', async () => {
+  const { root } = makeProject((r) => { r.run.id = '../../escape'; return r; });
+  assert.deepEqual(await archive(root, { source: 'hook' }), { status: 'skipped', reason: 'unsupported-schema' });
+  assert.equal(existsSync(join(root, 'escape')), false);
+  assert.equal(existsSync(join(root, '.e2e-dashboard', 'escape')), false);
+});
+
+test('startedAt cannot inject path segments into the run directory name', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'e2ed-'));
+  const r = fixture();
+  r.run.startedAt = '2026/../../x';
+  const res = await archive(root, { source: 'reporter', report: r });
+  assert.equal(res.status, 'archived');
+  assert.equal(dirname(res.runDir), join(root, '.e2e-dashboard/runs'));
+});
+
+test('result ids that are not hex digests never become trace file names', async () => {
+  const { root, report } = makeProject(failFirst);
+  put(root, 'custom/trace.md', '# custom');
+  const res = await archive(root, { source: 'reporter', report, traces: new Map([['../../../pwned', 'custom/trace.md']]) });
+  assert.equal(res.status, 'archived');
+  assert.equal(existsSync(join(root, '.e2e-dashboard', 'pwned.md')), false);
+  assert.equal(existsSync(join(root, 'pwned.md')), false);
+  assert.deepEqual(JSON.parse(readFileSync(join(res.runDir, 'meta.json'), 'utf8')).traces, {});
+});
