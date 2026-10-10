@@ -46,3 +46,10 @@ test('empty charts and legend', () => {
   assert.match(stackedBarChart({ bars: [], keys: ['passed'] }), /Chưa có dữ liệu/);
   assert.match(legend(['passed', 'failed']), /✓ passed.*✗ failed/s);
 });
+
+test('markdown drops links whose URL hides a scheme behind control characters', () => {
+  for (const url of ['\u0001javascript:alert(1)', '\u001fjavascript:alert(1)', 'java\u0000script:alert(1)', '\u007fjavascript:alert(1)']) {
+    const html = renderMarkdown(`[x](${url})`);
+    assert.doesNotMatch(html, /<a /, JSON.stringify(url));
+  }
+});

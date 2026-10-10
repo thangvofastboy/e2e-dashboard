@@ -1,6 +1,7 @@
 import { escapeHtml } from './format.js';
 
 function safeHref(url) {
+  if (/[\u0000-\u001f\u007f]/.test(url)) return null; // browsers strip these, revealing a hidden scheme
   if (/^https?:\/\//i.test(url) || /^[/#]/.test(url)) return url;
   return /^[a-z][a-z0-9+.-]*:/i.test(url) ? null : url; // relative path without a scheme
 }
