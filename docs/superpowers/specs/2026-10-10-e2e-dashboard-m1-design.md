@@ -277,7 +277,7 @@ Phạm vi theo roadmap rút gọn: M2 = flaky, so sánh 2 run, nhóm lỗi, chi 
 | Thông báo | `server/notify.mjs` | Khi watcher thấy run mới kết thúc; argv/env, không shell |
 | Digest | `analytics.digest()`, `bin/dashboard.mjs digest` | Markdown, lưu `.e2e-dashboard/digests/<ngày>.md` |
 
-Chưa làm (để sau): hỏi AI tự do, setup timing.
+Phần còn lại đã làm ở M5.
 
 ## 12. M4 — Vận hành (v0.4.0)
 
@@ -290,3 +290,15 @@ Chưa làm (để sau): hỏi AI tự do, setup timing.
 | CI + team | `server/share.mjs` | `importReport` / `importFromGithub` (gh run download) / `sharePush` / `sharePull` |
 | Comment PR | `server/github.mjs` | `gh pr list --head <branch>` rồi `gh pr comment --body-file -` |
 | Digest | `server/digest.mjs` | Thêm bất thường, test cách ly (quá hạn), owner của test mới fail |
+
+## 13. M5 — Trải nghiệm (v0.5.0)
+
+| Phần | File | Ghi chú |
+|---|---|---|
+| Trang test, lỗi app, setup timing, explore | `server/insights.mjs` (`testDetail`, `appErrors`, `setupTiming`, `exploreSummary`) | `#/test/<testId|target|agent>`; appLog gom theo text đã bỏ id/số/query |
+| Test bị ảnh hưởng | `server/impact.mjs` | `git diff base...HEAD` + `git diff HEAD` + file chưa track; ghép theo file test, route, từ khoá tên test |
+| Hỏi AI tự do, explore → test | `ai.mjs` actions `ask`, `explore-to-test` | `ask` và `followup` không cần run |
+| Watch, lịch chạy | `server/automation.mjs` | `fs.watch` recursive, debounce 800 ms; lịch `HH:MM` giờ địa phương, kiểm tra mỗi 30 s |
+| Webhook, trạng thái GitHub | `server/webhook.mjs`, `github.setStatus` | Slack `text` + Discord `content`; commit status qua `gh api` |
+| Dung lượng | `server/storage.mjs`, `applyRetention({ keep, keepFailed })` | Không bao giờ xoá run đã ghim |
+| UX | `ui/router.js` (params), `ui/shortcuts.js`, `ui/toast.js` | Bộ lọc trên URL, phím tắt, toast, skeleton, thử lại, menu thu gọn, mobile, tiêu đề tab |

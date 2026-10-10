@@ -71,11 +71,13 @@ function header(meta, report) {
   const actions = isExport()
     ? savedRun ? `<button class="btn-ai" data-ai="analyze-run">${icon('sparkles', { size: 15 })}Xem phân tích AI</button>` : ''
     : `<button class="btn-ai" data-ai="analyze-run">${icon('sparkles', { size: 15 })}Phân tích run</button>
-       <button class="btn-pin" data-flag="pin">${icon('pin', { size: 15 })}${meta.pinned ? 'Bỏ ghim' : 'Ghim'}</button>
-       <button class="btn-star" data-flag="baseline">${icon('star', { size: 15 })}${meta.baseline ? 'Bỏ baseline' : 'Baseline'}</button>
-       ${meta.git?.commit ? `<button type="button" data-gh-status title="Gắn ✓/✗ của run này lên commit trên GitHub (gh)">${icon('commit', { size: 15 })}Trạng thái GitHub</button>` : ''}
        ${ui.compareWith ? `<a class="button" href="${compareHref(ui.compareWith.runId, meta.runId)}" title="So với ${ui.compareWith.baseline ? 'baseline' : 'run trước'}">${icon('columns', { size: 15 })}So với ${ui.compareWith.baseline ? 'baseline' : 'run trước'}</a>` : ''}
-       <a class="button btn-export" href="/api/runs/${encodeURIComponent(meta.runId)}/export" download>${icon('download', { size: 15 })}Export HTML</a>`;
+       <button class="btn-pin${meta.pinned ? ' on' : ''}" data-flag="pin" aria-pressed="${Boolean(meta.pinned)}" title="${meta.pinned ? 'Bỏ ghim' : 'Ghim: không bao giờ bị xoá'}">${icon('pin', { size: 15 })}${meta.pinned ? 'Đã ghim' : 'Ghim'}</button>
+       <details class="more"><summary class="button" aria-label="Thêm thao tác">${icon('list', { size: 15 })}Thêm</summary><div class="more-menu">
+         <button class="btn-star" data-flag="baseline">${icon('star', { size: 15 })}${meta.baseline ? 'Bỏ baseline' : 'Đặt làm baseline'}</button>
+         ${meta.git?.commit ? `<button type="button" data-gh-status title="Gắn ✓/✗ của run này lên commit trên GitHub (gh)">${icon('commit', { size: 15 })}Trạng thái lên GitHub</button>` : ''}
+         <a class="button btn-export" href="/api/runs/${encodeURIComponent(meta.runId)}/export" download>${icon('download', { size: 15 })}Export HTML</a>
+       </div></details>`;
   const runErrors = (report.run.errors ?? []).map(errorBox).join('');
   const rate = passRate(meta);
   const keys = ['passed', 'flaky', 'failed', 'interrupted', 'skipped'];
@@ -84,8 +86,8 @@ function header(meta, report) {
         <div class="run-meta"><span class="m-time">${icon('clock', { size: 14 })}${new Date(meta.startedAt).toLocaleString('vi-VN')} · ${fmtDuration(meta.durationMs)}</span><span class="m-tok">${icon('coins', { size: 14 })}${fmtTokens(tokens)} tok</span>${replay}${git}</div></div>
       <div class="actions">${actions}</div>
     </div>
-    <section class="panel run-summary">${donutChart({ segments: keys.map((k) => ({ key: k, value: s[k] ?? 0 })), center: rate == null ? '—' : `${Math.round(rate * 100)}%`, ariaLabel: 'Kết quả run' })}
-      <div><div>${countChips(s)}</div>${legend(keys.filter((k) => s[k]))}</div></section>${runErrors}${explorePanel(report)}${anomaliesPanel()}${groupsPanel()}`;
+    ${report.run.explore && !(report.run.results ?? []).length ? '' : `<section class="panel run-summary">${donutChart({ segments: keys.map((k) => ({ key: k, value: s[k] ?? 0 })), center: rate == null ? '—' : `${Math.round(rate * 100)}%`, ariaLabel: 'Kết quả run' })}
+      <div><div>${countChips(s)}</div>${legend(keys.filter((k) => s[k]))}</div></section>`}${runErrors}${explorePanel(report)}${anomaliesPanel()}${groupsPanel()}`;
 }
 
 // An `e2e explore` run: its goal, steps and findings (most severe first), and an AI draft of a test.
@@ -264,11 +266,12 @@ export async function renderRun(main, route) {
   const rows = applyFilters(all, ui.filters);
   const selected = all.find((r) => r.id === resultId) ?? rows.find((r) => isFailure(r.status)) ?? rows[0];
   if (ui.tab === 'trace' && !meta.traces?.[selected?.id]) ui.tab = 'media';
-  main.innerHTML = `${header(meta, report)}${filterBar(all)}
+  const exploreOnly = report.run.explore && !all.length;
+  main.innerHTML = `${header(meta, report)}${exploreOnly ? '' : `${filterBar(all)}
     <div class="run-body">
       <div class="run-list">${isExport() || ui.matrix ? '' : `<div class="sel-bar"><button type="button" data-select-failed>${icon('x', { size: 14 })}Chọn tất cả fail</button><button type="button" class="primary" data-rerun ${ui.selected.size ? '' : 'disabled'}>${icon('rerun', { size: 14 })}Chạy lại (${ui.selected.size})</button></div>`}${ui.matrix ? matrixTable(rows, runId) : testList(rows, runId, selected?.id)}</div>
       <div class="run-detail panel">${selected ? detail(selected, meta, runId) : '<p class="muted">Không có test.</p>'}</div>
-    </div>`;
+    </div>`}`;
 
   const rerender = () => renderRun(main, route);
   main.querySelectorAll('[data-filter]').forEach((el) =>

@@ -14,7 +14,7 @@ export function flakyShare(history, flaky = flakyTests(history)) {
 
 export async function buildDigest(root, { days = 7, now = Date.now() } = {}) {
   const history = await loadHistory(root, 200);
-  const recent = history.slice(0, 20);
+  const recent = history.filter((h) => h.meta.kind !== 'explore').slice(0, 20);
   const health = healthScore(recent.map((h) => h.meta), { flakyShare: flakyShare(recent) });
   const { rules } = readCodeowners(root);
   return digest(history, {

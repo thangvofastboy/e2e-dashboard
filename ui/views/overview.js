@@ -146,12 +146,14 @@ function testsHeatmap(tests) {
 }
 
 export async function renderOverview(main) {
-  const [metas, info, tests, health] = await Promise.all([
+  const [allMetas, info, tests, health] = await Promise.all([
     getJson('/api/runs'),
     getJson('/api/info').catch(() => null),
     getJson('/api/tests').catch(() => []),
     isExport() ? null : getJson('/api/health').then((r) => r.health).catch(() => null),
   ]);
+  // explore runs have no tests: they would read as "0/0 pass" in the KPIs and charts
+  const metas = allMetas.filter((m) => m.kind !== 'explore');
   const anomalies = isExport() ? [] : (await getJson('/api/anomalies').catch(() => ({ anomalies: [] }))).anomalies;
   if (!metas.length) {
     main.innerHTML = EMPTY_RUNS;

@@ -122,6 +122,9 @@ function shell() {
       else f.add(d.dataset.group);
       saveFolded(f);
     }));
+  // a "Thêm" menu closes on any click outside it, and on Escape
+  document.addEventListener('click', (e) => document.querySelectorAll('details.more[open]').forEach((d) => !d.contains(e.target) && d.removeAttribute('open')));
+  document.addEventListener('keydown', (e) => e.key === 'Escape' && document.querySelectorAll('details.more[open]').forEach((d) => d.removeAttribute('open')));
   if (!isExport()) {
     bindSearchShortcut();
     bindShortcuts({ onSearch: openSearch });

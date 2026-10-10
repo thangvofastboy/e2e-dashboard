@@ -200,7 +200,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return;
       }
       if (p === '/api/health') {
-        const history = await loadHistory(projectRoot, 20);
+        const history = (await loadHistory(projectRoot, 30)).filter((h) => h.meta.kind !== 'explore').slice(0, 20);
         const flaky = flakyTests(history);
         return send(res, 200, { health: healthScore(history.map((h) => h.meta), { flakyShare: flakyShare(history, flaky) }) });
       }
