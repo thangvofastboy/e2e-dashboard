@@ -34,3 +34,7 @@ test('cacheText summarises replay', () => {
   assert.equal(cacheText({ mode: 'missed', reason: 'gap', replayedActions: 0, totalActions: 2 }), 'cache missed (gap) · replay 0/2');
   assert.equal(cacheText({ mode: 'replayed', replayedActions: 2, totalActions: 2 }), 'cache replayed · replay 2/2');
 });
+
+test('eventLine escapes token counts from a tampered report', () => {
+  assert.doesNotMatch(eventLine({ kind: 'model', inputTokens: '<img src=x onerror=alert(1)>', outputTokens: '<b>' }), /<img|<b>/);
+});

@@ -39,3 +39,8 @@ test('runTable links each run and escapes branch names', () => {
   assert.match(html, /&lt;b&gt;@aaaaaaa/);
   assert.match(html, /📌/);
 });
+
+test('runTable escapes numbers taken from a tampered report', () => {
+  const html = runTable([{ runId: 'r1', status: 'failed', startedAt: new Date().toISOString(), durationMs: 1, summary: { passed: '<img src=x onerror=alert(1)>' }, tokens: {}, source: 'hook' }]);
+  assert.doesNotMatch(html, /<img/);
+});

@@ -26,7 +26,7 @@ export function mediaSrc(runId, artifact) {
 export function eventLine(e) {
   const dur = e.durationMs ? ` <span class="muted">${fmtDuration(e.durationMs)}</span>` : '';
   if (e.kind === 'model')
-    return `<li>💭 ${escapeHtml(e.reasoning ?? e.name ?? 'model')} <span class="muted">(${e.inputTokens ?? 0}/${e.outputTokens ?? 0} tok)</span>${dur}</li>`;
+    return `<li>💭 ${escapeHtml(e.reasoning ?? e.name ?? 'model')} <span class="muted">(${escapeHtml(e.inputTokens ?? 0)}/${escapeHtml(e.outputTokens ?? 0)} tok)</span>${dur}</li>`;
   if (e.kind === 'engine') return `<li>⚙ ${escapeHtml(e.detail ?? e.name)}${dur}</li>`;
   if (e.kind === 'navigation') return `<li>↪ ${escapeHtml(e.detail)}</li>`;
   if (e.kind === 'poll') return `<li>⟳ ${escapeHtml(e.detail ?? e.name)}${dur}</li>`;
@@ -45,7 +45,7 @@ function errorBox(err) {
     .filter(([, v]) => v != null)
     .map(([k, v]) => `<div><span class="muted">${k}:</span> <code>${escapeHtml(v)}</code></div>`)
     .join('');
-  const src = err.source ? `<div class="muted">${escapeHtml(err.source.file)}:${err.source.line}</div>` : '';
+  const src = err.source ? `<div class="muted">${escapeHtml(err.source.file)}:${escapeHtml(err.source.line)}</div>` : '';
   return `<div class="err"><strong>${escapeHtml(err.code ?? 'Lỗi')}</strong> ${escapeHtml(err.message)}${rows}${src}</div>`;
 }
 
@@ -53,7 +53,7 @@ function header(meta, report) {
   const s = meta.summary ?? {};
   const counts = ['passed', 'flaky', 'failed', 'interrupted', 'skipped']
     .filter((k) => s[k])
-    .map((k) => `<span class="count s-${k}">${s[k]} ${k}</span>`)
+    .map((k) => `<span class="count s-${k}">${escapeHtml(s[k])} ${k}</span>`)
     .join(' ');
   const tokens = (meta.tokens?.input ?? 0) + (meta.tokens?.output ?? 0);
   const replay = meta.replay?.total ? ` · ♻ ${Math.round((meta.replay.replayed / meta.replay.total) * 100)}% replay` : '';
@@ -152,7 +152,7 @@ function detail(row, meta, runId) {
       .join('')}</div>`
     : '';
   const head = `<h2>${escapeHtml(row.title)} ${statusBadge(row.status)}</h2>
-    <div class="muted"><code>${escapeHtml(row.file)}:${row.line}</code> · ${escapeHtml(row.target)} · ${escapeHtml(row.agent)}${row.tags.map((t) => ` <span class="tag">${escapeHtml(t)}</span>`).join('')}</div>`;
+    <div class="muted"><code>${escapeHtml(row.file)}:${escapeHtml(row.line)}</code> · ${escapeHtml(row.target)} · ${escapeHtml(row.agent)}${row.tags.map((t) => ` <span class="tag">${escapeHtml(t)}</span>`).join('')}</div>`;
   if (!attempt) return `${head}<p class="muted">Test không có attempt nào${row.status === 'skipped' ? ' (bị skip)' : ''}.</p>`;
   const { video } = artifactsOf(attempt);
   const skip = attempt.skip?.reason ? `<p class="muted">Skip: ${escapeHtml(attempt.skip.reason)}</p>` : '';

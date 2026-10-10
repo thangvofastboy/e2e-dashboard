@@ -14,7 +14,7 @@ export function passRate(meta) {
 }
 
 function countsCell(s = {}) {
-  return RUN_KEYS.filter((k) => s[k]).map((k) => `<span class="count s-${k}">${s[k]}</span>`).join(' ') || '—';
+  return RUN_KEYS.filter((k) => s[k]).map((k) => `<span class="count s-${k}">${escapeHtml(s[k])}</span>`).join(' ') || '—';
 }
 
 function gitCell(git) {
