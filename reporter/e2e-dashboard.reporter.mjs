@@ -216,3 +216,56 @@ export async function applyRetention(projectRoot, keep = 50) {
   }
   return removed;
 }
+
+export function readServerInfo(projectRoot) {
+  try {
+    const s = JSON.parse(readFileSync(join(projectRoot, DATA_DIR, 'server.json'), 'utf8'));
+    return s.port && s.token ? s : null;
+  } catch {
+    return null;
+  }
+}
+
+export function createReporter({ env = process.env, fetchImpl = globalThis.fetch } = {}) {
+  let server = null;
+  const post = (event) => {
+    if (!server) return;
+    fetchImpl(`http://127.0.0.1:${server.port}/api/events`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-e2e-dashboard-token': server.token },
+      body: JSON.stringify(event),
+    }).catch(() => {
+      server = null; // dashboard went away; stop trying for this run
+    });
+  };
+  return {
+    name: 'e2e-dashboard',
+    onEvent(event) {
+      if (env.CI) return;
+      try {
+        if (event?.type === 'run-started') server = readServerInfo(event.projectRoot);
+        if (event) post(event);
+      } catch {
+        // onEvent must never throw: a throw quarantines the reporter
+      }
+    },
+    async onRunFinished(run, signal) {
+      if (env.CI || signal?.aborted) return;
+      try {
+        const res = await archive(run.projectRoot, {
+          source: 'reporter',
+          report: run.report,
+          reportPath: run.reportPath,
+          artifactsRoot: run.artifactsRoot,
+          traces: run.traces,
+        });
+        const s = server ?? readServerInfo(run.projectRoot);
+        if (res.status !== 'skipped' && s) return [{ label: 'Dashboard', text: `http://127.0.0.1:${s.port}/#/run/${run.report.run.id}` }];
+      } catch (e) {
+        return [{ label: 'Dashboard', text: `archive failed: ${e.message}` }];
+      }
+    },
+  };
+}
+
+export default createReporter();
