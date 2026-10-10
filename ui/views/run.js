@@ -61,7 +61,8 @@ function header(meta, report) {
   const actions = isExport()
     ? ''
     : `<button data-flag="pin">${meta.pinned ? '📌 Bỏ ghim' : '📌 Ghim'}</button>
-       <button data-flag="baseline">${meta.baseline ? '⭐ Bỏ baseline' : '⭐ Baseline'}</button>`;
+       <button data-flag="baseline">${meta.baseline ? '⭐ Bỏ baseline' : '⭐ Baseline'}</button>
+       <a class="button" href="/api/runs/${encodeURIComponent(meta.runId)}/export" download>⤓ Export HTML</a>`;
   const runErrors = (report.run.errors ?? []).map(errorBox).join('');
   return `<div class="run-head">
       <div><h1>Run ${escapeHtml(meta.runId.slice(-8))} ${statusBadge(meta.status)}</h1>

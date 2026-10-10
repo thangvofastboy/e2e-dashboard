@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Entry for /e2e-dashboard: start | setup | stop | status (Task 13 adds export).
+// Entry for /e2e-dashboard: start | setup | export | stop | status.
 import { spawn } from 'node:child_process';
 import { readFile, writeFile, copyFile, mkdir, rm, appendFile, lstat } from 'node:fs/promises';
 import { existsSync, openSync, closeSync } from 'node:fs';
@@ -7,6 +7,7 @@ import { join, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DATA_DIR, readServerInfo } from '../reporter/e2e-dashboard.reporter.mjs';
 import { findProjectRoot, findConfig } from './project.mjs';
+import { exportRun } from '../server/export.mjs';
 
 const PLUGIN = fileURLToPath(new URL('..', import.meta.url));
 const MAIN = join(PLUGIN, 'server/main.mjs');
@@ -170,6 +171,10 @@ export async function main(argv, cwd) {
   if (cmd === 'status') {
     const s = await running(root);
     return { code: 0, out: s ? `Đang chạy: http://127.0.0.1:${s.port}/?token=${s.token}` : 'Dashboard không chạy.' };
+  }
+  if (cmd === 'export') {
+    const p = await exportRun(root, argv[1]);
+    return p ? { code: 0, out: `Đã xuất: ${p}` } : { code: 1, out: argv[1] ? `Không tìm thấy run ${argv[1]}.` : 'Chưa có run nào để xuất.' };
   }
   return { code: 1, out: 'Dùng: /e2e-dashboard [setup|export [runId]|stop|status]' };
 }

@@ -6,6 +6,7 @@ import { safeJoin, VERSION } from '../reporter/e2e-dashboard.reporter.mjs';
 import { listRuns, getRun, findRunDir, setFlag, testHistory } from './store.mjs';
 import { estimateEta } from './live.mjs';
 import { bundleUi } from '../ui/bundle.mjs';
+import { buildExportHtml } from './export.mjs';
 
 const COOKIE = 'e2ed';
 const MAX_BODY = 1024 * 1024;
@@ -116,6 +117,15 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {} 
           clearInterval(beat);
         });
         return;
+      }
+      const ex = /^\/api\/runs\/([^/]+)\/export$/.exec(p);
+      if (ex) {
+        const out = await buildExportHtml(projectRoot, ex[1]);
+        if (!out) return send(res, 404, { error: 'run not found' });
+        return send(res, 200, out.html, {
+          'content-type': 'text/html; charset=utf-8',
+          'content-disposition': `attachment; filename="e2e-run-${out.runId}.html"`,
+        });
       }
       let m = /^\/api\/runs\/([^/]+)$/.exec(p);
       if (m) {

@@ -13,7 +13,7 @@ let cleanup = null;
 let lastStatus = null;
 
 function shell() {
-  const nav = NAV.filter(([v]) => !(isExport() && v === 'live'))
+  const nav = NAV.filter(([v]) => !(isExport() && (v === 'live' || v === 'tests')))
     .map(([v, href, label]) => `<a href="${href}" data-nav="${v}">${label}</a>`)
     .join('');
   document.getElementById('app').innerHTML = `
@@ -73,6 +73,7 @@ function watchLive() {
   });
 }
 
+if (isExport() && !location.hash) location.hash = `#/run/${encodeURIComponent(globalThis.__E2ED_EXPORT__.runId)}`;
 shell();
 footer();
 watchLive();

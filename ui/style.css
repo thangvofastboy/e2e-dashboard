@@ -159,3 +159,6 @@ button[aria-pressed="true"] { background: var(--border); font-weight: 600; }
 .history .cell { width: 12px; height: 12px; border-radius: 3px; background: var(--status); display: inline-block; }
 .history .empty-cell { background: var(--grid); }
 .table tr.group td { background: var(--page); }
+
+a.button { display: inline-block; border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; color: var(--text-primary); background: var(--surface); }
+a.button:hover { text-decoration: none; background: var(--border); }
