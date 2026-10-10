@@ -1,0 +1,8 @@
+{
+  "name": "e2e-dashboard",
+  "owner": { "name": "thangvofastboy" },
+  "description": "Dashboard for e2e (tester-army/e2e) test runs",
+  "plugins": [
+    { "name": "e2e-dashboard", "source": "./", "description": "/e2e-dashboard: live, history and debugging dashboard for e2e test runs" }
+  ]
+}
