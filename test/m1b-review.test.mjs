@@ -239,3 +239,13 @@ test('AI queue is bounded: excess requests fail fast instead of piling up', asyn
   ac.abort();
   await Promise.all(runs);
 });
+
+test('trace paths from meta.json (repo-controlled) are used only in the shape archive() writes', () => {
+  const r = fixture();
+  const id = r.run.results[0].id;
+  const evil = buildPrompt('analyze-failure', { report: r, meta: { runId: r.run.id, traces: { [id]: '../../../../home/user/.ssh/id_rsa' } }, resultId: id, runDir: '.e2e-dashboard/runs/x' });
+  assert.ok(!evil.includes('.ssh'), 'traversal trace path dropped');
+  assert.match(evil, /Trace: \(không có\)/);
+  const good = buildPrompt('analyze-failure', { report: r, meta: { runId: r.run.id, traces: { [id]: `traces/${id}.md` } }, resultId: id, runDir: '.e2e-dashboard/runs/x' });
+  assert.ok(good.includes(`.e2e-dashboard/runs/x/traces/${id}.md`));
+});

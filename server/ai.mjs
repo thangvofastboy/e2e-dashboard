@@ -54,7 +54,9 @@ export function buildPrompt(action, { report, meta, resultId, runDir = '', commi
     const attempts = resultAttempts(report, r);
     const a = attempts.at(-1);
     // only trace paths archive() wrote (ids checked to be hex), never one built from report text
-    const trace = runDir && typeof meta.traces?.[r.id] === 'string' ? `${runDir}/${meta.traces[r.id]}` : null;
+    const t = meta.traces?.[r.id];
+    // meta.json is a repo file too: accept only the exact shape archive() writes
+    const trace = runDir && typeof t === 'string' && /^traces\/[0-9a-f]{64}\.md$/.test(t) && t === `traces/${r.id}.md` ? `${runDir}/${t}` : null;
     return `${FRAME(language, fence)}
 
 Nhiệm vụ: phân tích vì sao test này fail. Đường dẫn trace (đọc bằng Read) nằm trong khối dữ liệu.
