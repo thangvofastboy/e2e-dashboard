@@ -47,6 +47,13 @@ export function createGithub({ projectRoot, execImpl = nodeExecFile }) {
       const list = JSON.parse(out || '[]');
       return list[0] ?? null;
     },
+    // A commit status (works with a user's own token, unlike check runs): e2e-dashboard ✓/✗ on the commit.
+    async setStatus(sha, state, description) {
+      if (!/^[0-9a-f]{40}$/.test(sha ?? '')) throw new Error('invalid commit');
+      if (!['success', 'failure', 'error', 'pending'].includes(state)) throw new Error('invalid state');
+      const out = await gh(['api', '-X', 'POST', `repos/{owner}/{repo}/statuses/${sha}`, '-f', `state=${state}`, '-f', 'context=e2e-dashboard', '-f', `description=${String(description).replace(/[\r\n]/g, ' ').slice(0, 140)}`]);
+      return JSON.parse(out || '{}').url ?? null;
+    },
     async comment(number, body) {
       if (!Number.isInteger(number) || number < 1) throw new Error('invalid PR number');
       const out = await gh(['pr', 'comment', String(number), '--body-file', '-'], body);

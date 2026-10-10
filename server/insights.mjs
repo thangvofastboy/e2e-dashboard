@@ -34,7 +34,7 @@ export function search(history, query, { limit = 40 } = {}) {
       `${meta.runId} ${meta.status} ${meta.git?.branch ?? ''} ${meta.git?.commit ?? ''} ${meta.source ?? ''}`, when);
     for (const r of results(report)) {
       const href = `${runHref}/test/${encodeURIComponent(r.id)}`;
-      add('test', testKey(r), title(r), `${r.source?.file ?? r.file}:${r.source?.line ?? '?'} · ${r.targetId} · ${r.status}`, href, `${title(r)} ${r.source?.file ?? r.file} ${r.targetId} ${(r.tags ?? []).join(' ')}`, when);
+      add('test', testKey(r), title(r), `${r.source?.file ?? r.file}:${r.source?.line ?? '?'} · ${r.targetId} · ${r.status}`, `#/test/${encodeURIComponent(testKey(r))}`, `${title(r)} ${r.source?.file ?? r.file} ${r.targetId} ${(r.tags ?? []).join(' ')}`, when);
       const e = resultError(report, r);
       if (e) add('error', `${e.code}|${r.id}`, `${e.code ?? 'ERROR'}: ${String(e.message ?? '').split('\n')[0]}`, `${title(r)} · ${when}`, href, `${e.code} ${e.message} ${e.details?.locator ?? ''}`, when);
       const url = resultAttempts(report, r).at(-1)?.failure?.url;
@@ -241,4 +241,125 @@ export function flakyEvidence(history, key, limit = 20) {
     if (rows.length >= limit) break;
   }
   return rows;
+}
+
+// ---------------------------------------------------------------- one test across runs
+
+export function testDetail(history, key, { limit = 50 } = {}) {
+  const rows = [];
+  let info = null;
+  for (const { meta, report } of history) {
+    const r = results(report).find((x) => testKey(x) === key);
+    if (!r) continue;
+    info ??= { key, testId: r.testId, title: title(r), file: r.source?.file ?? r.file, line: r.source?.line ?? null, target: r.targetId, agent: r.agent ?? 'default', tags: r.tags ?? [] };
+    const atts = resultAttempts(report, r);
+    const last = atts.at(-1);
+    let tokens = 0;
+    for (const s of steps(report, r)) for (const e of s.events ?? []) if (e.kind === 'model') tokens += num(e.inputTokens) + num(e.outputTokens);
+    const e = resultError(report, r);
+    rows.push({
+      runId: meta.runId, resultId: r.id, startedAt: meta.startedAt, status: r.status, attempts: atts.length,
+      durationMs: atts.reduce((t, a) => t + num(a.durationMs), 0), tokens,
+      branch: meta.git?.branch ?? null, commit: meta.git?.commit ?? null,
+      error: e ? { code: e.code ?? null, message: String(e.message ?? '').slice(0, 400) } : null,
+      failUrl: last?.failure?.url ?? null,
+      screenshot: (last?.artifacts ?? []).find((x) => x.kind === 'screenshot' && x.path && (x.id === last.failure?.screen || FAIL.has(r.status)))?.path ?? null,
+      steps: r.status !== 'skipped' && rows.length === 0 ? (last?.steps ?? []).map((s) => ({ index: s.index, api: s.api, label: s.label ?? '', status: s.status, durationMs: s.durationMs ?? null, cache: s.cache?.mode ?? null })) : undefined,
+    });
+    if (rows.length >= limit) break;
+  }
+  return info && { ...info, runs: rows };
+}
+
+// ---------------------------------------------------------------- app errors (appLog)
+
+// Console errors and failing requests the app produced while tests ran, grouped by shape.
+export function normalizeLogText(text) {
+  return String(text ?? '')
+    .slice(0, 300)
+    .replace(/https?:\/\/[^\s/]+/gi, '')
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, ':id')
+    .replace(/\/\d+(?=[/\s?]|$)/g, '/:id')
+    .replace(/\?[^\s]*/g, '')
+    .replace(/\b[0-9a-f]{12,}\b/gi, ':hex')
+    .replace(/(?<![\d/])\d+(\.\d+)?(ms|s|px)\b/g, 'N$2')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function appErrors(history, { levels = ['error', 'warning'] } = {}) {
+  const by = new Map();
+  for (const { meta, report } of [...history].reverse()) {
+    for (const r of results(report)) {
+      for (const a of resultAttempts(report, r)) {
+        for (const l of a.appLog ?? []) {
+          if (!levels.includes(l.level)) continue;
+          const sig = `${l.source}|${l.level}|${normalizeLogText(l.text)}`;
+          if (!by.has(sig)) by.set(sig, { signature: normalizeLogText(l.text), source: l.source, level: l.level, sample: String(l.text ?? '').slice(0, 300), count: 0, tests: new Map(), runs: new Set(), firstSeen: meta.startedAt, firstCommit: meta.git?.commit ?? null, lastSeen: meta.startedAt, failing: 0 });
+          const g = by.get(sig);
+          g.count++;
+          g.runs.add(meta.runId);
+          g.lastSeen = meta.startedAt;
+          if (FAIL.has(r.status)) g.failing++;
+          g.tests.set(testKey(r), { title: title(r), runId: meta.runId, resultId: r.id });
+        }
+      }
+    }
+  }
+  const http = (s) => /\b([45]\d\d)\b/.exec(s)?.[1] ?? null;
+  return [...by.values()]
+    .map((g) => ({ ...g, tests: [...g.tests.values()], runs: g.runs.size, httpStatus: g.source === 'network' ? http(g.sample) : null }))
+    .sort((a, b) => (b.level === 'error') - (a.level === 'error') || b.runs - a.runs || b.count - a.count);
+}
+
+// ---------------------------------------------------------------- setup & hook timing
+
+// Where a run's time goes: setup projects, beforeEach/afterEach steps, and the test bodies.
+export function setupTiming(history) {
+  const runs = [];
+  const setups = new Map();
+  for (const { meta, report } of history) {
+    const t = { runId: meta.runId, startedAt: meta.startedAt, setup: 0, beforeEach: 0, afterEach: 0, body: 0 };
+    for (const r of report?.run?.results ?? []) {
+      if (!r) continue;
+      if (r.kind === 'setup') {
+        const d = resultAttempts(report, r).reduce((s, a) => s + num(a.durationMs), 0);
+        t.setup += d;
+        const k = title(r);
+        if (!setups.has(k)) setups.set(k, []);
+        setups.get(k).push(d);
+        continue;
+      }
+      for (const a of resultAttempts(report, r)) {
+        let hooks = 0;
+        for (const s of a.steps ?? []) {
+          if (s.phase === 'beforeEach' || s.phase === 'afterEach') {
+            t[s.phase] += num(s.durationMs);
+            hooks += num(s.durationMs);
+          }
+        }
+        t.body += Math.max(0, num(a.durationMs) - hooks);
+      }
+    }
+    runs.push(t);
+  }
+  const total = (k) => runs.reduce((s, r) => s + r[k], 0);
+  const all = total('setup') + total('beforeEach') + total('afterEach') + total('body');
+  return {
+    runs,
+    share: all ? { setup: total('setup') / all, beforeEach: total('beforeEach') / all, afterEach: total('afterEach') / all, body: total('body') / all } : null,
+    setups: [...setups].map(([name, ds]) => ({ name, avgMs: Math.round(ds.reduce((a, b) => a + b, 0) / ds.length), runs: ds.length })).sort((a, b) => b.avgMs - a.avgMs),
+  };
+}
+
+// ---------------------------------------------------------------- explore runs
+
+export function exploreSummary(report) {
+  const e = report?.run?.explore;
+  if (!e) return null;
+  return {
+    goal: String(e.goal ?? ''), ended: e.ended ?? null, summary: e.summary ?? null,
+    steps: (e.steps ?? []).map((s) => ({ index: s.index, title: s.title, instruction: s.instruction, status: s.status, summary: s.summary ?? null, durationMs: s.durationMs })),
+    findings: [...(e.findings ?? [])].sort((a, b) => num(b.severity) - num(a.severity)),
+  };
 }

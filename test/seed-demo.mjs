@@ -111,6 +111,10 @@ for (let i = 0; i < 12; i++) {
       step.label = 'log in and then open the orders page and check everything works properly';
       step.cache = { ...step.cache, write: 'unconfirmed' };
     }
+    a.appLog = [
+      ...(failing && k === 1 ? [{ source: 'network', level: 'error', text: `POST /api/cart/${100 + i} 500 Internal Server Error`, at: r.run.startedAt, step: 1 }] : []),
+      ...(k === 0 ? [{ source: 'console', level: 'warning', text: 'React: each child in a list should have a unique "key" prop', at: r.run.startedAt }] : []),
+    ];
     a.steps = [step, a.steps[1] && { ...a.steps[1], status: failing ? 'failed' : 'passed', error: failing ? a.error : undefined }].filter(Boolean);
     a.artifacts = [];
     if (failing) {
@@ -127,7 +131,17 @@ for (let i = 0; i < 12; i++) {
     }
     results.push(t);
   }
-  r.run.results = results;
+  // a setup project (login) and a beforeEach hook on the account test
+  const setup = structuredClone(base.run.results[0]);
+  setup.id = hex(i * 10 + 9);
+  setup.kind = 'setup';
+  setup.testId = 'tests/auth.setup.ts::log%20in';
+  setup.titlePath = ['log in'];
+  setup.status = 'passed';
+  setup.attempts[0].durationMs = 2500 + i * 40;
+  setup.attempts[0].artifacts = [];
+  results[2].attempts[0].steps[0] = { ...results[2].attempts[0].steps[0], phase: 'beforeEach' };
+  r.run.results = [...results, setup];
   const count = (s) => results.filter((x) => x.status === s).length;
   r.run.summary = { ...r.run.summary, passed: count('passed'), flaky: count('flaky'), failed: count('failed'), skipped: 0 };
   r.run.status = count('failed') ? 'failed' : 'passed';
@@ -135,5 +149,33 @@ for (let i = 0; i < 12; i++) {
   writeFileSync(join(out, 'results', VIDEO), 'not a real video');
   writeFileSync(join(out, 'report.json'), JSON.stringify(r));
   await archive(dir, { source: i % 2 ? 'reporter' : 'hook' });
+}
+
+// one `e2e explore` run with findings
+{
+  const r = structuredClone(base);
+  r.run.id = '018f0f5c-7b2a-7abc-8abc-0000000000ee';
+  r.run.startedAt = '2026-10-04T08:00:00.000Z';
+  r.run.finishedAt = '2026-10-04T08:03:00.000Z';
+  r.run.status = 'failed';
+  r.run.results = [];
+  r.run.summary = { ...r.run.summary, passed: 0, failed: 0, flaky: 0, skipped: 0 };
+  r.run.vcs = { commit: 'e'.repeat(40), branch: 'main', dirty: false };
+  r.run.explore = {
+    goal: 'Explore the checkout flow like a first-time buyer and report anything off',
+    budgets: { maxSteps: 10, timeoutMs: 600000 }, ended: 'finished',
+    summary: 'Checkout works end to end, but the cart total ignores quantity changes and the coupon field accepts expired codes.',
+    steps: [
+      { index: 1, title: 'Browse catalog', instruction: 'open the catalog and pick a product', status: 'passed', startedAt: r.run.startedAt, durationMs: 31000 },
+      { index: 2, title: 'Cart quantities', instruction: 'change the quantity in the cart', status: 'failed', startedAt: r.run.startedAt, durationMs: 19000, summary: 'total did not update' },
+      { index: 3, title: 'Coupon', instruction: 'apply an expired coupon', status: 'passed', startedAt: r.run.startedAt, durationMs: 12000 },
+    ],
+    findings: [
+      { id: 'f1', index: 0, step: 2, kind: 'issue', severity: 4, title: 'Cart total ignores quantity', expected: 'total = price × quantity', actual: 'total stays at one item', reproduction: ['add shoes to cart', 'set quantity to 3', 'look at the total'], path: '/cart', reportedAt: r.run.startedAt },
+      { id: 'f2', index: 1, step: 3, kind: 'warning', severity: 2, title: 'Expired coupon accepted', expected: 'an error message', actual: 'discount applied', reproduction: ['open cart', 'enter SUMMER2025'], path: '/cart', reportedAt: r.run.startedAt },
+    ],
+  };
+  writeFileSync(join(dir, '.e2e', 'report.json'), JSON.stringify(r));
+  await archive(dir, { source: 'hook' });
 }
 console.log(dir);

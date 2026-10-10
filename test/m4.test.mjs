@@ -34,7 +34,8 @@ test('search folds accents, needs every term, ranks label hits', () => {
   assert.ok(search(h, 'feat/thanh').some((x) => x.kind === 'run'));
   assert.deepEqual(search(h, 'pay zzz'), []);
   assert.deepEqual(search(h, '   '), []);
-  assert.match(search(h, 'thanh')[0].href, /^#\/run\/[0-9a-f-]+\/test\/[0-9a-f]{64}$/);
+  assert.equal(search(h, 'thanh')[0].href, `#/test/${encodeURIComponent('tests/a.e2e.ts::pay|web|default')}`);
+  assert.match(search(h, 'locator_not_found').find((x) => x.kind === 'error').href, /^#\/run\/[0-9a-f-]+\/test\/[0-9a-f]{64}$/);
 });
 
 test('anomalies: much slower or costlier than the test’s own history', () => {

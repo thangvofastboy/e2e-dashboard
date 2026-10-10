@@ -13,6 +13,7 @@ import { buildDigest } from '../server/digest.mjs';
 import { projectSummaries, homeDir } from '../server/projects.mjs';
 import { readQuarantine, quarantineFlags } from '../server/quarantine.mjs';
 import { importReport, importFromGithub, sharePush, sharePull } from '../server/share.mjs';
+import { webhookConfig, sendWebhooks } from '../server/webhook.mjs';
 
 const PLUGIN = fileURLToPath(new URL('..', import.meta.url));
 const MAIN = join(PLUGIN, 'server/main.mjs');
@@ -287,9 +288,15 @@ export async function main(argv, cwd) {
     return { code: 0, out: `Đã lấy ${r.pulled} run từ ${r.dir}${r.skipped ? ` (bỏ qua ${r.skipped} run không hợp lệ)` : ''}.` };
   }
   if (cmd === 'digest') {
-    const days = Number.parseInt(argv[1] ?? '7', 10);
-    const r = await writeDigest(root, Number.isInteger(days) && days > 0 && days <= 90 ? days : 7);
-    return { code: 0, out: `${r.markdown}\nĐã lưu: ${r.file}` };
+    const days = Number.parseInt(argv.slice(1).find((a) => /^\d+$/.test(a)) ?? '7', 10);
+    const r = await writeDigest(root, days > 0 && days <= 90 ? days : 7);
+    let sent = '';
+    if (argv.includes('--send')) {
+      const hooks = await webhookConfig();
+      const res = hooks.length ? await sendWebhooks(hooks, 'digest', r.markdown) : [];
+      sent = res.length ? `\nĐã gửi webhook: ${res.map((x) => `${x.host} ${x.ok ? '✓' : `✗ ${x.status ?? x.error}`}`).join(', ')}` : '\nChưa có webhook (thêm "webhooks" vào ~/.e2e-dashboard/config.json).';
+    }
+    return { code: 0, out: `${r.markdown}\nĐã lưu: ${r.file}${sent}` };
   }
   return { code: 1, out: 'Dùng: /e2e-dashboard [setup|export [runId]|stop|status|digest [ngày]|projects|statusline [install]|quarantine|import …|share push|pull [dir]]' };
 }

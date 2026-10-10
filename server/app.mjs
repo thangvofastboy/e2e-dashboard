@@ -8,7 +8,10 @@ import { flakyTests, compareRuns, groupErrors, costStats, slowSteps, routeMap, b
 import { projectSummaries, forgetProject } from './projects.mjs';
 import { issueDraft, claudePrompt, linearConfig, createLinear, readIssueLinks, saveIssueLink } from './linear.mjs';
 import { healthScore } from '../ui/health.js';
-import { search, anomalies, lintAgentSteps, LINT_RULES, modelStats, bisectPlan, flakyEvidence } from './insights.mjs';
+import { search, anomalies, lintAgentSteps, LINT_RULES, modelStats, bisectPlan, flakyEvidence, testDetail, appErrors, setupTiming } from './insights.mjs';
+import { changedFiles, impactedTests } from './impact.mjs';
+import { storageUsage, pruneVideos, deleteRun } from './storage.mjs';
+import { webhookConfig, sendWebhooks } from './webhook.mjs';
 import { readCodeowners, ownersOf } from './owners.mjs';
 import { readQuarantine, addQuarantine, removeQuarantine, quarantineFlags } from './quarantine.mjs';
 import { buildDigest, flakyShare } from './digest.mjs';
@@ -126,9 +129,29 @@ export async function readCacheEntry(projectRoot, entry, cfg = readConfig(projec
   }
 }
 
+// A compact text picture of the suite for the free-form AI question.
+async function askContext(projectRoot) {
+  const history = await loadHistory(projectRoot, 30);
+  const fmt = (ms) => (ms == null ? '?' : `${Math.round(ms / 1000)}s`);
+  const lines = ['Các run gần nhất (mới → cũ):'];
+  for (const { meta } of history.slice(0, 20)) {
+    const s = meta.summary ?? {};
+    lines.push(`- ${meta.startedAt} ${meta.runId.slice(-8)} ${meta.git?.branch ?? '?'}@${String(meta.git?.commit ?? '').slice(0, 7)} ${meta.status} pass ${s.passed ?? 0} flaky ${s.flaky ?? 0} fail ${s.failed ?? 0} skip ${s.skipped ?? 0} · ${fmt(meta.durationMs)} · ${(meta.tokens?.input ?? 0) + (meta.tokens?.output ?? 0)} tok`);
+  }
+  lines.push('', 'Test flaky:', ...flakyTests(history).slice(0, 10).map((t) => `- ${t.title} [${t.target}] điểm ${t.score}, flaky ${t.flaky}, đổi kết quả ${t.flips}/${t.runs} run`));
+  lines.push('', 'Nhóm lỗi:', ...groupErrors(history).slice(0, 10).map((g) => `- ${g.code}: ${g.message.slice(0, 160)} (${g.tests.length} test, ${g.count} lần, gần nhất ${g.lastSeen})`));
+  lines.push('', 'Lỗi phía app:', ...appErrors(history).slice(0, 8).map((g) => `- [${g.source}/${g.level}] ${g.signature} (${g.runs} run)`));
+  lines.push('', 'Bất thường ở run mới nhất:', ...anomalies(history).slice(0, 5).map((a) => `- ${a.title}: ${a.label} ${a.value} (TB ${a.mean})`));
+  const c = costStats(history);
+  lines.push('', `Chi phí: TB ${c.totals.avgTokens} token/run, replay cache ${c.cache.replayed}/${c.cache.replayed + c.cache.handedOff + c.cache.missed} step agent.act`);
+  const q = quarantineFlags(await readQuarantine(projectRoot));
+  if (q.active.length) lines.push('', 'Test đang cách ly:', ...q.active.map((x) => `- ${x.title} đến ${x.until.slice(0, 10)}`));
+  return lines.join('\n');
+}
+
 const IDLE_RUNNER = { start: () => ({ ok: false, error: 'unavailable' }), stop: () => false, state: () => ({ running: false, pid: null }) };
 
-export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER, ai = NO_AI, env = process.env, linearFetch, github = createGithub({ projectRoot }), ghImport = importFromGithub }) {
+export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER, ai = NO_AI, env = process.env, linearFetch, github = createGithub({ projectRoot }), ghImport = importFromGithub, automation = null }) {
   let avgByKey = new Map();
   const refreshAverages = () =>
     testHistory(projectRoot, 10)
@@ -214,6 +237,29 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         const days = Math.max(1, Math.min(90, Number.parseInt(url.searchParams.get('days') ?? '7', 10) || 7));
         return send(res, 200, await buildDigest(projectRoot, { days }));
       }
+      if (p === '/api/test') {
+        const key = String(url.searchParams.get('key') ?? '');
+        const d = testDetail(await loadHistory(projectRoot, 60), key);
+        if (!d) return send(res, 404, { error: 'test not found' });
+        const flaky = flakyTests(await loadHistory(projectRoot, 30)).find((f) => f.key === key) ?? null;
+        const q = (await readQuarantine(projectRoot)).find((x) => x.key === key) ?? null;
+        return send(res, 200, { ...d, owners: ownersOf(readCodeowners(projectRoot).rules, d.file), flaky: flaky && { score: flaky.score, flaky: flaky.flaky, flips: flaky.flips }, quarantine: q });
+      }
+      if (p === '/api/app-errors') return send(res, 200, { groups: appErrors(await loadHistory(projectRoot, runCount(url))) });
+      if (p === '/api/timing') return send(res, 200, setupTiming(await loadHistory(projectRoot, runCount(url))));
+      if (p === '/api/impact') {
+        const base = url.searchParams.get('base') || 'main';
+        let files;
+        try {
+          files = await changedFiles(projectRoot, base);
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+        if (!files) return send(res, 200, { base, files: [], tests: [], error: 'Không đọc được git diff (không phải repo git, hoặc không có nhánh này).' });
+        return send(res, 200, { base, files, tests: impactedTests(await loadHistory(projectRoot, 10), files) });
+      }
+      if (p === '/api/storage') return send(res, 200, await storageUsage(projectRoot));
+      if (p === '/api/automation') return send(res, 200, { ...(automation?.state() ?? { schedule: null, watch: { enabled: false, supported: false } }), webhooks: (await webhookConfig(env)).map((w) => ({ host: new URL(w.url).host, events: w.events })) });
       if (p === '/api/search') {
         const q = String(url.searchParams.get('q') ?? '').slice(0, 200);
         return send(res, 200, { hits: q.trim() ? search(await loadHistory(projectRoot, 50), q) : [] });
@@ -287,17 +333,21 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return res.end();
       }
       if (p.startsWith('/api/ai/')) {
-        const action = /^\/api\/ai\/(analyze-failure|analyze-run|suggest-locator|why-flaky|followup)$/.exec(p)?.[1];
+        const action = /^\/api\/ai\/(analyze-failure|analyze-run|suggest-locator|why-flaky|explore-to-test|ask|followup)$/.exec(p)?.[1];
         if (!action) return send(res, 404, { error: 'unknown action' });
         const body = await readBody(req);
-        const run = await getRun(projectRoot, body.runId);
+        // a question about the whole suite, or a follow-up in an existing session, needs no run
+        const run = action === 'ask' || action === 'followup' ? { meta: { runId: null }, report: null, dir: projectRoot } : await getRun(projectRoot, body.runId);
         if (!run) return send(res, 404, { error: 'run not found' });
         const ac = new AbortController();
         res.on('close', () => !res.writableEnded && ac.abort()); // tab closed → never start or keep claude
         let prompt;
         let resume;
         let key = null;
-        if (action === 'followup') {
+        if (action === 'ask') {
+          if (typeof body.question !== 'string' || !body.question.trim() || body.question.length > 4000) return send(res, 400, { error: 'invalid question' });
+          prompt = buildPrompt('ask', { context: await askContext(projectRoot), question: body.question, language: readConfig(projectRoot).ai?.language });
+        } else if (action === 'followup') {
           const ok = typeof body.sessionId === 'string' && /^[\w-]{1,100}$/.test(body.sessionId) && typeof body.question === 'string' && body.question.trim() && body.question.length <= 4000;
           if (!ok) return send(res, 400, { error: 'invalid follow-up' });
           prompt = body.question;
@@ -331,7 +381,8 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
             write({ type: 'done', cached: true });
             return res.end();
           }
-          const commits = action === 'suggest-locator' || action === 'why-flaky' ? [] : await commitsFor(projectRoot, run, action, body.resultId);
+          if (action === 'explore-to-test' && !run.report.run.explore) return send(res, 400, { error: 'not an explore run' });
+          const commits = action === 'suggest-locator' || action === 'why-flaky' || action === 'explore-to-test' ? [] : await commitsFor(projectRoot, run, action, body.resultId);
           prompt = buildPrompt(action, { report: run.report, meta: run.meta, resultId: body.resultId, runDir: relative(projectRoot, run.dir), commits, language: readConfig(projectRoot).ai?.language, stepIndex: body.stepIndex, draft, evidence });
         }
         if (ac.signal.aborted) return res.end();
@@ -376,6 +427,43 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         const issue = await linear.create(old ? { ...draft, description: `Tái phát của ${old.identifier} (đã đóng).\n\n${draft.description}` } : draft);
         await saveIssueLink(projectRoot, draft.fingerprint, issue);
         return send(res, 201, { status: 'created', issue, reopenedFrom: old?.identifier ?? null, fingerprint: draft.fingerprint });
+      }
+      if (p === '/api/storage/prune') {
+        const { days } = await readBody(req);
+        try {
+          return send(res, 200, await pruneVideos(projectRoot, days));
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+      }
+      const del = /^\/api\/runs\/([^/]+)\/delete$/.exec(p);
+      if (del) {
+        if (!RUN_ID.test(del[1])) return send(res, 400, { error: 'invalid run id' });
+        const out = await deleteRun(projectRoot, del[1]);
+        return send(res, out.deleted ? 200 : out.reason === 'not-found' ? 404 : 409, out);
+      }
+      if (p === '/api/watch') {
+        const { enabled } = await readBody(req);
+        if (!automation) return send(res, 503, { error: 'unavailable' });
+        return send(res, 200, automation.setWatch(Boolean(enabled)));
+      }
+      if (p === '/api/webhook/test') {
+        const hooks = await webhookConfig(env);
+        if (!hooks.length) return send(res, 400, { error: 'Chưa có webhook: thêm "webhooks" vào ~/.e2e-dashboard/config.json hoặc đặt E2E_DASHBOARD_WEBHOOK.' });
+        return send(res, 200, { sent: await sendWebhooks(hooks.map((h) => ({ ...h, events: ['*'] })), 'test', `🧪 e2e-dashboard (${basename(projectRoot)}): webhook hoạt động.`) });
+      }
+      if (p === '/api/github/status') {
+        const { runId } = await readBody(req);
+        const run = await getRun(projectRoot, runId);
+        if (!run) return send(res, 404, { error: 'run not found' });
+        const s = run.meta.summary ?? {};
+        const state = run.meta.status === 'passed' ? 'success' : ['failed', 'interrupted', 'error', 'timed-out'].includes(run.meta.status) ? 'failure' : 'error';
+        const description = `${run.meta.status}: ${s.passed ?? 0} pass, ${s.flaky ?? 0} flaky, ${s.failed ?? 0} fail`;
+        try {
+          return send(res, 200, { state, description, url: await github.setStatus(run.meta.git?.commit, state, description) });
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
       }
       if (p === '/api/quarantine' || p === '/api/quarantine/remove') {
         const body = await readBody(req);

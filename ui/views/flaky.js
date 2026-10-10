@@ -4,14 +4,14 @@ import { openRunDialog } from './run-dialog.js';
 import { historyCells } from './tests.js';
 import { runCountPicker, analysisCount, pageHead, emptyBox, meter, fmtPct, copyToClipboard } from '../analysis.js';
 import { escapeHtml } from '../format.js';
-import { runHref } from '../router.js';
+import { runHref, testHref } from '../router.js';
 import { icon } from '../icons.js';
 
 export function flakyRowHtml(t, locked = null) {
   const tone = t.score >= 0.5 ? 'bad' : t.score >= 0.2 ? 'warn' : 'info';
   const test = t.line ? `${t.file}:${t.line}` : t.file;
   return `<tr>
-    <td><strong>${escapeHtml(t.title)}</strong>${locked ? ` <span class="lock-badge" title="Cách ly đến ${escapeHtml(locked.until.slice(0, 10))}">${icon('lock', { size: 11 })}cách ly</span>` : ''}<div class="muted small"><code>${escapeHtml(test)}</code> · ${escapeHtml(t.target)}${t.agent !== 'default' ? ` · ${escapeHtml(t.agent)}` : ''}</div></td>
+    <td><a href="${testHref(t.key)}"><strong>${escapeHtml(t.title)}</strong></a>${locked ? ` <span class="lock-badge" title="Cách ly đến ${escapeHtml(locked.until.slice(0, 10))}">${icon('lock', { size: 11 })}cách ly</span>` : ''}<div class="muted small"><code>${escapeHtml(test)}</code> · ${escapeHtml(t.target)}${t.agent !== 'default' ? ` · ${escapeHtml(t.agent)}` : ''}</div></td>
     <td>${meter(t.score, tone, `${Math.round(t.score * 100)}`)}</td>
     <td class="num">${escapeHtml(t.flaky)}</td>
     <td class="num">${escapeHtml(t.flips)}${t.sameCommitFlips ? ` <span class="muted small" title="đổi kết quả mà code không đổi">(${escapeHtml(t.sameCommitFlips)} cùng commit)</span>` : ''}</td>

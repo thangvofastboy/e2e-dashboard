@@ -5,7 +5,10 @@ import { join, resolve, basename } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DATA_DIR, VERSION, RUN_ID, readConfig, archive, isLink } from '../reporter/e2e-dashboard.reporter.mjs';
-import { createNotifier, notifyMode } from './notify.mjs';
+import { createNotifier, notifyMode, runMessage } from './notify.mjs';
+import { createScheduler, scheduleTimes, createTestWatcher } from './automation.mjs';
+import { webhookConfig, sendWebhooks } from './webhook.mjs';
+import { readQuarantine, quarantineFlags } from './quarantine.mjs';
 import { registerProject } from './projects.mjs';
 import { createRunner } from './runner.mjs';
 import { createAi } from './ai.mjs';
@@ -105,6 +108,11 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
       if (meta && Date.parse(meta.finishedAt ?? meta.startedAt) >= startedAt - 5000) {
         const found = await loadHistory(projectRoot, 31).then((h) => anomalies(h, { runId: meta.runId })).catch(() => []);
         notifier.runFinished(meta, { anomalies: found.length });
+        if (meta.status !== 'passed' || meta.summary?.flaky || found.length) {
+          const m = runMessage(meta, basename(projectRoot));
+          const hooks = await webhookConfig().catch(() => []);
+          if (hooks.length) sendWebhooks(hooks, 'run-failed', `${m.title} · ${m.body}${found.length ? ` · ${found.length} bất thường` : ''}`).catch(() => {});
+        }
       }
     }
   };
@@ -119,7 +127,29 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
       await finishDashboardRun({ projectRoot, beforeId, rerunOf, outputDir: cfg.output });
     },
   });
+  // Scheduled runs and watch mode share the runner (one run at a time) and skip quarantined tests.
+  const grepInvert = async () => quarantineFlags(await readQuarantine(projectRoot)).args.filter((x) => x !== '--grep-invert');
+  const startAuto = async (opts) => {
+    try {
+      return runner.start({ ...opts, grepInvert: await grepInvert() });
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  };
+  const tests = Array.isArray(cfg.schedule?.tests) ? cfg.schedule.tests.filter((t) => typeof t === 'string').slice(0, 200) : [];
+  let lastScheduled = null;
+  const scheduler = createScheduler({ times: scheduleTimes(cfg), start: () => void startAuto({ tests }).then((r) => (lastScheduled = r)) });
+  let lastWatch = null;
+  const testWatcher = createTestWatcher({ projectRoot, onChange: (files) => void startAuto({ tests: files }).then((r) => (lastWatch = { at: new Date().toISOString(), files, ok: r.ok, error: r.error ?? null })) });
+  const automation = {
+    state: () => ({ schedule: { ...scheduler.state(), lastResult: lastScheduled }, watch: { enabled: testWatcher.enabled(), last: lastWatch } }),
+    setWatch: (on) => {
+      const ok = on ? testWatcher.enable() : (testWatcher.disable(), true);
+      return { enabled: testWatcher.enabled(), ok };
+    },
+  };
   const app = createApp({
+    automation,
     projectRoot, token, uiDir, live, lastArchive: () => last, runner,
     ai: createAi({ projectRoot, model: typeof cfg.ai?.model === 'string' && /^[\w.:][\w.:-]{0,79}$/.test(cfg.ai.model) ? cfg.ai.model : undefined }),
     onEvent: (e) => {
@@ -149,6 +179,8 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
     url: `http://127.0.0.1:${bound}/?token=${token}`,
     async close() {
       watcher.close();
+      scheduler.close();
+      testWatcher.disable();
       await liveFile.close();
       server.closeAllConnections?.();
       await new Promise((r) => server.close(r));

@@ -252,7 +252,13 @@ export async function archive(projectRoot, { source, rerunOf = null, report, rep
   return { status: 'archived', runDir: final };
 }
 
+// `keep`: a number of runs, or { keep, keepFailed } to hold failed runs longer than passed ones.
 export async function applyRetention(projectRoot, keep = 50) {
+  let keepFailed = null;
+  if (keep && typeof keep === 'object') {
+    keepFailed = Number.isInteger(keep.keepFailed) && keep.keepFailed >= 1 ? keep.keepFailed : null;
+    keep = keep.keep;
+  }
   if (!Number.isInteger(keep) || keep < 1) keep = 50; // config.json is repo-controlled
   const runsDir = join(projectRoot, DATA_DIR, 'runs');
   let all;
@@ -269,6 +275,7 @@ export async function applyRetention(projectRoot, keep = 50) {
   const names = all.filter((n) => !n.startsWith('.')).sort().reverse(); // names start with ISO time
   const removed = [];
   let kept = 0;
+  let keptFailed = 0;
   for (const n of names) {
     let meta;
     try {
@@ -276,7 +283,10 @@ export async function applyRetention(projectRoot, keep = 50) {
     } catch {
       continue; // being written or removed by a concurrent archive
     }
-    if (meta.pinned || ++kept <= keep) continue;
+    if (meta.pinned) continue;
+    if (keepFailed && meta.status !== 'passed') {
+      if (++keptFailed <= keepFailed) continue;
+    } else if (++kept <= keep) continue;
     await rm(join(runsDir, n), { recursive: true, force: true });
     removed.push(n);
   }
