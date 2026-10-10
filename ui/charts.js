@@ -5,6 +5,7 @@ const W = 600;
 const H = 180;
 const PAD = { top: 12, right: 48, bottom: 24, left: 40 };
 const EMPTY = '<p class="empty">Chưa có dữ liệu</p>';
+let chartSeq = 0; // unique ids for gradients when several charts share a page
 const svgOpen = (label) =>
   `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(label ?? '')}" class="chart">`;
 
@@ -19,7 +20,7 @@ function grid(yMax, yFormat) {
     .join('');
 }
 
-export function lineChart({ points = [], yMax, yFormat = String, ariaLabel } = {}) {
+export function lineChart({ points = [], yMax, yFormat = String, ariaLabel, area = false } = {}) {
   if (!points.length) return EMPTY;
   const values = points.map((p) => p.value).filter((v) => v != null);
   const max = yMax ?? Math.max(1, ...values);
@@ -40,6 +41,14 @@ export function lineChart({ points = [], yMax, yFormat = String, ariaLabel } = {
   const lines = segments
     .map((s) => `<path class="line series-1" d="M${s.map(([a, b]) => `${a.toFixed(1)},${b.toFixed(1)}`).join('L')}"/>`)
     .join('');
+  const gid = `ag${++chartSeq}`;
+  const base = PAD.top + ih;
+  const fill = area
+    ? `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ag-top"/><stop offset="1" class="ag-bot"/></linearGradient></defs>${segments
+      .filter((sg) => sg.length > 1)
+      .map((sg) => `<path class="area" d="M${sg.map(([a, b]) => `${a.toFixed(1)},${b.toFixed(1)}`).join('L')}L${sg.at(-1)[0].toFixed(1)},${base}L${sg[0][0].toFixed(1)},${base}Z" fill="url(#${gid})"/>`)
+      .join('')}`
+    : '';
   const dots = points
     .map((p, i) => (p.value == null ? '' : `<circle class="dot series-1" cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="4"/>`))
     .join('');
@@ -51,7 +60,7 @@ export function lineChart({ points = [], yMax, yFormat = String, ariaLabel } = {
   const hits = points
     .map((p, i) => `<rect class="hit" x="${(x(i) - band / 2).toFixed(1)}" y="0" width="${band.toFixed(1)}" height="${H}" data-tip="${escapeHtml(p.tip ?? `${p.label}: ${p.value == null ? '—' : yFormat(p.value)}`)}"/>`)
     .join('');
-  return `${svgOpen(ariaLabel)}${grid(max, yFormat)}${lines}${dots}${last}${hits}</svg>`;
+  return `${svgOpen(ariaLabel)}${grid(max, yFormat)}${fill}${lines}${dots}${last}${hits}</svg>`;
 }
 
 // Rect with only the top corners rounded (the data end of a vertical bar).
@@ -114,4 +123,55 @@ export function attachTooltips(root) {
     tip.style.top = `${e.clientY + 12}px`;
   });
   root.addEventListener('pointerleave', () => (tip.hidden = true));
+}
+
+export function donutChart({ segments = [], center = '', ariaLabel } = {}) {
+  const parts = segments.filter((sg) => sg.value > 0);
+  const total = parts.reduce((a, sg) => a + sg.value, 0);
+  if (!total) return EMPTY;
+  const C = 2 * Math.PI * 36;
+  let offset = 0;
+  const arcs = parts
+    .map((sg) => {
+      const len = (sg.value / total) * C;
+      const arc = `<circle class="arc s-${escapeHtml(sg.key)}" cx="50" cy="50" r="36" stroke-dasharray="${Math.max(0.5, len - (parts.length > 1 ? 2 : 0)).toFixed(2)} ${C.toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 50 50)" data-tip="${escapeHtml(`${sg.value} ${STATUS[sg.key]?.label ?? sg.key}`)}"/>`;
+      offset += len;
+      return arc;
+    })
+    .join('');
+  return `<svg viewBox="0 0 100 100" role="img" aria-label="${escapeHtml(ariaLabel ?? '')}" class="donut">${arcs}<text class="donut-center" x="50" y="56" text-anchor="middle">${escapeHtml(center)}</text></svg>`;
+}
+
+export function sparkline(values = []) {
+  const pts = values.map((v, i) => [i, v]).filter(([, v]) => v != null && Number.isFinite(v));
+  if (pts.length < 2) return '';
+  const max = Math.max(...pts.map(([, v]) => v));
+  const min = Math.min(...pts.map(([, v]) => v));
+  const span = max - min || 1;
+  const n = Math.max(1, values.length - 1);
+  const points = pts.map(([i, v]) => `${((i / n) * 100).toFixed(1)},${(22 - ((v - min) / span) * 20).toFixed(1)}`).join(' ');
+  return `<svg class="sparkline" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true"><polyline class="spark" points="${points}" vector-effect="non-scaling-stroke"/></svg>`;
+}
+
+export function heatmap({ rows = [], cols = 10 } = {}) {
+  if (!rows.length) return EMPTY;
+  const body = rows
+    .map((r) => {
+      const cells = r.cells.slice(-cols);
+      const pad = Array.from({ length: cols - cells.length }, () => '<span class="hm-cell hm-empty"></span>').join('');
+      const html = cells
+        .map((c) => `<a class="hm-cell s-${escapeHtml(c.status)}" href="${escapeHtml(c.href ?? '#')}" data-tip="${escapeHtml(c.tip ?? c.status)}" aria-label="${escapeHtml(c.tip ?? c.status)}"></a>`)
+        .join('');
+      return `<div class="hm-row"><span class="hm-label" title="${escapeHtml(r.label)}">${escapeHtml(r.label)}</span><span class="hm-cells">${pad}${html}</span></div>`;
+    })
+    .join('');
+  return `<div class="heatmap" style="--cols:${Number(cols) || 10}">${body}</div>`;
+}
+
+export function hbarChart({ items = [], format = String } = {}) {
+  if (!items.length) return EMPTY;
+  const max = Math.max(...items.map((i) => i.value || 0)) || 1;
+  return `<ul class="hbar">${items
+    .map((i) => `<li data-tip="${escapeHtml(i.tip ?? `${i.label}: ${format(i.value)}`)}"><span class="hb-label">${escapeHtml(i.label)}</span><span class="hb-track"><span class="hb-fill tone-${escapeHtml(i.tone ?? 'info')}" style="width:${Math.round(((i.value || 0) / max) * 100)}%"></span></span><span class="hb-val">${escapeHtml(format(i.value))}</span></li>`)
+    .join('')}</ul>`;
 }
