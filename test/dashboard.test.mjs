@@ -93,3 +93,45 @@ test('main reports a missing e2e project', async () => {
   assert.equal(r.code, 1);
   assert.match(r.out, /e2e\.config/);
 });
+
+test('setup refuses to write through symlinks planted in the repo', async () => {
+  const { symlinkSync, mkdirSync: mk } = await import('node:fs');
+  for (const name of ['.gitignore', 'e2e-dashboard.reporter.mjs', 'e2e-dashboard.reporter.d.mts']) {
+    const root = project();
+    const outside = mkdtempSync(join(tmpdir(), 'victim-'));
+    writeFileSync(join(outside, 'precious'), 'keep me');
+    if (name === '.gitignore') {
+      const { rmSync } = await import('node:fs');
+      rmSync(join(root, '.gitignore'));
+    }
+    symlinkSync(join(outside, 'precious'), join(root, name));
+    await assert.rejects(setup(root), /symlink/, name);
+    assert.equal(readFileSync(join(outside, 'precious'), 'utf8'), 'keep me', name);
+  }
+});
+
+test('start refuses a symlinked server.log', async () => {
+  const { symlinkSync, mkdirSync: mk } = await import('node:fs');
+  const root = project();
+  mk(join(root, '.e2e-dashboard'), { recursive: true });
+  const outside = mkdtempSync(join(tmpdir(), 'victim-'));
+  writeFileSync(join(outside, 'precious'), 'keep me');
+  symlinkSync(join(outside, 'precious'), join(root, '.e2e-dashboard/server.log'));
+  await assert.rejects(start(root, { open: false }), /symlink/);
+  assert.equal(readFileSync(join(outside, 'precious'), 'utf8'), 'keep me');
+});
+
+test('stop never signals a pid that is not our dashboard', async () => {
+  const { spawn } = await import('node:child_process');
+  const root = project();
+  await setup(root);
+  const victim = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });
+  try {
+    writeFileSync(join(root, '.e2e-dashboard/server.json'), JSON.stringify({ port: 9, pid: victim.pid, token: 'x' }));
+    assert.equal(await stop(root), false);
+    assert.doesNotThrow(() => process.kill(victim.pid, 0), 'victim still alive');
+    assert.equal(existsSync(join(root, '.e2e-dashboard/server.json')), false);
+  } finally {
+    victim.kill();
+  }
+});

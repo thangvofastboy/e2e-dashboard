@@ -102,7 +102,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {} 
       if (p === '/') return send(res, 200, await readFile(join(uiDir, 'index.html'), 'utf8'), { ...ui, 'content-type': 'text/html; charset=utf-8' });
       if (p === '/app.js') return send(res, 200, await bundleUi(uiDir), { ...ui, 'content-type': 'text/javascript; charset=utf-8' });
       if (p === '/style.css') return send(res, 200, await readFile(join(uiDir, 'style.css'), 'utf8'), { ...ui, 'content-type': 'text/css; charset=utf-8' });
-      if (p === '/api/info') return send(res, 200, { version: VERSION, project: basename(projectRoot), reporter: reporterStatus(projectRoot) });
+      if (p === '/api/info') return send(res, 200, { version: VERSION, pid: process.pid, project: basename(projectRoot), reporter: reporterStatus(projectRoot) });
       if (p === '/api/runs') return send(res, 200, await listRuns(projectRoot));
       if (p === '/api/tests') return send(res, 200, await testHistory(projectRoot, 10));
       if (p === '/api/live') {

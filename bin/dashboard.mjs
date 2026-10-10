@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Entry for /e2e-dashboard: start | setup | stop | status (Task 13 adds export).
 import { spawn } from 'node:child_process';
-import { readFile, writeFile, copyFile, mkdir, rm, appendFile } from 'node:fs/promises';
+import { readFile, writeFile, copyFile, mkdir, rm, appendFile, lstat } from 'node:fs/promises';
 import { existsSync, openSync, closeSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -31,8 +31,15 @@ export function patchConfig(source) {
   return { source: out, patched: true };
 }
 
+// The project is someone else's repo: never follow a symlink it planted where we write.
+async function refuseSymlink(p) {
+  const st = await lstat(p).catch(() => null);
+  if (st?.isSymbolicLink()) throw new Error(`Từ chối ghi qua symlink: ${p}`);
+}
+
 async function ensureGitignore(root) {
   const p = join(root, '.gitignore');
+  await refuseSymlink(p);
   const cur = existsSync(p) ? await readFile(p, 'utf8') : '';
   if (cur.split(/\r?\n/).includes(`${DATA_DIR}/`)) return;
   await appendFile(p, `${cur && !cur.endsWith('\n') ? '\n' : ''}${DATA_DIR}/\n`);
@@ -40,14 +47,18 @@ async function ensureGitignore(root) {
 
 export async function setup(root) {
   const lines = [];
+  await refuseSymlink(join(root, DATA_DIR));
   await mkdir(join(root, DATA_DIR), { recursive: true });
+  await refuseSymlink(join(root, 'e2e-dashboard.reporter.mjs'));
   await copyFile(REPORTER, join(root, 'e2e-dashboard.reporter.mjs'));
+  await refuseSymlink(join(root, 'e2e-dashboard.reporter.d.mts'));
   await writeFile(join(root, 'e2e-dashboard.reporter.d.mts'), TYPES);
   await ensureGitignore(root);
   lines.push('Đã copy e2e-dashboard.reporter.mjs (+ .d.mts) vào project — hãy commit 2 file này.');
   const configPath = findConfig(root);
   const r = patchConfig(await readFile(configPath, 'utf8'));
   if (r.patched) {
+    await refuseSymlink(configPath);
     await writeFile(configPath, r.source);
     lines.push(`Đã thêm reporter vào ${basename(configPath)}.`);
   } else if (r.reason === 'already') {
@@ -76,7 +87,9 @@ async function running(root) {
   if (!s?.pid || !alive(s.pid)) return null;
   try {
     const res = await fetch(`http://127.0.0.1:${s.port}/api/info`, { headers: { 'x-e2e-dashboard-token': s.token }, signal: AbortSignal.timeout(2000) });
-    return res.ok ? s : null;
+    if (!res.ok) return null;
+    // server.json comes from the repo: trust the pid only when our server reports the same one
+    return (await res.json()).pid === s.pid ? s : null;
   } catch {
     return null;
   }
@@ -99,9 +112,11 @@ export async function start(root, { open = true } = {}) {
     if (open) openBrowser(url);
     return { url, reused: true };
   }
+  await refuseSymlink(join(root, DATA_DIR));
   await mkdir(join(root, DATA_DIR), { recursive: true });
   await ensureGitignore(root); // the dashboard creates .e2e-dashboard/ in the user's repo
   await rm(join(root, DATA_DIR, 'server.json'), { force: true });
+  await refuseSymlink(join(root, DATA_DIR, 'server.log'));
   const log = openSync(join(root, DATA_DIR, 'server.log'), 'a');
   const child = spawn(process.execPath, [MAIN, root], { cwd: root, detached: true, stdio: ['ignore', 'pipe', log] });
   closeSync(log);
@@ -129,8 +144,8 @@ export async function start(root, { open = true } = {}) {
 }
 
 export async function stop(root) {
-  const s = readServerInfo(root);
-  if (!s?.pid || !alive(s.pid)) {
+  const s = await running(root);
+  if (!s) {
     await rm(join(root, DATA_DIR, 'server.json'), { force: true });
     return false;
   }
