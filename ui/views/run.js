@@ -1,6 +1,6 @@
 import { getJson, postJson, fileUrl, isExport } from '../api.js';
 import { flattenResults, facets, applyFilters, matrix, isFailure, stepVideoOffset } from '../model.js';
-import { fmtDuration, fmtTokens, statusBadge, escapeHtml } from '../format.js';
+import { fmtDuration, fmtTokens, statusBadge, countChips, escapeHtml } from '../format.js';
 import { renderMarkdown } from '../markdown.js';
 import { runHref } from '../router.js';
 
@@ -52,10 +52,7 @@ function errorBox(err) {
 
 function header(meta, report) {
   const s = meta.summary ?? {};
-  const counts = ['passed', 'flaky', 'failed', 'interrupted', 'skipped']
-    .filter((k) => s[k])
-    .map((k) => `<span class="count s-${k}">${escapeHtml(s[k])} ${k}</span>`)
-    .join(' ');
+  const counts = countChips(s);
   const tokens = (meta.tokens?.input ?? 0) + (meta.tokens?.output ?? 0);
   const replay = meta.replay?.total ? ` · ♻ ${Math.round((meta.replay.replayed / meta.replay.total) * 100)}% replay` : '';
   const git = meta.git?.commit ? ` · ${escapeHtml(meta.git.branch ?? '?')}@${escapeHtml(meta.git.commit.slice(0, 7))}${meta.git.dirty ? ' (dirty)' : ''}` : '';

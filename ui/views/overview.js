@@ -1,6 +1,6 @@
 import { getJson } from '../api.js';
 import { lineChart, stackedBarChart, legend } from '../charts.js';
-import { fmtDuration, fmtTokens, fmtRelative, statusBadge, escapeHtml } from '../format.js';
+import { fmtDuration, fmtTokens, fmtRelative, statusBadge, countChips, escapeHtml } from '../format.js';
 import { runHref } from '../router.js';
 
 const RUN_KEYS = ['passed', 'flaky', 'failed', 'interrupted', 'skipped'];
@@ -11,10 +11,6 @@ export function passRate(meta) {
   const ok = (s.passed ?? 0) + (s.flaky ?? 0);
   const done = ok + (s.failed ?? 0) + (s.interrupted ?? 0);
   return done ? ok / done : null;
-}
-
-function countsCell(s = {}) {
-  return RUN_KEYS.filter((k) => s[k]).map((k) => `<span class="count s-${k}">${escapeHtml(s[k])}</span>`).join(' ') || '—';
 }
 
 function gitCell(git) {
@@ -28,7 +24,7 @@ export function runTable(metas) {
     .map((m) => `<tr>
       <td><a href="${runHref(m.runId)}">${statusBadge(m.status)}</a></td>
       <td><a href="${runHref(m.runId)}" title="${escapeHtml(m.startedAt)}">${escapeHtml(fmtRelative(m.startedAt))}</a>${m.kind === 'explore' ? ' <span class="tag">explore</span>' : ''}</td>
-      <td>${countsCell(m.summary)}</td>
+      <td>${countChips(m.summary)}</td>
       <td class="num">${fmtDuration(m.durationMs)}</td>
       <td class="num">${fmtTokens((m.tokens?.input ?? 0) + (m.tokens?.output ?? 0))}</td>
       <td>${gitCell(m.git)}</td>

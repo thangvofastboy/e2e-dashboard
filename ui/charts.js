@@ -1,4 +1,5 @@
 import { escapeHtml, STATUS } from './format.js';
+import { icon } from './icons.js';
 
 const W = 600;
 const H = 180;
@@ -92,7 +93,7 @@ export function stackedBarChart({ bars = [], keys = [], ariaLabel } = {}) {
 
 export function legend(keys) {
   return `<div class="legend">${keys
-    .map((k) => `<span><i class="swatch s-${escapeHtml(k)}"></i>${STATUS[k]?.icon ?? ''} ${escapeHtml(STATUS[k]?.label ?? k)}</span>`)
+    .map((k) => `<span class="tone-${STATUS[k]?.tone ?? 'muted'}"><i class="swatch s-${escapeHtml(k)}"></i>${STATUS[k] ? icon(STATUS[k].icon, { size: 12 }) : ''}${escapeHtml(STATUS[k]?.label ?? k)}</span>`)
     .join('')}</div>`;
 }
 

@@ -44,7 +44,7 @@ test('stackedBarChart draws segments, hatches failures, escapes labels', () => {
 test('empty charts and legend', () => {
   assert.match(lineChart({ points: [] }), /Chưa có dữ liệu/);
   assert.match(stackedBarChart({ bars: [], keys: ['passed'] }), /Chưa có dữ liệu/);
-  assert.match(legend(['passed', 'failed']), /✓ passed.*✗ failed/s);
+  assert.match(legend(['passed', 'failed']), /tone-good.*#i-check.*passed.*tone-bad.*#i-x.*failed/s);
 });
 
 test('markdown drops links whose URL hides a scheme behind control characters', () => {

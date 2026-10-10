@@ -1,3 +1,5 @@
+import { icon } from './icons.js';
+
 export function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
@@ -26,19 +28,30 @@ export function fmtRelative(iso, now = Date.now()) {
 }
 
 export const STATUS = {
-  passed: { icon: '✓', label: 'passed' },
-  failed: { icon: '✗', label: 'failed' },
-  flaky: { icon: '⚠', label: 'flaky' },
-  'timed-out': { icon: '⏱', label: 'timed out' },
-  interrupted: { icon: '⏹', label: 'interrupted' },
-  skipped: { icon: '⤼', label: 'skipped' },
-  blocked: { icon: '⛔', label: 'blocked' },
-  cancelled: { icon: '⊘', label: 'cancelled' },
-  error: { icon: '✗', label: 'error' },
-  running: { icon: '⟳', label: 'running' },
+  passed: { icon: 'check', tone: 'good', label: 'passed' },
+  failed: { icon: 'x', tone: 'bad', label: 'failed' },
+  flaky: { icon: 'alert', tone: 'warn', label: 'flaky' },
+  'timed-out': { icon: 'timer', tone: 'bad', label: 'timed out' },
+  interrupted: { icon: 'stop', tone: 'warn', label: 'interrupted' },
+  skipped: { icon: 'skip', tone: 'muted', label: 'skipped' },
+  blocked: { icon: 'ban', tone: 'warn', label: 'blocked' },
+  cancelled: { icon: 'ban', tone: 'muted', label: 'cancelled' },
+  error: { icon: 'x', tone: 'bad', label: 'error' },
+  running: { icon: 'loader', tone: 'info', label: 'running' },
+  finished: { icon: 'check', tone: 'info', label: 'finished' },
 };
 
+const statusOf = (status) => STATUS[status] ?? { icon: 'info', tone: 'muted', label: status };
+
 export function statusBadge(status) {
-  const s = STATUS[status] ?? { icon: '?', label: status };
-  return `<span class="badge s-${escapeHtml(status)}">${s.icon} ${escapeHtml(s.label)}</span>`;
+  const s = statusOf(status);
+  return `<span class="chip tone-${s.tone}">${icon(s.icon, { size: 12 })}${escapeHtml(s.label)}</span>`;
+}
+
+const COUNT_KEYS = ['passed', 'flaky', 'failed', 'interrupted', 'skipped'];
+
+export function countChips(summary = {}) {
+  return COUNT_KEYS.filter((k) => summary[k])
+    .map((k) => `<span class="cnt tone-${STATUS[k].tone}" title="${STATUS[k].label}">${icon(STATUS[k].icon, { size: 13, label: STATUS[k].label })}${escapeHtml(summary[k])}</span>`)
+    .join('') || '—';
 }

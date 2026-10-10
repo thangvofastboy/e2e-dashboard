@@ -21,7 +21,7 @@ test('format helpers', () => {
   assert.equal(fmtRelative('2026-07-24T09:00:00Z', now), '3 giờ trước');
   assert.equal(fmtRelative('2026-07-22T12:00:00Z', now), '2 ngày trước');
   assert.equal(escapeHtml(`<a href="x">'&`), '&lt;a href=&quot;x&quot;&gt;&#39;&amp;');
-  assert.match(statusBadge('failed'), /class="badge s-failed".*✗/);
+  assert.match(statusBadge('failed'), /class="chip tone-bad".*#i-x/);
   assert.match(statusBadge('<x>'), /&lt;x&gt;/);
 });
 
