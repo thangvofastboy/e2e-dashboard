@@ -6,6 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DATA_DIR, VERSION, readConfig, archive } from '../reporter/e2e-dashboard.reporter.mjs';
 import { createRunner } from './runner.mjs';
+import { createAi } from './ai.mjs';
 import { annotateRun } from './store.mjs';
 import { createApp } from './app.mjs';
 import { createLive } from './live.mjs';
@@ -43,6 +44,7 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
   });
   const app = createApp({
     projectRoot, token, uiDir, live, lastArchive: () => last, runner,
+    ai: createAi({ projectRoot, model: typeof cfg.ai?.model === 'string' && /^[\w.:-]{1,80}$/.test(cfg.ai.model) ? cfg.ai.model : undefined }),
     onEvent: (e) => {
       if (e?.type === 'run-started' && e.artifactsRoot) watcher.retarget(outputFromArtifactsRoot(e.artifactsRoot), e.artifactsRoot);
     },

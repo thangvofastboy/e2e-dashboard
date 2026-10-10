@@ -1,9 +1,10 @@
 import { readFile, stat } from 'node:fs/promises';
 import { createReadStream, readFileSync } from 'node:fs';
-import { join, extname, basename } from 'node:path';
+import { join, extname, basename, relative } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
 import { safeJoin, realInside, readConfig, VERSION } from '../reporter/e2e-dashboard.reporter.mjs';
-import { listRuns, getRun, findRunDir, setFlag, testHistory } from './store.mjs';
+import { listRuns, getRun, findRunDir, setFlag, testHistory, getAi, writeAi, listAi } from './store.mjs';
+import { buildPrompt, cacheKey, commitsBetween } from './ai.mjs';
 import { estimateEta } from './live.mjs';
 import { bundleUi } from '../ui/bundle.mjs';
 import { buildExportHtml } from './export.mjs';
@@ -71,9 +72,32 @@ function reporterStatus(projectRoot) {
   }
 }
 
+const NO_AI = { run: async ({ onEvent }) => onEvent({ type: 'error', message: 'AI chưa sẵn sàng trên server này.' }) };
+
+function startSse(res) {
+  res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
+  return (e) => res.write(`data: ${JSON.stringify(e)}\n\n`);
+}
+
+// Commits since the test (or the run) last passed, for the AI prompt.
+async function commitsFor(projectRoot, run, action, resultId) {
+  const to = run.meta.git?.commit;
+  if (!to) return [];
+  const metas = await listRuns(projectRoot);
+  const older = metas.slice(metas.findIndex((m) => m.runId === run.meta.runId) + 1, metas.findIndex((m) => m.runId === run.meta.runId) + 21);
+  if (action === 'analyze-run') return commitsBetween(projectRoot, older[0]?.git?.commit, to);
+  const r = (run.report.run.results ?? []).find((x) => x.id === resultId);
+  for (const m of older) {
+    const prev = await getRun(projectRoot, m.runId).catch(() => null);
+    const same = prev?.report.run.results?.find((x) => x.testId === r.testId && x.targetId === r.targetId && (x.agent ?? 'default') === (r.agent ?? 'default'));
+    if (same?.status === 'passed') return commitsBetween(projectRoot, m.git?.commit, to);
+  }
+  return [];
+}
+
 const IDLE_RUNNER = { start: () => ({ ok: false, error: 'unavailable' }), stop: () => false, state: () => ({ running: false, pid: null }) };
 
-export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER }) {
+export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER, ai = NO_AI }) {
   let avgByKey = new Map();
   const refreshAverages = () =>
     testHistory(projectRoot, 10)
@@ -121,6 +145,11 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         });
         return;
       }
+      const aiList = /^\/api\/runs\/([^/]+)\/ai$/.exec(p);
+      if (aiList) {
+        const entries = await listAi(projectRoot, aiList[1]);
+        return entries ? send(res, 200, { entries }) : send(res, 404, { error: 'run not found' });
+      }
       const ex = /^\/api\/runs\/([^/]+)\/export$/.exec(p);
       if (ex) {
         const out = await buildExportHtml(projectRoot, ex[1]);
@@ -149,6 +178,51 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         if (event?.type === 'run-started') refreshAverages();
         onEvent(event);
         res.writeHead(204);
+        return res.end();
+      }
+      if (p.startsWith('/api/ai/')) {
+        const action = /^\/api\/ai\/(analyze-failure|analyze-run|followup)$/.exec(p)?.[1];
+        if (!action) return send(res, 404, { error: 'unknown action' });
+        const body = await readBody(req);
+        const run = await getRun(projectRoot, body.runId);
+        if (!run) return send(res, 404, { error: 'run not found' });
+        let prompt;
+        let resume;
+        let key = null;
+        if (action === 'followup') {
+          const ok = typeof body.sessionId === 'string' && /^[\w-]{1,100}$/.test(body.sessionId) && typeof body.question === 'string' && body.question.trim() && body.question.length <= 4000;
+          if (!ok) return send(res, 400, { error: 'invalid follow-up' });
+          prompt = body.question;
+          resume = body.sessionId;
+        } else {
+          if (action === 'analyze-failure' && !(run.report.run.results ?? []).some((r) => r.id === body.resultId)) return send(res, 404, { error: 'result not found' });
+          key = cacheKey(action, run.meta.runId, action === 'analyze-failure' ? body.resultId : '');
+          const cached = body.refresh ? null : await getAi(projectRoot, run.meta.runId, key);
+          if (cached) {
+            const write = startSse(res);
+            write({ type: 'cached', ...cached });
+            write({ type: 'done', cached: true });
+            return res.end();
+          }
+          const commits = await commitsFor(projectRoot, run, action, body.resultId);
+          prompt = buildPrompt(action, { report: run.report, meta: run.meta, resultId: body.resultId, runDir: relative(projectRoot, run.dir), commits, language: readConfig(projectRoot).ai?.language });
+        }
+        const write = startSse(res);
+        const ac = new AbortController();
+        res.on('close', () => !res.writableEnded && ac.abort()); // tab closed → kill claude
+        let text = '';
+        let final = null;
+        await ai.run({
+          prompt,
+          resume,
+          signal: ac.signal,
+          onEvent: (e) => {
+            if (e.type === 'text') text += `${e.text}\n`;
+            if (e.type === 'done' && !e.isError) final = e.result || text;
+            write(e);
+          },
+        });
+        if (key && final) await writeAi(projectRoot, run.meta.runId, key, { action, resultId: body.resultId ?? null, markdown: final, createdAt: new Date().toISOString() });
         return res.end();
       }
       if (p === '/api/run') {

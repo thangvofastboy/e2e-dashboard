@@ -3,7 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { join, relative, sep, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DATA_DIR, realInside } from '../reporter/e2e-dashboard.reporter.mjs';
-import { listRuns, getRun } from './store.mjs';
+import { listRuns, getRun, listAi } from './store.mjs';
 import { bundleUi } from '../ui/bundle.mjs';
 
 const UI_DIR = fileURLToPath(new URL('../ui', import.meta.url));
@@ -48,7 +48,11 @@ export async function buildExportHtml(root, runId) {
   const data = {
     runId: run.meta.runId,
     exportedAt: new Date().toISOString(),
-    api: { '/api/runs': [run.meta], [`/api/runs/${run.meta.runId}`]: { meta: run.meta, report: run.report } },
+    api: {
+      '/api/runs': [run.meta],
+      [`/api/runs/${run.meta.runId}`]: { meta: run.meta, report: run.report },
+      [`/api/runs/${run.meta.runId}/ai`]: { entries: (await listAi(root, run.meta.runId)) ?? [] },
+    },
     files: await embeddedFiles(run.dir, run.meta.runId),
   };
   const [index, css, js] = await Promise.all([readFile(join(UI_DIR, 'index.html'), 'utf8'), readFile(join(UI_DIR, 'style.css'), 'utf8'), bundleUi(UI_DIR)]);

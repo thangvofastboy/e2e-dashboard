@@ -1,4 +1,4 @@
-import { readdir, readFile, writeFile } from 'node:fs/promises';
+import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DATA_DIR, RUN_ID, resultAttempts } from '../reporter/e2e-dashboard.reporter.mjs';
 
@@ -100,4 +100,33 @@ export async function testHistory(root, n = 10) {
     ...row,
     avgDurationMs: durations.length ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : null,
   }));
+}
+
+// Cached AI analyses live with their run (removed by retention, embedded by the export).
+const AI_KEY = /^[0-9a-f]{64}$/;
+
+export async function getAi(root, runId, key) {
+  const dir = await findRunDir(root, runId);
+  if (!dir || !AI_KEY.test(key)) return null;
+  return readJson(join(dir, 'ai', `${key}.json`)).catch(() => null);
+}
+
+export async function writeAi(root, runId, key, entry) {
+  const dir = await findRunDir(root, runId);
+  if (!dir || !AI_KEY.test(key)) return false;
+  await mkdir(join(dir, 'ai'), { recursive: true });
+  await writeFile(join(dir, 'ai', `${key}.json`), JSON.stringify(entry, null, 2));
+  return true;
+}
+
+export async function listAi(root, runId) {
+  const dir = await findRunDir(root, runId);
+  if (!dir) return null;
+  const names = (await readdir(join(dir, 'ai')).catch(() => [])).filter((n) => AI_KEY.test(n.replace(/\.json$/, '')));
+  const entries = [];
+  for (const n of names) {
+    const e = await readJson(join(dir, 'ai', n)).catch(() => null);
+    if (e) entries.push({ key: n.replace(/\.json$/, ''), ...e });
+  }
+  return entries.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 }
