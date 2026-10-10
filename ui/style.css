@@ -114,3 +114,32 @@ main { padding: 24px; min-width: 0; outline: none; }
   main { padding: 16px; }
   .table { display: block; overflow-x: auto; }
 }
+
+.run-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 12px; }
+.run-head h1 { margin-bottom: 4px; display: flex; gap: 10px; align-items: center; }
+.actions, .filters, .attempts, .tabs { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.filters { margin-bottom: 12px; }
+button, select { font: inherit; color: var(--text-primary); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+button[aria-pressed="true"] { background: var(--border); font-weight: 600; }
+.run-body { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; gap: 12px; align-items: start; }
+.test-list { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; max-height: calc(100vh - 200px); overflow: auto; }
+.test-list a { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; padding: 7px 10px; color: var(--text-primary); border-bottom: 1px solid var(--border); }
+.test-list a.selected { background: var(--border); }
+.test-list .title { flex: 1; min-width: 120px; }
+.timeline { list-style: none; padding: 0; margin: 12px 0; border-left: 2px solid var(--grid); }
+.step { padding: 4px 0 4px 12px; }
+.step summary { cursor: pointer; }
+.step summary[data-offset]:hover { text-decoration: underline; }
+.events { margin: 6px 0 0; padding-left: 18px; color: var(--text-secondary); }
+.err { border-left: 3px solid var(--critical); background: var(--border); padding: 8px 10px; border-radius: 4px; margin: 8px 0; overflow-wrap: anywhere; }
+.tab-body { margin-top: 8px; }
+.tab-body video { width: 100%; max-height: 420px; background: #000; border-radius: 6px; }
+.shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; margin-top: 8px; }
+.shots img { width: 100%; border-radius: 4px; border: 1px solid var(--border); }
+.shots img.fail-shot { outline: 2px solid var(--critical); }
+.log { background: var(--surface); border: 1px solid var(--border); padding: 8px; border-radius: 6px; overflow: auto; max-height: 360px; }
+.md pre { background: var(--page); padding: 8px; overflow: auto; }
+@media (max-width: 900px) {
+  .run-body { grid-template-columns: 1fr; }
+  .run-head { flex-direction: column; }
+}
