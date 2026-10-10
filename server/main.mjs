@@ -4,7 +4,9 @@ import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DATA_DIR, VERSION, readConfig } from '../reporter/e2e-dashboard.reporter.mjs';
+import { DATA_DIR, VERSION, readConfig, archive } from '../reporter/e2e-dashboard.reporter.mjs';
+import { createRunner } from './runner.mjs';
+import { annotateRun } from './store.mjs';
 import { createApp } from './app.mjs';
 import { createLive } from './live.mjs';
 import { watchReport, outputFromArtifactsRoot } from './watch.mjs';
@@ -28,8 +30,19 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
   const live = createLive();
   let last = null; // shown in /api/info so a skipped report (bad schema, unsafe path) is not silent
   const watcher = watchReport({ projectRoot, outputDir: resolve(projectRoot, cfg.output ?? '.e2e'), onResult: (r) => (last = r) });
+  // Runs started from the dashboard: archive as soon as e2e exits, then tag the run (spec §4.5).
+  const runner = createRunner({
+    projectRoot,
+    live,
+    onExit: async ({ rerunOf }) => {
+      const res = await archive(projectRoot, { source: 'dashboard', outputDir: cfg.output }).catch(() => null);
+      if (!res?.runDir) return;
+      const runId = res.runDir.split('_').pop();
+      await annotateRun(projectRoot, runId, { launchedBy: 'dashboard', rerunOf }).catch(() => {});
+    },
+  });
   const app = createApp({
-    projectRoot, token, uiDir, live, lastArchive: () => last,
+    projectRoot, token, uiDir, live, lastArchive: () => last, runner,
     onEvent: (e) => {
       if (e?.type === 'run-started' && e.artifactsRoot) watcher.retarget(outputFromArtifactsRoot(e.artifactsRoot), e.artifactsRoot);
     },

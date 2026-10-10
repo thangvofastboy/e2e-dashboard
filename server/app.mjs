@@ -71,7 +71,9 @@ function reporterStatus(projectRoot) {
   }
 }
 
-export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null }) {
+const IDLE_RUNNER = { start: () => ({ ok: false, error: 'unavailable' }), stop: () => false, state: () => ({ running: false, pid: null }) };
+
+export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER }) {
   let avgByKey = new Map();
   const refreshAverages = () =>
     testHistory(projectRoot, 10)
@@ -104,7 +106,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       if (p === '/') return send(res, 200, await readFile(join(uiDir, 'index.html'), 'utf8'), { ...ui, 'content-type': 'text/html; charset=utf-8' });
       if (p === '/app.js') return send(res, 200, await bundleUi(uiDir), { ...ui, 'content-type': 'text/javascript; charset=utf-8' });
       if (p === '/style.css') return send(res, 200, await readFile(join(uiDir, 'style.css'), 'utf8'), { ...ui, 'content-type': 'text/css; charset=utf-8' });
-      if (p === '/api/info') return send(res, 200, { version: VERSION, pid: process.pid, project: basename(projectRoot), reporter: reporterStatus(projectRoot), lastArchive: lastArchive(), thresholds: readConfig(projectRoot).thresholds ?? null });
+      if (p === '/api/info') return send(res, 200, { version: VERSION, pid: process.pid, project: basename(projectRoot), reporter: reporterStatus(projectRoot), lastArchive: lastArchive(), thresholds: readConfig(projectRoot).thresholds ?? null, runner: runner.state() });
       if (p === '/api/runs') return send(res, 200, await listRuns(projectRoot));
       if (p === '/api/tests') return send(res, 200, await testHistory(projectRoot, 10));
       if (p === '/api/live') {
@@ -149,6 +151,19 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         res.writeHead(204);
         return res.end();
       }
+      if (p === '/api/run') {
+        const body = await readBody(req);
+        let out;
+        try {
+          const RUN_KEYS = ['tests', 'targets', 'agents', 'retries', 'repeatEach', 'noCache', 'rerunOf'];
+          out = runner.start(Object.fromEntries(RUN_KEYS.filter((k) => body[k] !== undefined).map((k) => [k, body[k]])));
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+        if (out.ok) return send(res, 202, { started: true, pid: out.pid ?? null });
+        return send(res, out.error === 'busy' ? 409 : 503, { error: out.error });
+      }
+      if (p === '/api/run/stop') return send(res, 200, { stopped: runner.stop() });
       const m = /^\/api\/runs\/([^/]+)\/(pin|baseline)$/.exec(p);
       if (m) {
         const { value } = await readBody(req);

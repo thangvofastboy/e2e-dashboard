@@ -54,6 +54,16 @@ export async function setFlag(root, runId, flag, value) {
   return writeMeta(dir, { ...meta, [flag]: Boolean(value) });
 }
 
+// Runs started from the dashboard: remember that, and which run they reran (spec §4.5).
+export async function annotateRun(root, runId, { launchedBy, rerunOf } = {}) {
+  const dir = await findRunDir(root, runId);
+  if (!dir) return null;
+  const meta = await readJson(join(dir, 'meta.json'));
+  if (launchedBy !== undefined) meta.launchedBy = String(launchedBy);
+  if (rerunOf !== undefined && rerunOf !== null) meta.rerunOf = String(rerunOf);
+  return writeMeta(dir, meta);
+}
+
 const resultDuration = (report, r) => resultAttempts(report, r).reduce((s, a) => s + (a.durationMs ?? 0), 0);
 
 export async function testHistory(root, n = 10) {
