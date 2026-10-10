@@ -257,3 +257,41 @@ button[aria-pressed="true"] { background: var(--info-bg); color: var(--info-ink)
   .run-head { flex-direction: column; }
   .th-grid { grid-template-columns: 1fr 1fr 1fr 1fr; font-size: 11.5px; }
 }
+
+/* M1b: run selection, run dialog, AI drawer */
+button.primary { background: var(--series-1); border-color: transparent; color: #fff; font-weight: 600; }
+button.primary:hover { background: color-mix(in srgb, var(--series-1) 85%, #000); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-ai .icon { color: #a855f7; } .btn-stop .icon { color: var(--bad); }
+.sel-bar { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.sel-bar .icon { color: var(--bad); } .sel-bar .primary .icon { color: #fff; }
+.test-list li { display: flex; align-items: center; }
+.test-list li > a { flex: 1; min-width: 0; }
+.sel { width: 18px; height: 18px; margin: 0 0 0 10px; accent-color: var(--series-1); cursor: pointer; flex: none; }
+.icon-btn { min-height: 32px; padding: 4px 6px; border-color: transparent; background: transparent; }
+dialog#run-dialog { border: 1px solid var(--border); border-radius: 14px; padding: 0; width: min(520px, calc(100vw - 32px)); background: var(--surface); color: var(--text-primary); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35); }
+dialog#run-dialog::backdrop { background: rgba(15, 23, 42, 0.5); }
+.run-form { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; }
+.run-form header, .run-form footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.run-form footer { justify-content: flex-end; }
+.run-form h2 { display: flex; align-items: center; gap: 8px; } .run-form h2 .icon { color: var(--series-1); }
+.run-form fieldset { border: 1px solid var(--border); border-radius: 10px; display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 10px; margin: 0; }
+.run-form legend { color: var(--text-secondary); font-size: 12px; padding: 0 4px; }
+.run-form .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.run-form input[type="number"] { width: 72px; font: inherit; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text-primary); }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); cursor: pointer; }
+.mono-list { margin: 6px 0 0; padding-left: 18px; max-height: 160px; overflow: auto; }
+#ai-panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(460px, 100vw); z-index: 20; background: var(--surface); border-left: 1px solid var(--border); box-shadow: -12px 0 40px rgba(0, 0, 0, 0.2); display: flex; flex-direction: column; }
+#ai-panel header { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+#ai-panel h2 { display: flex; align-items: center; gap: 8px; font-size: 15px; } #ai-panel h2 .icon { color: #a855f7; }
+.ai-status { display: flex; align-items: center; gap: 6px; padding: 8px 16px; font-size: 12.5px; border-bottom: 1px solid var(--border); min-height: 34px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ai-status .icon { color: #a855f7; flex: none; }
+.ai-status .icon[href], .ai-status svg use[href="#i-loader"] { animation: spin 1s linear infinite; transform-origin: center; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ai-status svg use { animation: none; } }
+.ai-body { flex: 1; overflow: auto; padding: 12px 16px; line-height: 1.6; }
+.ai-body h2 { font-size: 14px; margin: 14px 0 6px; color: var(--series-1); }
+#ai-panel .err { margin: 0 16px; }
+.ai-actions { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
+.followup { display: flex; gap: 6px; } .followup input { flex: 1; font: inherit; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text-primary); }
+.followup button .icon { color: var(--series-1); }

@@ -75,3 +75,10 @@ export function stepVideoOffset(step, video, attempt) {
   if (Number.isNaN(origin) || Number.isNaN(t) || t < origin) return null;
   return (t - origin) / 1000;
 }
+
+// Selected result rows → the body of POST /api/run (file:line per test, union of targets/agents).
+export function selectionToRun(rows, ids) {
+  const picked = rows.filter((r) => ids.has(r.id));
+  const tests = [...new Set(picked.map((r) => (r.line ? `${r.file}:${r.line}` : r.file)))];
+  return { tests, targets: [...new Set(picked.map((r) => r.target))], agents: [...new Set(picked.map((r) => r.agent))] };
+}

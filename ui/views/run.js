@@ -1,5 +1,7 @@
 import { getJson, postJson, fileUrl, isExport } from '../api.js';
-import { flattenResults, facets, applyFilters, matrix, isFailure, stepVideoOffset } from '../model.js';
+import { flattenResults, facets, applyFilters, matrix, isFailure, stepVideoOffset, selectionToRun } from '../model.js';
+import { openRunDialog } from './run-dialog.js';
+import { openAiPanel } from './ai-panel.js';
 import { fmtDuration, fmtTokens, statusBadge, countChips, escapeHtml } from '../format.js';
 import { renderMarkdown } from '../markdown.js';
 import { runHref } from '../router.js';
@@ -8,7 +10,7 @@ import { donutChart, legend } from '../charts.js';
 import { passRate } from '../health.js';
 
 // View state survives re-renders of the same run (filters, matrix toggle, chosen attempt, tab).
-const ui = { runId: null, data: null, filters: {}, matrix: false, attempt: new Map(), tab: 'media' };
+const ui = { runId: null, data: null, filters: {}, matrix: false, attempt: new Map(), tab: 'media', selected: new Set(), saved: [] };
 const TABS = [['media', 'Video & ảnh', 'video'], ['log', 'Log', 'terminal'], ['trace', 'Trace', 'route'], ['source', 'Source', 'code']];
 const FILTERS = [['statuses', 'Status'], ['targets', 'Target'], ['agents', 'Agent'], ['tags', 'Tag'], ['files', 'File']];
 
@@ -59,9 +61,11 @@ function header(meta, report) {
   const tokens = (meta.tokens?.input ?? 0) + (meta.tokens?.output ?? 0);
   const replay = meta.replay?.total ? `<span class="m-replay">${icon('recycle', { size: 14 })}${Math.round((meta.replay.replayed / meta.replay.total) * 100)}% replay</span>` : '';
   const git = meta.git?.commit ? `<span class="m-git">${icon('branch', { size: 14 })}${escapeHtml(meta.git.branch ?? '?')}@${escapeHtml(String(meta.git.commit).slice(0, 7))}${meta.git.dirty ? ' (dirty)' : ''}</span>` : '';
+  const savedRun = ui.saved.find((e) => e.action === 'analyze-run');
   const actions = isExport()
-    ? ''
-    : `<button class="btn-pin" data-flag="pin">${icon('pin', { size: 15 })}${meta.pinned ? 'Bỏ ghim' : 'Ghim'}</button>
+    ? savedRun ? `<button class="btn-ai" data-ai="analyze-run">${icon('sparkles', { size: 15 })}Xem phân tích AI</button>` : ''
+    : `<button class="btn-ai" data-ai="analyze-run">${icon('sparkles', { size: 15 })}Phân tích run</button>
+       <button class="btn-pin" data-flag="pin">${icon('pin', { size: 15 })}${meta.pinned ? 'Bỏ ghim' : 'Ghim'}</button>
        <button class="btn-star" data-flag="baseline">${icon('star', { size: 15 })}${meta.baseline ? 'Bỏ baseline' : 'Baseline'}</button>
        <a class="button btn-export" href="/api/runs/${encodeURIComponent(meta.runId)}/export" download>${icon('download', { size: 15 })}Export HTML</a>`;
   const runErrors = (report.run.errors ?? []).map(errorBox).join('');
@@ -89,7 +93,7 @@ function filterBar(all) {
 function testList(rows, runId, selectedId) {
   if (!rows.length) return '<p class="muted">Không có test nào khớp bộ lọc.</p>';
   return `<ul class="test-list">${rows
-    .map((r) => `<li><a class="${r.id === selectedId ? 'selected' : ''}" href="${runHref(runId, r.id)}">
+    .map((r) => `<li>${isExport() ? '' : `<input type="checkbox" class="sel" data-sel="${escapeHtml(r.id)}" ${ui.selected.has(r.id) ? 'checked' : ''} aria-label="Chọn ${escapeHtml(r.title)}">`}<a class="${r.id === selectedId ? 'selected' : ''}" href="${runHref(runId, r.id)}">
       ${statusBadge(r.status)} <span class="title">${escapeHtml(r.title)}</span>
       <span class="muted">[${escapeHtml(r.target)}${r.agent !== 'default' ? ` · ${escapeHtml(r.agent)}` : ''}] ${fmtDuration(r.durationMs)}</span></a></li>`)
     .join('')}</ul>`;
@@ -173,7 +177,11 @@ function detail(row, meta, runId) {
     .map(([k, label, ic]) => `<button data-tab="${k}" aria-pressed="${ui.tab === k}">${icon(ic, { size: 15 })}${label}</button>`)
     .join('');
   const body = { media: () => mediaTab(row, attempt, runId), log: () => logTab(attempt), trace: () => '<div id="trace" class="md">Đang tải trace…</div>', source: () => sourceTab(row, attempt) }[ui.tab]();
-  return `${head}${pills}${skip}${errorBox(attempt.error)}
+  const savedFail = ui.saved.find((e) => e.action === 'analyze-failure' && e.resultId === row.id);
+  const aiBtn = isFailure(row.status) && (!isExport() || savedFail)
+    ? `<button type="button" class="btn-ai" data-ai="analyze-failure" data-result="${escapeHtml(row.id)}">${icon('sparkles', { size: 14 })}${isExport() ? 'Xem phân tích lỗi' : 'Phân tích lỗi'}</button>`
+    : '';
+  return `${head}${pills}${skip}${errorBox(attempt.error)}${aiBtn}
     <ol class="timeline">${steps || '<li class="muted">Không có step.</li>'}</ol>
     <div class="tabs">${tabs}</div><div class="tab-body">${body}</div>`;
 }
@@ -181,8 +189,9 @@ function detail(row, meta, runId) {
 export async function renderRun(main, route) {
   const { runId, resultId } = route;
   if (ui.runId !== runId || !ui.data) {
-    Object.assign(ui, { runId, filters: {}, matrix: false, attempt: new Map(), tab: 'media' });
+    Object.assign(ui, { runId, filters: {}, matrix: false, attempt: new Map(), tab: 'media', selected: new Set(), saved: [] });
     ui.data = await getJson(`/api/runs/${encodeURIComponent(runId)}`);
+    ui.saved = (await getJson(`/api/runs/${encodeURIComponent(runId)}/ai`).catch(() => ({ entries: [] }))).entries ?? [];
   }
   const { meta, report } = ui.data;
   const all = flattenResults(report);
@@ -191,7 +200,7 @@ export async function renderRun(main, route) {
   if (ui.tab === 'trace' && !meta.traces?.[selected?.id]) ui.tab = 'media';
   main.innerHTML = `${header(meta, report)}${filterBar(all)}
     <div class="run-body">
-      <div class="run-list">${ui.matrix ? matrixTable(rows, runId) : testList(rows, runId, selected?.id)}</div>
+      <div class="run-list">${isExport() || ui.matrix ? '' : `<div class="sel-bar"><button type="button" data-select-failed>${icon('x', { size: 14 })}Chọn tất cả fail</button><button type="button" class="primary" data-rerun ${ui.selected.size ? '' : 'disabled'}>${icon('rerun', { size: 14 })}Chạy lại (${ui.selected.size})</button></div>`}${ui.matrix ? matrixTable(rows, runId) : testList(rows, runId, selected?.id)}</div>
       <div class="run-detail panel">${selected ? detail(selected, meta, runId) : '<p class="muted">Không có test.</p>'}</div>
     </div>`;
 
@@ -221,6 +230,29 @@ export async function renderRun(main, route) {
     el.addEventListener('click', () => {
       ui.tab = el.dataset.tab;
       rerender();
+    }));
+  main.querySelectorAll('[data-sel]').forEach((el) =>
+    el.addEventListener('change', () => {
+      if (el.checked) ui.selected.add(el.dataset.sel);
+      else ui.selected.delete(el.dataset.sel);
+      rerender();
+    }));
+  main.querySelector('[data-select-failed]')?.addEventListener('click', () => {
+    ui.selected = new Set(all.filter((r) => isFailure(r.status)).map((r) => r.id));
+    rerender();
+  });
+  main.querySelector('[data-rerun]')?.addEventListener('click', () => {
+    const sel = selectionToRun(all, ui.selected);
+    const f = facets(all);
+    openRunDialog({ ...sel, allTargets: f.targets, allAgents: f.agents, rerunOf: runId, title: `Chạy lại ${sel.tests.length} test` });
+  });
+  main.querySelectorAll('[data-ai]').forEach((el) =>
+    el.addEventListener('click', () => {
+      const action = el.dataset.ai;
+      const resultId = el.dataset.result ?? null;
+      const saved = ui.saved.find((e) => e.action === action && (action === 'analyze-run' || e.resultId === resultId));
+      const row = all.find((r) => r.id === resultId);
+      openAiPanel({ action, runId, resultId, saved, title: action === 'analyze-run' ? 'Phân tích run' : `Phân tích lỗi · ${row?.title ?? ''}` });
     }));
   main.querySelectorAll('summary[data-offset]').forEach((el) =>
     el.addEventListener('click', () => {

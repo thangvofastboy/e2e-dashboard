@@ -37,6 +37,12 @@ const PATHS = {
   bolt: '<path d="M13 2 3 14h9l-1 8 10-12h-9z"/>',
   arrow: '<path d="M5 12h14M12 5l7 7-7 7"/>',
   eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+  sparkles: '<path d="M9.94 14.06 4 20M12 2l1.6 4.4L18 8l-4.4 1.6L12 14l-1.6-4.4L6 8l4.4-1.6z"/><path d="M20 15l.8 2.2L23 18l-2.2.8L20 21l-.8-2.2L17 18l2.2-.8z"/>',
+  play: '<path d="M6 3l14 9-14 9V3z"/>',
+  square: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
+  send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+  close: '<path d="M18 6 6 18M6 6l12 12"/>',
+  rerun: '<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M10 9l5 3-5 3z"/>',
 };
 
 export const ICON_NAMES = Object.keys(PATHS);

@@ -59,3 +59,31 @@ export function liveStream(onSnapshot) {
     }
   };
 }
+
+// SSE over fetch (EventSource cannot POST): split "data: …\n\n" blocks across chunks.
+export function createSseParser(onEvent) {
+  let buf = '';
+  return (chunk) => {
+    buf += chunk;
+    const blocks = buf.split('\n\n');
+    buf = blocks.pop();
+    for (const b of blocks) {
+      const line = b.split('\n').find((l) => l.startsWith('data: '));
+      if (line) onEvent(JSON.parse(line.slice(6)));
+    }
+  };
+}
+
+export async function postStream(path, body, onEvent, signal) {
+  if (EXPORT) throw new Error('Bản export chỉ đọc');
+  const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal });
+  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+  const feed = createSseParser(onEvent);
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    feed(dec.decode(value, { stream: true }));
+  }
+}

@@ -1,4 +1,6 @@
-import { getJson, liveStream } from '../api.js';
+import { getJson, liveStream, postJson } from '../api.js';
+import { openRunDialog } from './run-dialog.js';
+import { icon } from '../icons.js';
 import { fmtDuration, statusBadge, escapeHtml } from '../format.js';
 
 export function ganttBlocks(snapshot, now = Date.now()) {
@@ -29,8 +31,10 @@ export async function renderLive(main) {
   function draw() {
     if (!snap || snap.status === 'idle') {
       main.innerHTML = `<h1>Live</h1><div class="empty-state"><h2>Chưa có run nào đang chạy</h2>
-        <p>Chạy <code>npx e2e run</code> — tiến độ sẽ hiện ở đây.</p>
+        <p>Chạy <code>npx e2e run</code> hoặc bấm nút dưới — tiến độ sẽ hiện ở đây.</p>
+        <p><button type="button" class="primary" data-run-all>${icon('play', { size: 14 })}Chạy toàn bộ suite</button></p>
         ${info.reporter.installed ? '' : '<p class="hint">Cần reporter để xem live: chạy <code>/e2e-dashboard setup</code>.</p>'}</div>`;
+      main.querySelector('[data-run-all]')?.addEventListener('click', () => openRunDialog({ tests: [], title: 'Chạy toàn bộ suite' }));
       return;
     }
     const pct = snap.total ? Math.round((snap.done / snap.total) * 100) : 0;
@@ -51,12 +55,18 @@ export async function renderLive(main) {
       : '';
     const out = snap.output.slice(-50).map((o) => escapeHtml(o.text)).join('');
     main.innerHTML = `<h1>Live ${statusBadge(snap.status === 'finished' ? snap.runStatus ?? 'finished' : snap.status)}</h1>
+      ${snap.status === 'running' ? `<p><button type="button" class="btn-stop" data-stop>${icon('square', { size: 14 })}Dừng run</button> <span class="muted small" data-stop-note></span></p>` : ''}
       <div class="progress"><div class="bar" style="width:${pct}%"></div></div>
       <p class="muted">${escapeHtml(snap.done)}/${escapeHtml(snap.total)} test${eta}${snap.status === 'finished' ? ' · đã xong — xem ở Runs' : ''}</p>
       ${snap.error ? `<div class="err">${escapeHtml(snap.error.message ?? '')}</div>` : ''}
       <section class="panel gantt">${lanes}<p class="muted small">Làn được xếp theo thời gian chạy chồng nhau, không phải số worker thật.</p></section>
       <section class="panel">${steps}</section>
       ${out ? `<section><h2>Output</h2><pre class="log">${out}</pre></section>` : ''}`;
+    main.querySelector('[data-stop]')?.addEventListener('click', async (e) => {
+      e.target.disabled = true;
+      const { stopped } = await postJson('/api/run/stop', {}).catch(() => ({ stopped: false }));
+      if (!stopped) main.querySelector('[data-stop-note]').textContent = 'Run này không do dashboard khởi động — dừng nó ở terminal (Ctrl-C).';
+    });
     main.querySelectorAll('.block').forEach((b) =>
       b.addEventListener('click', () => {
         selectedKey = b.dataset.key;

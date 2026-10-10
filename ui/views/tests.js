@@ -1,8 +1,12 @@
-import { getJson } from '../api.js';
+import { getJson, isExport } from '../api.js';
+import { selectionToRun } from '../model.js';
+import { openRunDialog } from './run-dialog.js';
+import { icon } from '../icons.js';
 import { fmtDuration, escapeHtml, STATUS } from '../format.js';
 import { runHref } from '../router.js';
 
 let filter = { file: '', tag: '', target: '' };
+const picked = new Set(); // TestRow keys chosen to run
 
 export function historyCells(history, n = 10) {
   const cells = history.slice(0, n).reverse();
@@ -17,7 +21,7 @@ export function historyCells(history, n = 10) {
 const distinct = (xs) => [...new Set(xs)].sort();
 
 export function testRowHtml(t) {
-  return `<tr><td>${escapeHtml(t.title)} <span class="muted">:${escapeHtml(t.line ?? '?')}</span>${t.tags.map((g) => ` <span class="tag">${escapeHtml(g)}</span>`).join('')}</td>
+  return `<tr><td>${isExport() ? '' : `<input type="checkbox" class="sel" data-pick="${escapeHtml(t.key)}" ${picked.has(t.key) ? 'checked' : ''} aria-label="Chọn ${escapeHtml(t.title)}"> `}${escapeHtml(t.title)} <span class="muted">:${escapeHtml(t.line ?? '?')}</span>${t.tags.map((g) => ` <span class="tag">${escapeHtml(g)}</span>`).join('')}</td>
     <td>${escapeHtml(t.target)}${t.agent !== 'default' ? ` · ${escapeHtml(t.agent)}` : ''}</td>
     <td>${historyCells(t.history)}</td><td class="num">${fmtDuration(t.avgDurationMs)}</td></tr>`;
 }
@@ -35,10 +39,20 @@ export async function renderTests(main) {
       .map(([file, tests]) => `<tr class="group"><td colspan="4"><code>${escapeHtml(file)}</code></td></tr>${tests.map(testRowHtml).join('')}`)
       .join('');
     main.innerHTML = `<h1>Tests</h1>
-      <div class="filters">${sel('file', distinct(all.map((r) => r.file)), 'File')}${sel('tag', distinct(all.flatMap((r) => r.tags)), 'Tag')}${sel('target', distinct(all.map((r) => r.target)), 'Target')}</div>
+      <div class="filters">${isExport() ? '' : `<button type="button" class="primary" data-run-picked ${picked.size ? '' : 'disabled'}>${icon('play', { size: 14 })}Chạy ${picked.size} test</button>`}${sel('file', distinct(all.map((r) => r.file)), 'File')}${sel('tag', distinct(all.flatMap((r) => r.tags)), 'Tag')}${sel('target', distinct(all.map((r) => r.target)), 'Target')}</div>
       ${rows.length
         ? `<table class="table"><thead><tr><th>Test</th><th>Target</th><th>10 run gần nhất (cũ → mới)</th><th class="num">TB</th></tr></thead><tbody>${body}</tbody></table>`
         : '<div class="empty-state"><p>Chưa có test nào trong lịch sử.</p></div>'}`;
+    main.querySelectorAll('[data-pick]').forEach((el) =>
+      el.addEventListener('change', () => {
+        if (el.checked) picked.add(el.dataset.pick);
+        else picked.delete(el.dataset.pick);
+        draw();
+      }));
+    main.querySelector('[data-run-picked]')?.addEventListener('click', () => {
+      const rows = all.map((t) => ({ ...t, id: t.key }));
+      openRunDialog({ ...selectionToRun(rows, picked), allTargets: distinct(all.map((r) => r.target)), allAgents: distinct(all.map((r) => r.agent)), title: `Chạy ${picked.size} test` });
+    });
     main.querySelectorAll('[data-f]').forEach((el) =>
       el.addEventListener('change', () => {
         filter = { ...filter, [el.dataset.f]: el.value };
