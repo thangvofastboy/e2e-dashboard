@@ -45,3 +45,13 @@ test('runTable escapes numbers taken from a tampered report', () => {
   const html = runTable([{ runId: 'r1', status: 'failed', startedAt: new Date().toISOString(), durationMs: 1, summary: { passed: '<img src=x onerror=alert(1)>' }, tokens: {}, source: 'hook' }]);
   assert.doesNotMatch(html, /<img/);
 });
+
+test('KPI cards and the thresholds panel escape summary values from a tampered report', async () => {
+  const { kpiCard, thresholdsPanel } = await import('../ui/views/overview.js');
+  const { kpis, DEFAULT_THRESHOLDS } = await import('../ui/health.js');
+  const evil = '<img src=x onerror=alert(1)>';
+  const metas = [{ runId: 'r', status: 'failed', durationMs: 1, tokens: {}, summary: { passed: evil, failed: evil, flaky: 0, interrupted: 0 }, replay: {} }];
+  const cards = kpis(metas, DEFAULT_THRESHOLDS);
+  const html = cards.map(kpiCard).join('') + thresholdsPanel(cards, DEFAULT_THRESHOLDS);
+  assert.doesNotMatch(html, /<img/);
+});

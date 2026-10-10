@@ -51,9 +51,11 @@ function cardView(c) {
     case 'passRate':
       return { icon: 'gauge', label: 'Pass rate', value: c.value == null ? '—' : pct(c.value * 100), sub: trend(c.delta, `${Math.abs(Math.round(c.delta * 100))} điểm so với run trước`), bar: c.value };
     case 'lastRun': {
-      const total = (s.passed ?? 0) + (s.flaky ?? 0) + (s.failed ?? 0) + (s.interrupted ?? 0);
-      const failed = (s.failed ?? 0) + (s.interrupted ?? 0);
-      return { icon: STATUS[c.value]?.icon ?? 'info', label: 'Run gần nhất', value: failed ? `${failed} fail` : escapeHtml(STATUS[c.value]?.label ?? c.value), sub: escapeHtml(`${(s.passed ?? 0) + (s.flaky ?? 0)}/${total} pass`), bar: total ? ((s.passed ?? 0) + (s.flaky ?? 0)) / total : null };
+      const n = (v) => Number(v) || 0; // report.json is untrusted: counts may not be numbers
+      const ok = n(s.passed) + n(s.flaky);
+      const failed = n(s.failed) + n(s.interrupted);
+      const total = ok + failed;
+      return { icon: STATUS[c.value]?.icon ?? 'info', label: 'Run gần nhất', value: failed ? `${failed} fail` : STATUS[c.value]?.label ?? String(c.value), sub: escapeHtml(`${ok}/${total} pass`), bar: total ? ok / total : null };
     }
     case 'duration':
       return { icon: 'clock', label: 'Thời gian chạy', value: fmtDuration(c.value), sub: trend(c.delta, `${signedPct(c.delta ?? 0)} so với TB 10 run`), spark: c.series };
@@ -64,21 +66,21 @@ function cardView(c) {
   }
 }
 
-function kpiCard(c) {
+export function kpiCard(c) {
   const v = cardView(c);
   const h = HEALTH[c.health];
   return `<div class="kpi tone-${c.health}">
     <div class="kpi-top"><span class="kpi-ic">${icon(v.icon, { size: 17 })}</span>
       <button type="button" class="chip tone-${c.health}" data-th aria-controls="thresholds" title="Cách tính trạng thái">${icon(h.icon, { size: 12 })}${h.label}</button></div>
     <div class="kpi-label">${v.label}</div>
-    <div class="kpi-value">${v.value}</div>
+    <div class="kpi-value">${escapeHtml(v.value)}</div>
     <div class="kpi-sub">${v.sub}</div>
     ${v.bar != null ? `<div class="kpi-bar"><i style="width:${Math.round(Math.max(0, Math.min(1, v.bar)) * 100)}%"></i></div>` : ''}
     ${v.spark ? sparkline(v.spark) : ''}
   </div>`;
 }
 
-function thresholdsPanel(cards, t) {
+export function thresholdsPanel(cards, t) {
   const by = Object.fromEntries(cards.map((c) => [c.key, c]));
   const p = (x) => pct(x * 100);
   const rows = [
@@ -96,7 +98,7 @@ function thresholdsPanel(cards, t) {
   };
   const body = rows
     .map(([key, ic, label, cells]) => `<div class="th-name"><span class="mi tone-${by[key].health}">${icon(ic, { size: 13 })}</span>${label}</div>${cells
-      .map((txt, i) => `<div class="th-cell tone-${levels[i]}${by[key].health === levels[i] ? ' now' : ''}">${escapeHtml(txt)}${by[key].health === levels[i] && now(key) ? ` · ${now(key)}` : ''}</div>`)
+      .map((txt, i) => `<div class="th-cell tone-${levels[i]}${by[key].health === levels[i] ? ' now' : ''}">${escapeHtml(txt)}${by[key].health === levels[i] && now(key) ? ` · ${escapeHtml(now(key))}` : ''}</div>`)
       .join('')}`)
     .join('');
   return `<section id="thresholds" class="panel th" hidden>

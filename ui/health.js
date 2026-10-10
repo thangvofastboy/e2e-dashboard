@@ -17,8 +17,9 @@ export function mergeThresholds(cfg) {
 
 export function passRate(meta) {
   const s = meta.summary ?? {};
-  const ok = (s.passed ?? 0) + (s.flaky ?? 0);
-  const done = ok + (s.failed ?? 0) + (s.interrupted ?? 0);
+  const n = (v) => Number(v) || 0; // counts come from report.json
+  const ok = n(s.passed) + n(s.flaky);
+  const done = ok + n(s.failed) + n(s.interrupted);
   return done ? ok / done : null;
 }
 
