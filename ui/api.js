@@ -4,20 +4,32 @@ export function isExport() {
   return Boolean(EXPORT);
 }
 
+// "409: busy" rather than "409: {\"error\":\"busy\"}"
+async function httpError(res) {
+  const text = await res.text();
+  try {
+    const j = JSON.parse(text);
+    if (typeof j?.error === 'string') return new Error(`${res.status}: ${j.error}`);
+  } catch {
+    // plain text body
+  }
+  return new Error(`${res.status}: ${text}`);
+}
+
 export async function getJson(path) {
   if (EXPORT) {
     if (!(path in EXPORT.api)) throw new Error('Không có trong bản export');
     return structuredClone(EXPORT.api[path]);
   }
   const res = await fetch(path, { headers: { accept: 'application/json' } });
-  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+  if (!res.ok) throw await httpError(res);
   return res.json();
 }
 
 export async function postJson(path, body) {
   if (EXPORT) throw new Error('Bản export chỉ đọc');
   const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+  if (!res.ok) throw await httpError(res);
   return res.json();
 }
 
@@ -77,7 +89,7 @@ export function createSseParser(onEvent) {
 export async function postStream(path, body, onEvent, signal) {
   if (EXPORT) throw new Error('Bản export chỉ đọc');
   const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal });
-  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+  if (!res.ok) throw await httpError(res);
   const feed = createSseParser(onEvent);
   const reader = res.body.getReader();
   const dec = new TextDecoder();

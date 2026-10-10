@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 import http from 'node:http';
-import { mkdir, writeFile, rm, readFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { mkdir, writeFile, rm, readFile, rename } from 'node:fs/promises';
+import { join, resolve, basename } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DATA_DIR, VERSION, RUN_ID, readConfig, archive } from '../reporter/e2e-dashboard.reporter.mjs';
+import { DATA_DIR, VERSION, RUN_ID, readConfig, archive, isLink } from '../reporter/e2e-dashboard.reporter.mjs';
+import { createNotifier, notifyMode } from './notify.mjs';
+import { registerProject } from './projects.mjs';
 import { createRunner } from './runner.mjs';
 import { createAi } from './ai.mjs';
 import { annotateRun } from './store.mjs';
@@ -43,12 +45,66 @@ function listen(server, port) {
   });
 }
 
-export async function startServer({ projectRoot, port, token = randomToken(), uiDir = UI_DIR }) {
+// A small live.json beside server.json, for the status line (which reads files, never the network).
+export function liveFileWriter(projectRoot, { minIntervalMs = 1000 } = {}) {
+  const path = join(projectRoot, DATA_DIR, 'live.json');
+  let lastAt = 0;
+  let pending = null;
+  let timer = null;
+  const write = async (s) => {
+    lastAt = Date.now();
+    if (isLink(join(projectRoot, DATA_DIR))) return;
+    const tmp = `${path}.tmp-${randomBytes(4).toString('hex')}`;
+    const body = { status: s.status, runStatus: s.runStatus ?? null, runId: s.runId ?? null, done: s.done ?? 0, total: s.total ?? 0, startedAt: s.startedAt ?? null, at: new Date().toISOString() };
+    await writeFile(tmp, JSON.stringify(body)).then(() => rename(tmp, path)).catch(() => rm(tmp, { force: true }));
+  };
+  return {
+    update(s) {
+      pending = s;
+      if (s.status !== 'running' || Date.now() - lastAt >= minIntervalMs) {
+        clearTimeout(timer);
+        timer = null;
+        return write(s);
+      }
+      timer ??= setTimeout(() => {
+        timer = null;
+        write(pending);
+      }, minIntervalMs);
+      return Promise.resolve();
+    },
+    async close() {
+      clearTimeout(timer);
+      await rm(path, { force: true });
+    },
+  };
+}
+
+async function readMeta(runDir) {
+  try {
+    return JSON.parse(await readFile(join(runDir, 'meta.json'), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+export async function startServer({ projectRoot, port, token = randomToken(), uiDir = UI_DIR, register = true, notifier }) {
   const cfg = readConfig(projectRoot);
   const preferred = port ?? cfg.port ?? 4477;
   const live = createLive();
+  const liveFile = liveFileWriter(projectRoot);
+  live.subscribe((s) => liveFile.update(s));
+  notifier ??= createNotifier({ mode: notifyMode(cfg), project: basename(projectRoot) });
+  const startedAt = Date.now();
   let last = null; // shown in /api/info so a skipped report (bad schema, unsafe path) is not silent
-  const watcher = watchReport({ projectRoot, outputDir: resolve(projectRoot, cfg.output ?? '.e2e'), onResult: (r) => (last = r) });
+  // a report written after this server started is a finished run: tell the desktop (M3)
+  const onArchive = async (r) => {
+    last = r;
+    if (r.runDir && (r.status === 'archived' || r.status === 'exists')) {
+      const meta = await readMeta(r.runDir);
+      if (meta && Date.parse(meta.finishedAt ?? meta.startedAt) >= startedAt - 5000) notifier.runFinished(meta);
+    }
+  };
+  const watcher = watchReport({ projectRoot, outputDir: resolve(projectRoot, cfg.output ?? '.e2e'), onResult: (r) => void onArchive(r) });
   // Runs started from the dashboard: archive as soon as e2e exits, then tag the run (spec §4.5).
   let beforeId = null;
   const runner = createRunner({
@@ -82,12 +138,14 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
   const infoPath = join(projectRoot, DATA_DIR, 'server.json');
   await mkdir(join(projectRoot, DATA_DIR), { recursive: true });
   await writeFile(infoPath, JSON.stringify({ port: bound, pid: process.pid, token, version: VERSION }), { mode: 0o600 });
+  if (register) await registerProject(projectRoot).catch(() => {}); // the Projects page lists every dashboard ever opened
   return {
     port: bound,
     token,
     url: `http://127.0.0.1:${bound}/?token=${token}`,
     async close() {
       watcher.close();
+      await liveFile.close();
       server.closeAllConnections?.();
       await new Promise((r) => server.close(r));
       await rm(infoPath, { force: true });

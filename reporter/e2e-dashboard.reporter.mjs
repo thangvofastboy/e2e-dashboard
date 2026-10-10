@@ -6,7 +6,7 @@ import { join, dirname, basename, resolve, relative, sep, isAbsolute } from 'nod
 import { randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
-export const VERSION = '0.2.2';
+export const VERSION = '0.3.0';
 export const DATA_DIR = '.e2e-dashboard';
 
 function allSteps(report) {
@@ -126,15 +126,18 @@ function gitInfo(cwd) {
 }
 
 // Attempts (normal + serial group) whose result did not pass, with their attempt- and step-level artifacts.
-function nonPassedArtifacts(report) {
+// With `screenshots: "all"` in the config, screenshots of passed results are kept too (a baseline for
+// the visual diff); videos and other files of passed results never are.
+function keptArtifacts(report, { allScreenshots = false } = {}) {
   const out = [];
-  const take = (a) => {
-    out.push(...(a.artifacts ?? []));
-    for (const s of a.steps ?? []) out.push(...(s.artifacts ?? []));
-    for (const m of a.members ?? []) for (const s of m.steps ?? []) out.push(...(s.artifacts ?? []));
+  const take = (passed) => (a) => {
+    const add = (list) => out.push(...(list ?? []).filter((x) => !passed || x?.kind === 'screenshot'));
+    add(a.artifacts);
+    for (const s of a.steps ?? []) add(s.artifacts);
+    for (const m of a.members ?? []) for (const s of m.steps ?? []) add(s.artifacts);
   };
-  for (const r of report.run.results ?? []) if (r.status !== 'passed') (r.attempts ?? []).forEach(take);
-  for (const g of report.run.serialGroups ?? []) if (g.status !== 'passed') (g.attempts ?? []).forEach(take);
+  for (const r of report.run.results ?? []) if (r.status !== 'passed' || allScreenshots) (r.attempts ?? []).forEach(take(r.status === 'passed'));
+  for (const g of report.run.serialGroups ?? []) if (g.status !== 'passed' || allScreenshots) (g.attempts ?? []).forEach(take(g.status === 'passed'));
   return out;
 }
 
@@ -231,7 +234,7 @@ export async function archive(projectRoot, { source, rerunOf = null, report, rep
       await copyFile(abs, join(tmp, 'traces', `${id}.md`));
       traceMeta[id] = `traces/${id}.md`;
     }
-    for (const a of nonPassedArtifacts(report)) {
+    for (const a of keptArtifacts(report, { allScreenshots: cfg.screenshots === 'all' })) {
       aborted();
       if (a.path) await copyInto(artRoot, join(tmp, 'artifacts'), a.path);
     }

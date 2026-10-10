@@ -2,15 +2,18 @@ import { getJson, postJson, fileUrl, isExport } from '../api.js';
 import { flattenResults, facets, applyFilters, matrix, isFailure, stepVideoOffset, selectionToRun } from '../model.js';
 import { openRunDialog } from './run-dialog.js';
 import { openAiPanel } from './ai-panel.js';
+import { openLinearDialog } from './linear.js';
+import { errorGroupHtml } from './errors.js';
+import { visualCompareHtml, attachVisualCompare, screenshotTriplets } from '../visual.js';
 import { fmtDuration, fmtTokens, statusBadge, countChips, escapeHtml } from '../format.js';
 import { renderMarkdown } from '../markdown.js';
-import { runHref } from '../router.js';
+import { runHref, compareHref } from '../router.js';
 import { icon } from '../icons.js';
 import { donutChart, legend } from '../charts.js';
 import { passRate } from '../health.js';
 
 // View state survives re-renders of the same run (filters, matrix toggle, chosen attempt, tab).
-const ui = { runId: null, data: null, filters: {}, matrix: false, attempt: new Map(), tab: 'media', selected: new Set(), saved: [] };
+const ui = { runId: null, data: null, filters: {}, matrix: false, attempt: new Map(), tab: 'media', selected: new Set(), saved: [], compareWith: null, groups: [] };
 const TABS = [['media', 'Video & ảnh', 'video'], ['log', 'Log', 'terminal'], ['trace', 'Trace', 'route'], ['source', 'Source', 'code']];
 const FILTERS = [['statuses', 'Status'], ['targets', 'Target'], ['agents', 'Agent'], ['tags', 'Tag'], ['files', 'File']];
 
@@ -67,6 +70,7 @@ function header(meta, report) {
     : `<button class="btn-ai" data-ai="analyze-run">${icon('sparkles', { size: 15 })}Phân tích run</button>
        <button class="btn-pin" data-flag="pin">${icon('pin', { size: 15 })}${meta.pinned ? 'Bỏ ghim' : 'Ghim'}</button>
        <button class="btn-star" data-flag="baseline">${icon('star', { size: 15 })}${meta.baseline ? 'Bỏ baseline' : 'Baseline'}</button>
+       ${ui.compareWith ? `<a class="button" href="${compareHref(ui.compareWith.runId, meta.runId)}" title="So với ${ui.compareWith.baseline ? 'baseline' : 'run trước'}">${icon('columns', { size: 15 })}So với ${ui.compareWith.baseline ? 'baseline' : 'run trước'}</a>` : ''}
        <a class="button btn-export" href="/api/runs/${encodeURIComponent(meta.runId)}/export" download>${icon('download', { size: 15 })}Export HTML</a>`;
   const runErrors = (report.run.errors ?? []).map(errorBox).join('');
   const rate = passRate(meta);
@@ -77,7 +81,15 @@ function header(meta, report) {
       <div class="actions">${actions}</div>
     </div>
     <section class="panel run-summary">${donutChart({ segments: keys.map((k) => ({ key: k, value: s[k] ?? 0 })), center: rate == null ? '—' : `${Math.round(rate * 100)}%`, ariaLabel: 'Kết quả run' })}
-      <div><div>${countChips(s)}</div>${legend(keys.filter((k) => s[k]))}</div></section>${runErrors}`;
+      <div><div>${countChips(s)}</div>${legend(keys.filter((k) => s[k]))}</div></section>${runErrors}${groupsPanel()}`;
+}
+
+// Failures of this run grouped by error shape: one fix, several tests.
+function groupsPanel() {
+  const g = ui.groups;
+  if (!g.length || g.reduce((n, x) => n + x.count, 0) < 2) return '';
+  return `<details class="panel run-groups"${g.length < 4 ? ' open' : ''}><summary>${icon('layers', { size: 15 })}<strong>Nhóm lỗi</strong> <span class="muted">${g.length} nhóm cho ${g.reduce((n, x) => n + x.count, 0)} test fail</span></summary>
+    <div class="err-groups">${g.map((x) => errorGroupHtml(x, { compact: true })).join('')}</div></details>`;
 }
 
 function filterBar(all) {
@@ -121,6 +133,7 @@ function stepItem(step, video, attempt) {
       ${events ? `<ul class="events">${events}</ul>` : ''}
       ${step.explanation ? `<p class="muted">${escapeHtml(step.explanation)}</p>` : ''}
       ${errorBox(step.error)}
+      ${step.api === 'agent.act' && step.cache && !isExport() && Number.isInteger(step.index) ? `<button type="button" class="btn-ai small-btn" data-locator="${escapeHtml(step.index)}" title="Đề xuất code locator thay cho bước agent này">${icon('crosshair', { size: 13 })}Chuyển thành locator</button>` : ''}
     </details></li>`;
 }
 
@@ -143,7 +156,10 @@ function mediaTab(row, attempt, runId) {
       return src ? `<a href="${escapeHtml(src)}" target="_blank" rel="noopener"><img loading="lazy" src="${escapeHtml(src)}" alt="screenshot${s.id === failShot ? ' lúc fail' : ''}"${s.id === failShot ? ' class="fail-shot"' : ''}></a>` : '';
     })
     .join('');
-  return `${vid}${shots ? `<div class="shots">${shots}</div>` : ''}`;
+  const visual = screenshotTriplets(screenshots)
+    .map((t) => visualCompareHtml({ left: mediaSrc(runId, t.expected), right: mediaSrc(runId, t.actual), diff: t.diff ? mediaSrc(runId, t.diff) : null, leftLabel: 'Ảnh mẫu (expected)', rightLabel: 'Thực tế (actual)', title: `toHaveScreenshot · ${t.name}` }))
+    .join('');
+  return `${visual}${vid}${shots ? `<div class="shots">${shots}</div>` : ''}`;
 }
 
 function logTab(attempt) {
@@ -181,7 +197,10 @@ function detail(row, meta, runId) {
   const aiBtn = isFailure(row.status) && (!isExport() || savedFail)
     ? `<button type="button" class="btn-ai" data-ai="analyze-failure" data-result="${escapeHtml(row.id)}">${icon('sparkles', { size: 14 })}${isExport() ? 'Xem phân tích lỗi' : 'Phân tích lỗi'}</button>`
     : '';
-  return `${head}${pills}${skip}${errorBox(attempt.error)}${aiBtn}
+  const linearBtn = isFailure(row.status) && !isExport()
+    ? `<button type="button" data-linear="${escapeHtml(row.id)}">${icon('ticket', { size: 14 })}Gửi Linear</button>`
+    : '';
+  return `${head}${pills}${skip}${errorBox(attempt.error)}${aiBtn}${linearBtn}
     <ol class="timeline">${steps || '<li class="muted">Không có step.</li>'}</ol>
     <div class="tabs">${tabs}</div><div class="tab-body">${body}</div>`;
 }
@@ -192,6 +211,15 @@ export async function renderRun(main, route) {
     Object.assign(ui, { runId, filters: {}, matrix: false, attempt: new Map(), tab: 'media', selected: new Set(), saved: [] });
     ui.data = await getJson(`/api/runs/${encodeURIComponent(runId)}`);
     ui.saved = (await getJson(`/api/runs/${encodeURIComponent(runId)}/ai`).catch(() => ({ entries: [] }))).entries ?? [];
+    ui.compareWith = null;
+    ui.groups = [];
+    if (!isExport()) {
+      const [metas, errs] = await Promise.all([getJson('/api/runs').catch(() => []), getJson(`/api/errors?runId=${encodeURIComponent(runId)}`).catch(() => ({ groups: [] }))]);
+      const i = metas.findIndex((m) => m.runId === runId);
+      const base = metas.find((m) => m.baseline && m.runId !== runId);
+      ui.compareWith = base ?? (i >= 0 ? metas[i + 1] ?? null : null);
+      ui.groups = errs.groups ?? [];
+    }
   }
   const { meta, report } = ui.data;
   const all = flattenResults(report);
@@ -254,6 +282,13 @@ export async function renderRun(main, route) {
       const row = all.find((r) => r.id === resultId);
       openAiPanel({ action, runId, resultId, saved, title: action === 'analyze-run' ? 'Phân tích run' : `Phân tích lỗi · ${row?.title ?? ''}` });
     }));
+  main.querySelectorAll('[data-linear]').forEach((el) => el.addEventListener('click', () => openLinearDialog({ runId, resultId: el.dataset.linear })));
+  main.querySelectorAll('[data-locator]').forEach((el) =>
+    el.addEventListener('click', () => {
+      const step = selected.attempts.flatMap((a) => a.steps ?? []).find((x) => x.index === Number(el.dataset.locator));
+      openAiPanel({ action: 'suggest-locator', runId, resultId: selected.id, extra: { stepIndex: Number(el.dataset.locator) }, title: `Locator · ${step?.label ?? ''}` });
+    }));
+  attachVisualCompare(main);
   main.querySelectorAll('summary[data-offset]').forEach((el) =>
     el.addEventListener('click', () => {
       const v = main.querySelector('#run-video');

@@ -134,7 +134,7 @@ export function donutChart({ segments = [], center = '', ariaLabel } = {}) {
   const arcs = parts
     .map((sg) => {
       const len = (sg.value / total) * C;
-      const arc = `<circle class="arc s-${escapeHtml(sg.key)}" cx="50" cy="50" r="36" stroke-dasharray="${Math.max(0.5, len - (parts.length > 1 ? 2 : 0)).toFixed(2)} ${C.toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 50 50)" data-tip="${escapeHtml(`${sg.value} ${STATUS[sg.key]?.label ?? sg.key}`)}"/>`;
+      const arc = `<circle class="arc s-${escapeHtml(sg.key)}" cx="50" cy="50" r="36" stroke-dasharray="${Math.max(0.5, len - (parts.length > 1 ? 2 : 0)).toFixed(2)} ${C.toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 50 50)" data-tip="${escapeHtml(`${sg.value} ${sg.label ?? STATUS[sg.key]?.label ?? sg.key}`)}"/>`;
       offset += len;
       return arc;
     })

@@ -108,7 +108,7 @@ async function updatePlugin($: EngineInterface) {
   return [...outputs, `✓ v${current} → v${installed ?? latest ?? 'mới nhất'}`, '🔄 Đang nạp lại plugin (/reload-plugins)...'].join('\n')
 }
 
-// start | setup | stop | status | export [runId]: the same CLI the markdown command runs, argv without a shell.
+// start | setup | stop | status | export [runId] | digest | projects | statusline: the same CLI the markdown command runs, argv without a shell.
 async function runCli($: EngineInterface, argv: string[]) {
   const run = await $.process.run(['node', `${$.plugin.root}/bin/dashboard.mjs`, ...argv], {
     timeoutMs: 60000,
@@ -122,7 +122,7 @@ async function runCli($: EngineInterface, argv: string[]) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command
-      .register({ name: BARE, description: 'Mở dashboard e2e (live, lịch sử, debug)', argumentHint: '[setup|export [runId]|stop|status|update|version]' })
+      .register({ name: BARE, description: 'Mở dashboard e2e (live, lịch sử, debug)', argumentHint: '[setup|export [runId]|stop|status|digest [ngày]|projects|statusline [install]|update|version]' })
       .catch(() => undefined)
     return next(e)
   })

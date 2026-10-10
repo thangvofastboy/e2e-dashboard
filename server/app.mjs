@@ -1,9 +1,13 @@
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, stat, lstat } from 'node:fs/promises';
 import { createReadStream, readFileSync } from 'node:fs';
 import { join, extname, basename, relative } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
-import { safeJoin, realInside, readConfig, VERSION, RUN_ID, RESULT_ID } from '../reporter/e2e-dashboard.reporter.mjs';
-import { listRuns, getRun, findRunDir, setFlag, testHistory, getAi, writeAi, listAi } from './store.mjs';
+import { safeJoin, realInside, readConfig, VERSION, RUN_ID, RESULT_ID, resultAttempts } from '../reporter/e2e-dashboard.reporter.mjs';
+import { listRuns, getRun, findRunDir, setFlag, testHistory, getAi, writeAi, listAi, loadHistory } from './store.mjs';
+import { flakyTests, compareRuns, groupErrors, costStats, slowSteps, routeMap, branchStats, compareBranches, locatorCandidates, traceToCode, digest, testKey } from './analytics.mjs';
+import { projectSummaries, forgetProject } from './projects.mjs';
+import { issueDraft, claudePrompt, linearConfig, createLinear, readIssueLinks, saveIssueLink } from './linear.mjs';
+import { healthScore } from '../ui/health.js';
 import { buildPrompt, cacheKey, commitsBetween } from './ai.mjs';
 import { estimateEta } from './live.mjs';
 import { bundleUi } from '../ui/bundle.mjs';
@@ -95,9 +99,36 @@ async function commitsFor(projectRoot, run, action, resultId) {
   return [];
 }
 
+// ?n= for the analyses: how many recent runs to look at.
+const runCount = (url, def = 30) => {
+  const n = Number.parseInt(url.searchParams.get('n') ?? '', 10);
+  return Number.isInteger(n) ? Math.max(2, Math.min(200, n)) : def;
+};
+
+// The e2e replay cache entry a step used (`.e2e/cache/<entry>.json`, trace-1), read-only and only
+// from inside the project.
+export async function readCacheEntry(projectRoot, entry, cfg = readConfig(projectRoot)) {
+  if (!/^[0-9a-f]{64}$/.test(entry ?? '')) return null;
+  const dir = safeJoin(projectRoot, typeof cfg.cacheDir === 'string' ? cfg.cacheDir : `${typeof cfg.output === 'string' ? cfg.output : '.e2e'}/cache`);
+  const file = dir && safeJoin(dir, `${entry}.json`);
+  const st = file && (await lstat(file).catch(() => null));
+  if (!st?.isFile() || st.size > 1024 * 1024 || !realInside(projectRoot, file)) return null;
+  try {
+    return JSON.parse(await readFile(file, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+// Share of the recent tests that are flaky, for the health score.
+function flakyShare(history, flaky) {
+  const keys = new Set(history.flatMap((h) => (h.report.run.results ?? []).filter((r) => r.kind !== 'setup' && r.status !== 'skipped').map(testKey)));
+  return keys.size ? flaky.filter((f) => f.score >= 0.1).length / keys.size : null;
+}
+
 const IDLE_RUNNER = { start: () => ({ ok: false, error: 'unavailable' }), stop: () => false, state: () => ({ running: false, pid: null }) };
 
-export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER, ai = NO_AI }) {
+export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER, ai = NO_AI, env = process.env, linearFetch }) {
   let avgByKey = new Map();
   const refreshAverages = () =>
     testHistory(projectRoot, 10)
@@ -145,6 +176,60 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         });
         return;
       }
+      if (p === '/api/health') {
+        const history = await loadHistory(projectRoot, 20);
+        const flaky = flakyTests(history);
+        return send(res, 200, { health: healthScore(history.map((h) => h.meta), { flakyShare: flakyShare(history, flaky) }) });
+      }
+      if (p === '/api/flaky') return send(res, 200, { tests: flakyTests(await loadHistory(projectRoot, runCount(url))) });
+      if (p === '/api/compare') {
+        const [a, b] = await Promise.all([getRun(projectRoot, url.searchParams.get('a')), getRun(projectRoot, url.searchParams.get('b'))]);
+        if (!a || !b) return send(res, 404, { error: 'run not found' });
+        const out = compareRuns(a, b);
+        return send(res, 200, { ...out, traces: { a: a.meta.traces ?? {}, b: b.meta.traces ?? {} } });
+      }
+      if (p === '/api/errors') {
+        const runId = url.searchParams.get('runId');
+        if (runId) {
+          const run = await getRun(projectRoot, runId);
+          return run ? send(res, 200, { groups: groupErrors([run]) }) : send(res, 404, { error: 'run not found' });
+        }
+        return send(res, 200, { groups: groupErrors(await loadHistory(projectRoot, runCount(url))) });
+      }
+      if (p === '/api/cost') {
+        const cfg = readConfig(projectRoot);
+        const history = await loadHistory(projectRoot, runCount(url));
+        return send(res, 200, { ...costStats(history, { pricing: cfg.pricing, budget: cfg.budget }), slowSteps: slowSteps(history) });
+      }
+      if (p === '/api/routes') return send(res, 200, routeMap(await loadHistory(projectRoot, runCount(url))));
+      if (p === '/api/branches') return send(res, 200, { branches: branchStats(await listRuns(projectRoot)) });
+      if (p === '/api/branches/compare') {
+        const a = url.searchParams.get('a');
+        const b = url.searchParams.get('b');
+        if (!a || !b) return send(res, 400, { error: 'a and b are required' });
+        return send(res, 200, compareBranches(await loadHistory(projectRoot, 100), a, b));
+      }
+      if (p === '/api/projects') return send(res, 200, { projects: await projectSummaries(projectRoot, env) });
+      if (p === '/api/digest') {
+        const days = Math.max(1, Math.min(90, Number.parseInt(url.searchParams.get('days') ?? '7', 10) || 7));
+        const history = await loadHistory(projectRoot, 200);
+        const recent = history.slice(0, 20);
+        const health = healthScore(recent.map((h) => h.meta), { flakyShare: flakyShare(recent, flakyTests(recent)) });
+        return send(res, 200, digest(history, { days, project: basename(projectRoot), health }));
+      }
+      if (p === '/api/locators') {
+        const cfg = readConfig(projectRoot);
+        const out = [];
+        for (const c of locatorCandidates(await loadHistory(projectRoot, runCount(url)))) {
+          const entry = c.entry ? await readCacheEntry(projectRoot, c.entry, cfg) : null;
+          out.push({ ...c, suggestion: entry ? traceToCode(entry) : null });
+        }
+        return send(res, 200, { candidates: out });
+      }
+      if (p === '/api/linear') {
+        const { apiKey, team } = await linearConfig(readConfig(projectRoot), env);
+        return send(res, 200, { configured: Boolean(apiKey), team, links: await readIssueLinks(projectRoot) });
+      }
       const aiList = /^\/api\/runs\/([^/]+)\/ai$/.exec(p);
       if (aiList) {
         const entries = await listAi(projectRoot, aiList[1]);
@@ -181,7 +266,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return res.end();
       }
       if (p.startsWith('/api/ai/')) {
-        const action = /^\/api\/ai\/(analyze-failure|analyze-run|followup)$/.exec(p)?.[1];
+        const action = /^\/api\/ai\/(analyze-failure|analyze-run|suggest-locator|followup)$/.exec(p)?.[1];
         if (!action) return send(res, 404, { error: 'unknown action' });
         const body = await readBody(req);
         const run = await getRun(projectRoot, body.runId);
@@ -197,9 +282,19 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
           prompt = body.question;
           resume = body.sessionId;
         } else {
-          if (action === 'analyze-failure' && !RESULT_ID.test(String(body.resultId ?? ''))) return send(res, 400, { error: 'invalid resultId' });
-          if (action === 'analyze-failure' && !(run.report.run.results ?? []).some((r) => r.id === body.resultId)) return send(res, 404, { error: 'result not found' });
-          key = cacheKey(action, run.meta.runId, action === 'analyze-failure' ? body.resultId : '');
+          const perResult = action === 'analyze-failure' || action === 'suggest-locator';
+          if (perResult && !RESULT_ID.test(String(body.resultId ?? ''))) return send(res, 400, { error: 'invalid resultId' });
+          const result = perResult && (run.report.run.results ?? []).find((r) => r.id === body.resultId);
+          if (perResult && !result) return send(res, 404, { error: 'result not found' });
+          let draft = '';
+          if (action === 'suggest-locator') {
+            if (!Number.isInteger(body.stepIndex) || body.stepIndex < 0 || body.stepIndex > 10_000) return send(res, 400, { error: 'invalid stepIndex' });
+            const step = resultAttempts(run.report, result).flatMap((a) => a.steps ?? []).find((s) => s.index === body.stepIndex);
+            if (!step) return send(res, 404, { error: 'step not found' });
+            const entry = await readCacheEntry(projectRoot, step.cache?.entry);
+            draft = (entry && traceToCode(entry)?.code) || '';
+          }
+          key = cacheKey(action, run.meta.runId, action === 'suggest-locator' ? `${body.resultId}:${body.stepIndex}` : perResult ? body.resultId : '');
           const cached = body.refresh ? null : await getAi(projectRoot, run.meta.runId, key);
           if (cached) {
             const write = startSse(res);
@@ -207,8 +302,8 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
             write({ type: 'done', cached: true });
             return res.end();
           }
-          const commits = await commitsFor(projectRoot, run, action, body.resultId);
-          prompt = buildPrompt(action, { report: run.report, meta: run.meta, resultId: body.resultId, runDir: relative(projectRoot, run.dir), commits, language: readConfig(projectRoot).ai?.language });
+          const commits = action === 'suggest-locator' ? [] : await commitsFor(projectRoot, run, action, body.resultId);
+          prompt = buildPrompt(action, { report: run.report, meta: run.meta, resultId: body.resultId, runDir: relative(projectRoot, run.dir), commits, language: readConfig(projectRoot).ai?.language, stepIndex: body.stepIndex, draft });
         }
         if (ac.signal.aborted) return res.end();
         const write = startSse(res);
@@ -226,6 +321,37 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         });
         if (key && final) await writeAi(projectRoot, run.meta.runId, key, { action, resultId: body.resultId ?? null, markdown: final, createdAt: new Date().toISOString() });
         return res.end();
+      }
+      if (p === '/api/linear/draft' || p === '/api/linear/issue') {
+        const body = await readBody(req);
+        const run = await getRun(projectRoot, body.runId);
+        if (!run) return send(res, 404, { error: 'run not found' });
+        if (!RESULT_ID.test(String(body.resultId ?? '')) || !(run.report.run.results ?? []).some((r) => r.id === body.resultId)) return send(res, 404, { error: 'result not found' });
+        const cfg = readConfig(projectRoot);
+        const saved = await getAi(projectRoot, run.meta.runId, cacheKey('analyze-failure', run.meta.runId, body.resultId));
+        const draft = issueDraft({ meta: run.meta, report: run.report, resultId: body.resultId, commits: await commitsFor(projectRoot, run, 'analyze-failure', body.resultId), analysis: saved?.markdown ?? null, project: basename(projectRoot) });
+        const { apiKey, team } = await linearConfig(cfg, env);
+        const links = await readIssueLinks(projectRoot);
+        if (p === '/api/linear/draft') return send(res, 200, { draft, prompt: claudePrompt(draft, team), configured: Boolean(apiKey), team, link: links[draft.fingerprint] ?? null });
+        if (!apiKey) return send(res, 400, { error: 'Chưa cấu hình LINEAR_API_KEY: dùng nút "Copy cho Claude" để gửi qua Linear MCP.', prompt: claudePrompt(draft, team) });
+        const linear = createLinear({ apiKey, team, ...(linearFetch ? { fetchImpl: linearFetch } : {}) });
+        const found = await linear.find(draft.fingerprint);
+        if (found.open) {
+          if (body.mode !== 'comment') return send(res, 200, { status: 'duplicate', issue: found.open, fingerprint: draft.fingerprint });
+          const where = run.meta.git?.commit ? ` trên \`${run.meta.git.branch ?? '?'}@${String(run.meta.git.commit).slice(0, 10)}\`` : '';
+          await linear.comment(found.open.id, `Lỗi xảy ra lại ở run \`${run.meta.runId}\` (${run.meta.startedAt})${where}.`);
+          await saveIssueLink(projectRoot, draft.fingerprint, found.open);
+          return send(res, 200, { status: 'commented', issue: found.open, fingerprint: draft.fingerprint });
+        }
+        const old = found.closed[0];
+        const issue = await linear.create(old ? { ...draft, description: `Tái phát của ${old.identifier} (đã đóng).\n\n${draft.description}` } : draft);
+        await saveIssueLink(projectRoot, draft.fingerprint, issue);
+        return send(res, 201, { status: 'created', issue, reopenedFrom: old?.identifier ?? null, fingerprint: draft.fingerprint });
+      }
+      if (p === '/api/projects/forget') {
+        const { root } = await readBody(req);
+        if (typeof root !== 'string') return send(res, 400, { error: 'invalid root' });
+        return send(res, 200, { removed: await forgetProject(root, env) });
       }
       if (p === '/api/run') {
         const body = await readBody(req);

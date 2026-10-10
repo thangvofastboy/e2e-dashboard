@@ -1,7 +1,7 @@
-import { getJson } from '../api.js';
+import { getJson, isExport } from '../api.js';
 import { lineChart, stackedBarChart, legend, donutChart, sparkline, heatmap, hbarChart } from '../charts.js';
 import { fmtDuration, fmtTokens, fmtRelative, statusBadge, countChips, escapeHtml, STATUS } from '../format.js';
-import { runHref } from '../router.js';
+import { runHref, compareHref } from '../router.js';
 import { passRate, kpis, mergeThresholds } from '../health.js';
 import { icon } from '../icons.js';
 
@@ -19,10 +19,11 @@ function gitCell(git) {
   return `<span class="git">${icon('branch', { size: 13 })}${escapeHtml(git.branch ?? '?')}@${escapeHtml(String(git.commit).slice(0, 7))}${git.dirty ? ' <span title="có thay đổi chưa commit">•</span>' : ''}</span>`;
 }
 
-export function runTable(metas) {
+export function runTable(metas, { selectable = false, selected = new Set() } = {}) {
   if (!metas.length) return EMPTY_RUNS;
   const rows = metas
     .map((m) => `<tr>
+      ${selectable ? `<td><input type="checkbox" class="sel" data-cmp="${escapeHtml(m.runId)}" ${selected.has(m.runId) ? 'checked' : ''} aria-label="Chọn để so sánh"></td>` : ''}
       <td><a href="${runHref(m.runId)}">${statusBadge(m.status)}</a></td>
       <td><a href="${runHref(m.runId)}" title="${escapeHtml(m.startedAt)}">${escapeHtml(fmtRelative(m.startedAt))}</a>${m.kind === 'explore' ? ' <span class="tag">explore</span>' : ''}</td>
       <td>${countChips(m.summary)}</td>
@@ -33,7 +34,7 @@ export function runTable(metas) {
       <td>${m.pinned ? `<span class="btn-pin">${icon('pin', { size: 14, label: 'đã ghim' })}</span>` : ''}${m.baseline ? `<span class="btn-star">${icon('star', { size: 14, label: 'baseline' })}</span>` : ''}</td>
     </tr>`)
     .join('');
-  return `<table class="table"><thead><tr><th>Status</th><th>Bắt đầu</th><th>Kết quả</th><th class="num">Thời gian</th><th class="num">Token</th><th>Git</th><th>Nguồn</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table class="table"><thead><tr>${selectable ? '<th><span class="sr-only">Chọn</span></th>' : ''}<th>Status</th><th>Bắt đầu</th><th>Kết quả</th><th class="num">Thời gian</th><th class="num">Token</th><th>Git</th><th>Nguồn</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 const pct = (v) => `${Math.round(v)}%`;
@@ -108,6 +109,29 @@ export function thresholdsPanel(cards, t) {
   </section>`;
 }
 
+const PART_FORMAT = {
+  passRate: (v) => pct(v * 100),
+  stability: (v) => `${pct(v * 100)} flaky`,
+  speed: (v) => signedPct(v),
+  cost: (v) => signedPct(v),
+  cache: (v) => pct(v * 100),
+};
+
+export function healthPanel(h) {
+  if (!h) return '';
+  const C = 2 * Math.PI * 40;
+  const parts = h.parts
+    .map((p) => `<li class="${p.score == null ? 'muted' : ''}"><span class="hp-label">${escapeHtml(p.label)}</span>
+      <span class="meter tone-${p.score == null ? 'muted' : p.score >= 0.85 ? 'good' : p.score >= 0.6 ? 'warn' : 'bad'}"><i style="width:${Math.round((p.score ?? 0) * 100)}%"></i></span>
+      <span class="hp-val">${p.value == null ? '—' : escapeHtml(PART_FORMAT[p.key](p.value))}</span><span class="muted small">×${p.weight}</span></li>`)
+    .join('');
+  return `<section class="panel health-score tone-${h.health}" aria-label="Health score">
+    <svg viewBox="0 0 100 100" class="hs-ring" role="img" aria-label="Health score ${h.score}/100"><circle class="hs-track" cx="50" cy="50" r="40"/><circle class="hs-val" cx="50" cy="50" r="40" stroke-dasharray="${((h.score / 100) * C).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 50 50)"/><text x="50" y="57" text-anchor="middle">${escapeHtml(h.score)}</text></svg>
+    <div class="hs-body"><h2>${icon('heart', { size: 15 })}Health score <span class="chip tone-${h.health}">${icon(HEALTH[h.health].icon, { size: 12 })}${HEALTH[h.health].label}</span></h2>
+      <ul class="hs-parts">${parts}</ul><p class="muted small">Điểm 0–100 từ 10 run gần nhất; phần nào chưa có dữ liệu thì không tính.</p></div>
+  </section>`;
+}
+
 function testsHeatmap(tests) {
   const rows = [...tests]
     .map((t) => ({ t, fails: t.history.filter((h) => h.status !== 'passed' && h.status !== 'skipped').length }))
@@ -121,10 +145,11 @@ function testsHeatmap(tests) {
 }
 
 export async function renderOverview(main) {
-  const [metas, info, tests] = await Promise.all([
+  const [metas, info, tests, health] = await Promise.all([
     getJson('/api/runs'),
     getJson('/api/info').catch(() => null),
     getJson('/api/tests').catch(() => []),
+    isExport() ? null : getJson('/api/health').then((r) => r.health).catch(() => null),
   ]);
   if (!metas.length) {
     main.innerHTML = EMPTY_RUNS;
@@ -140,6 +165,7 @@ export async function renderOverview(main) {
   const slow = tests.filter((x) => x.avgDurationMs).sort((a, b) => b.avgDurationMs - a.avgDurationMs).slice(0, 6);
   main.innerHTML = `
     <h1>Overview</h1>
+    ${healthPanel(health)}
     <section class="kpis">${cards.map(kpiCard).join('')}</section>
     ${thresholdsPanel(cards, t)}
     <section class="charts">
@@ -169,7 +195,29 @@ export async function renderOverview(main) {
     }));
 }
 
+const compareSel = new Set();
+
 export async function renderRunsPage(main) {
   const metas = await getJson('/api/runs');
-  main.innerHTML = `<h1>Runs</h1><p class="muted">Bảng này cũng là dạng bảng số liệu của các biểu đồ ở Overview.</p>${runTable(metas)}`;
+  for (const id of compareSel) if (!metas.some((m) => m.runId === id)) compareSel.delete(id);
+  const selectable = !isExport() && metas.length > 1;
+  const draw = () => {
+    const tools = selectable
+      ? `<div class="filters"><button type="button" class="primary" data-compare ${compareSel.size === 2 ? '' : 'disabled'}>${icon('columns', { size: 14 })}So sánh 2 run</button><span class="muted small">${compareSel.size === 2 ? 'Run cũ hơn là A.' : 'Chọn đúng 2 run để so sánh.'}</span></div>`
+      : '';
+    main.innerHTML = `<h1>Runs</h1><p class="muted">Bảng này cũng là dạng bảng số liệu của các biểu đồ ở Overview.</p>${tools}${runTable(metas, { selectable, selected: compareSel })}`;
+    main.querySelectorAll('[data-cmp]').forEach((el) =>
+      el.addEventListener('change', () => {
+        if (el.checked) {
+          compareSel.add(el.dataset.cmp);
+          while (compareSel.size > 2) compareSel.delete(compareSel.values().next().value); // keep the last two picked
+        } else compareSel.delete(el.dataset.cmp);
+        draw();
+      }));
+    main.querySelector('[data-compare]')?.addEventListener('click', () => {
+      const [x, y] = metas.filter((m) => compareSel.has(m.runId)); // newest first
+      location.hash = compareHref(y.runId, x.runId);
+    });
+  };
+  draw();
 }

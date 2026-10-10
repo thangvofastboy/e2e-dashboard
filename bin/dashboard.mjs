@@ -1,17 +1,23 @@
 #!/usr/bin/env node
-// Entry for /e2e-dashboard: start | setup | export | stop | status.
+// Entry for /e2e-dashboard: start | setup | export | stop | status | digest | projects | statusline.
 import { spawn } from 'node:child_process';
 import { readFile, writeFile, copyFile, mkdir, rm, appendFile, lstat } from 'node:fs/promises';
 import { existsSync, openSync, closeSync } from 'node:fs';
-import { join, basename } from 'node:path';
+import { join, basename, dirname } from 'node:path';
+import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DATA_DIR, readServerInfo, ensureDataDir } from '../reporter/e2e-dashboard.reporter.mjs';
 import { findProjectRoot, findConfig } from './project.mjs';
 import { exportRun } from '../server/export.mjs';
+import { loadHistory } from '../server/store.mjs';
+import { digest, flakyTests } from '../server/analytics.mjs';
+import { projectSummaries, homeDir } from '../server/projects.mjs';
+import { healthScore } from '../ui/health.js';
 
 const PLUGIN = fileURLToPath(new URL('..', import.meta.url));
 const MAIN = join(PLUGIN, 'server/main.mjs');
 const REPORTER = join(PLUGIN, 'reporter/e2e-dashboard.reporter.mjs');
+const STATUSLINE = join(PLUGIN, 'bin/statusline.mjs');
 const IMPORT_LINE = "import dashboardReporter from './e2e-dashboard.reporter.mjs';";
 const TYPES = "import type { Reporter } from 'e2e';\ndeclare const reporter: Reporter;\nexport default reporter;\n";
 
@@ -159,7 +165,70 @@ export async function stop(root) {
   return true;
 }
 
+// Weekly digest as Markdown: printed, and kept in .e2e-dashboard/digests/<date>.md.
+export async function writeDigest(root, days = 7, now = Date.now()) {
+  const history = await loadHistory(root, 200);
+  const recent = history.slice(0, 20);
+  const keys = new Set(recent.flatMap((h) => (h.report.run.results ?? []).map((r) => `${r.testId}|${r.targetId}|${r.agent ?? 'default'}`)));
+  const flaky = flakyTests(recent).filter((f) => f.score >= 0.1).length;
+  const health = healthScore(recent.map((h) => h.meta), { flakyShare: keys.size ? flaky / keys.size : null });
+  const out = digest(history, { days, now, project: basename(root), health });
+  const dir = join(root, DATA_DIR, 'digests');
+  await refuseSymlink(join(root, DATA_DIR));
+  await ensureDataDir(root);
+  await refuseSymlink(dir);
+  await mkdir(dir, { recursive: true });
+  const file = join(dir, `${new Date(now).toISOString().slice(0, 10)}.md`);
+  await refuseSymlink(file);
+  await writeFile(file, out.markdown);
+  return { ...out, file };
+}
+
+const claudeDir = (env = process.env) => env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+
+// Copies the status line script to ~/.e2e-dashboard (stable across plugin updates) and, unless the
+// user already has a status line, points ~/.claude/settings.json at it.
+export async function installStatusline(env = process.env) {
+  const target = join(homeDir(env), 'statusline.mjs');
+  await mkdir(dirname(target), { recursive: true });
+  await refuseSymlink(target);
+  await copyFile(STATUSLINE, target);
+  const command = `node "${target}"`;
+  const settingsPath = join(claudeDir(env), 'settings.json');
+  await refuseSymlink(settingsPath);
+  let settings = {};
+  if (existsSync(settingsPath)) {
+    try {
+      settings = JSON.parse(await readFile(settingsPath, 'utf8'));
+    } catch {
+      return { target, command, changed: false, reason: 'unreadable', settingsPath };
+    }
+  }
+  if (settings.statusLine) {
+    return { target, command, changed: false, reason: settings.statusLine.command === command ? 'already' : 'exists', settingsPath };
+  }
+  settings.statusLine = { type: 'command', command, padding: 0 };
+  await mkdir(dirname(settingsPath), { recursive: true });
+  await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
+  return { target, command, changed: true, settingsPath };
+}
+
 export async function main(argv, cwd) {
+  const [first] = argv;
+  if (first === 'projects') {
+    const list = await projectSummaries(findProjectRoot(cwd) ?? cwd);
+    if (!list.length) return { code: 0, out: 'Chưa có project nào mở dashboard.' };
+    return { code: 0, out: list.map((p) => `${p.current ? '▸' : ' '} ${p.name} — ${p.latest ? `${p.latest.status}, ${p.runs} run` : 'chưa có run'}${p.health ? `, health ${p.health.score}` : ''}${p.url ? ` · ${p.url}` : ''}\n    ${p.root}`).join('\n') };
+  }
+  if (first === 'statusline') {
+    if (argv[1] !== 'install') {
+      return { code: 0, out: ['Status line cho Claude Code: kết quả run e2e mới nhất, hoặc tiến độ khi đang chạy.', 'Cài: /e2e-dashboard statusline install', `Hoặc thêm thủ công vào ~/.claude/settings.json:`, `  "statusLine": { "type": "command", "command": "node \"${join(homeDir(), 'statusline.mjs')}\"" }`].join('\n') };
+    }
+    const r = await installStatusline();
+    if (r.changed) return { code: 0, out: `Đã cài status line (${r.target}) vào ${r.settingsPath}.` };
+    if (r.reason === 'already') return { code: 0, out: 'Status line đã được cài.' };
+    return { code: 0, out: [`Đã copy script vào ${r.target}.`, r.reason === 'unreadable' ? `Không đọc được ${r.settingsPath}: tự thêm statusLine.` : `Bạn đã có statusLine trong ${r.settingsPath}, nên không ghi đè.`, `Lệnh: ${r.command}`].join('\n') };
+  }
   const root = findProjectRoot(cwd);
   if (!root) return { code: 1, out: 'Không tìm thấy e2e.config.(ts|mts|js|mjs) từ thư mục hiện tại trở lên. Chạy `npx e2e init` trước.' };
   const [cmd = 'start'] = argv;
@@ -179,7 +248,12 @@ export async function main(argv, cwd) {
     const p = await exportRun(root, argv[1]);
     return p ? { code: 0, out: `Đã xuất: ${p}` } : { code: 1, out: argv[1] ? `Không tìm thấy run ${argv[1]}.` : 'Chưa có run nào để xuất.' };
   }
-  return { code: 1, out: 'Dùng: /e2e-dashboard [setup|export [runId]|stop|status]' };
+  if (cmd === 'digest') {
+    const days = Number.parseInt(argv[1] ?? '7', 10);
+    const r = await writeDigest(root, Number.isInteger(days) && days > 0 && days <= 90 ? days : 7);
+    return { code: 0, out: `${r.markdown}\nĐã lưu: ${r.file}` };
+  }
+  return { code: 1, out: 'Dùng: /e2e-dashboard [setup|export [runId]|stop|status|digest [ngày]|projects|statusline [install]]' };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

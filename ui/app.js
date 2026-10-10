@@ -2,14 +2,33 @@ import { renderOverview, renderRunsPage } from './views/overview.js';
 import { renderRun } from './views/run.js';
 import { renderLive } from './views/live.js';
 import { renderTests } from './views/tests.js';
+import { renderFlaky } from './views/flaky.js';
+import { renderCompare } from './views/compare.js';
+import { renderErrors } from './views/errors.js';
+import { renderCost } from './views/cost.js';
+import { renderRoutes } from './views/routes.js';
+import { renderBranches } from './views/branches.js';
+import { renderProjects } from './views/projects.js';
+import { renderDigest } from './views/digest.js';
+import { renderLocators } from './views/locators.js';
 import { getJson, isExport, liveStream } from './api.js';
 import { attachTooltips } from './charts.js';
 import { escapeHtml } from './format.js';
 import { parseRoute } from './router.js';
 import { icon, ICON_SPRITE } from './icons.js';
 
-const NAV = [['overview', '#/', 'Overview', 'grid'], ['runs', '#/runs', 'Runs', 'list'], ['live', '#/live', 'Live', 'activity'], ['tests', '#/tests', 'Tests', 'flask']];
-const VIEWS = { overview: renderOverview, runs: renderRunsPage, run: renderRun, live: renderLive, tests: renderTests };
+// [view, href, label, icon]; groups after the first get a heading. Analysis pages need the server.
+const NAV = [
+  [null, [['overview', '#/', 'Overview', 'grid'], ['runs', '#/runs', 'Runs', 'list'], ['live', '#/live', 'Live', 'activity'], ['tests', '#/tests', 'Tests', 'flask']]],
+  ['Phân tích', [['flaky', '#/flaky', 'Flaky', 'shuffle'], ['errors', '#/errors', 'Nhóm lỗi', 'layers'], ['cost', '#/cost', 'Chi phí & cache', 'coins'], ['routes', '#/routes', 'Bản đồ route', 'route'], ['branches', '#/branches', 'Branch', 'branch'], ['locators', '#/locators', 'Gợi ý locator', 'crosshair']]],
+  ['Tích hợp', [['projects', '#/projects', 'Projects', 'folder'], ['digest', '#/digest', 'Digest tuần', 'newspaper']]],
+];
+const EXPORT_VIEWS = new Set(['overview', 'runs', 'run']);
+const VIEWS = {
+  overview: renderOverview, runs: renderRunsPage, run: renderRun, live: renderLive, tests: renderTests,
+  flaky: renderFlaky, compare: renderCompare, errors: renderErrors, cost: renderCost, routes: renderRoutes,
+  branches: renderBranches, projects: renderProjects, digest: renderDigest, locators: renderLocators,
+};
 let cleanup = null;
 let lastStatus = null;
 
@@ -41,9 +60,11 @@ function toggleTheme() {
 function shell() {
   applyTheme(storedTheme());
   document.body.insertAdjacentHTML('afterbegin', ICON_SPRITE);
-  const nav = NAV.filter(([v]) => !(isExport() && (v === 'live' || v === 'tests')))
-    .map(([v, href, label, ic]) => `<a href="${href}" data-nav="${v}" class="n-${v}"><span class="ni">${icon(ic)}</span>${label}${v === 'live' ? '<span class="live-dot" aria-label="đang chạy"></span>' : ''}</a>`)
-    .join('');
+  const link = ([v, href, label, ic]) => `<a href="${href}" data-nav="${v}" class="n-${v}"><span class="ni">${icon(ic)}</span>${label}${v === 'live' ? '<span class="live-dot" aria-label="đang chạy"></span>' : ''}</a>`;
+  const nav = NAV.map(([group, items]) => {
+    const shown = items.filter(([v]) => !isExport() || EXPORT_VIEWS.has(v));
+    return shown.length ? `${group ? `<div class="nav-group">${group}</div>` : ''}${shown.map(link).join('')}` : '';
+  }).join('');
   document.getElementById('app').innerHTML = `
     <aside class="nav">
       <a class="brand" href="#/"><span class="logo">${icon('flask', { size: 17 })}</span>e2e <span>dashboard</span></a>
@@ -52,7 +73,6 @@ function shell() {
     </aside>
     <main id="main" tabindex="-1"></main>`;
   document.querySelector('.theme-toggle').addEventListener('click', toggleTheme);
-  attachTooltips(document.getElementById('main'));
 }
 
 async function footer() {
@@ -75,20 +95,31 @@ async function footer() {
   el.innerHTML = `<div class="muted">${escapeHtml(info.project)} · v${escapeHtml(info.version)}</div>${hint}${skipped}`;
 }
 
+let routeSeq = 0;
+
 async function route() {
   cleanup?.();
   cleanup = null;
+  const seq = ++routeSeq;
   const r = parseRoute(location.hash);
-  const active = r.view === 'run' ? 'runs' : r.view;
+  const active = r.view === 'run' || r.view === 'compare' ? 'runs' : r.view;
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === active));
-  const main = document.getElementById('main');
+  // a fresh <main> per navigation: a slower page still loading writes into its own detached element,
+  // never over the page the viewer moved to
+  const main = document.getElementById('main').cloneNode(false);
+  document.getElementById('main').replaceWith(main);
+  attachTooltips(main);
   main.innerHTML = '<p class="muted">Đang tải…</p>';
   try {
-    const render = VIEWS[r.view];
+    const render = isExport() && !EXPORT_VIEWS.has(r.view) ? null : VIEWS[r.view];
     if (!render) main.innerHTML = '<p>Không tìm thấy trang. <a href="#/">Về Overview</a></p>';
-    else cleanup = (await render(main, r)) ?? null;
+    else {
+      const done = (await render(main, r)) ?? null;
+      if (seq === routeSeq) cleanup = done;
+      else done?.(); // left before it finished loading
+    }
   } catch (e) {
-    main.innerHTML = `<p class="error">Lỗi: ${escapeHtml(e.message)}</p>`;
+    if (seq === routeSeq) main.innerHTML = `<p class="error">Lỗi: ${escapeHtml(e.message)}</p>`;
   }
 }
 
@@ -99,7 +130,7 @@ function watchLive() {
     liveLink?.classList.toggle('is-running', s.status === 'running');
     if (lastStatus === 'running' && s.status !== 'running') {
       const view = parseRoute(location.hash).view;
-      if (view === 'overview' || view === 'runs' || view === 'tests') setTimeout(route, 1500); // give archive() time to finish
+      if (['overview', 'runs', 'tests', 'flaky', 'errors', 'cost'].includes(view)) setTimeout(route, 1500); // give archive() time to finish
     }
     lastStatus = s.status;
   });
