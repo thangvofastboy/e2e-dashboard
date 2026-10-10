@@ -230,11 +230,18 @@ Dùng `node --test`, không dependency.
 
 ## 9. Rủi ro & điều cần xác minh khi implement
 
-1. `/e2e-dashboard` không namespace có gọi được không.
-2. `--target`/`--agent` lặp nhiều lần được không (mục 4.5).
-3. Tên chính xác các cờ `claude -p` (`--allowedTools`, `--max-turns`, `--resume`, định dạng stream-json) với phiên bản `claude` đang cài.
-4. Sửa `e2e.config.ts` tự động: config có nhiều dạng. `setup` thử chèn vào mảng `reporters`; không chắc chắn thì in đoạn code và để Claude (đang chạy lệnh) sửa giúp.
-5. Mốc thời gian video so với `startedAt` có thể lệch vài trăm ms; chấp nhận ở M1.
+Kết quả xác minh (2026-10-10, e2e 0.19.0 + @e2e-dev/web 0.14.0 trên `examples/with-vite`, Node 24, Claude Code 2.1.296):
+
+1. `/e2e-dashboard` không namespace: **chưa xác minh** — cần cài plugin vào Claude Code thật (xem README). Cùng lúc kiểm tra `${CLAUDE_PLUGIN_ROOT}` được thay trong `!`-command. Manifest plugin + marketplace đã qua `claude plugin validate`.
+2. `--target`/`--agent`: **đã xác minh** — nhận "comma-separated or repeated" (dùng cho M1b).
+3. Cờ `claude -p`: **đã xác minh** `--allowedTools`, `--resume <id>`, `--output-format stream-json`; **không thấy `--max-turns`** trong `claude --help` → M1b dùng timeout thay cho giới hạn lượt, hoặc kiểm lại khi viết spec M1b.
+4. Sửa `e2e.config.ts`: **đã xác minh** trên config dạng `export default { … } satisfies E2EConfig` — chèn `reporters: ['list', dashboardReporter]`, output terminal giữ nguyên, `tsc --noEmit` sạch nhờ `.d.mts`.
+5. Video: **chưa xác minh trên dữ liệu thật** — engine web mặc định không quay video ở run đã thử; logic tua có unit test (`stepVideoOffset`).
+
+Phát hiện thêm khi chạy thật:
+- e2e 0.19 cần Node ≥ 22.22.3 (hoặc ≥ 24.8); không ảnh hưởng plugin (plugin chạy trên Node ≥ 20).
+- Thư mục kết quả mỗi test tên `<slug>-<16 hex đầu của result.id>` → archive qua hook/watcher dùng hậu tố này để ghép `trace.md` (5/5 đúng trên run thật).
+- `artifactsRoot` = `<output>/results`, khớp giả định của watcher.
 
 ## 10. Roadmap
 
