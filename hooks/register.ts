@@ -1,0 +1,101 @@
+// Mod module: `/e2e-dashboard update` and `/e2e-dashboard version` run locally (no model turn).
+// Every other `/e2e-dashboard …` falls through to the markdown command (commands/e2e-dashboard.md).
+import type { EngineInterface, Register } from 'claude-code'
+
+const REPO = 'git@github.com:thangvofastboy/e2e-dashboard.git'
+const MARKETPLACE = 'e2e-dashboard'
+const PLUGIN_ID = `e2e-dashboard@${MARKETPLACE}`
+const OURS = /^(e2e-dashboard:)?e2e-dashboard$/
+
+async function currentVersion($: EngineInterface) {
+  try {
+    return String(JSON.parse(await $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`)).version)
+  } catch {
+    return '0.0.0'
+  }
+}
+
+const semver = (v: string) =>
+  v
+    .replace(/^v/, '')
+    .split('.')
+    .map(n => Number.parseInt(n, 10) || 0)
+
+export function compareVersions(a: string, b: string) {
+  const [x, y] = [semver(a), semver(b)]
+  for (let i = 0; i < 3; i++) {
+    const d = (x[i] ?? 0) - (y[i] ?? 0)
+    if (d !== 0) return d
+  }
+  return 0
+}
+
+// Release tags on the repository (vX.Y.Z), newest first.
+async function latestTag($: EngineInterface) {
+  // From `/`, outside any repo: an open repo's own core.sshCommand never applies.
+  const run = await $.process.run(['git', 'ls-remote', '--tags', '--refs', REPO], { cwd: '/', timeoutMs: 20000 })
+  if (run.exitCode !== 0) throw new Error(run.stderr.trim() || `git ls-remote thoát mã ${run.exitCode}`)
+  return run.stdout
+    .split('\n')
+    .map(line => line.split('refs/tags/')[1]?.trim())
+    .filter((t): t is string => !!t && /^v\d+\.\d+\.\d+$/.test(t))
+    .sort((a, b) => compareVersions(b, a))[0]
+}
+
+async function versionText($: EngineInterface) {
+  const current = await currentVersion($)
+  try {
+    const latest = await latestTag($)
+    const state = !latest ? 'chưa có tag nào' : compareVersions(latest, current) > 0 ? `có bản mới ${latest}: /e2e-dashboard update` : 'đã mới nhất'
+    return `e2e-dashboard v${current} · ${state}`
+  } catch (error) {
+    return `e2e-dashboard v${current} · không kiểm tra được tag: ${error instanceof Error ? error.message : String(error)}`
+  }
+}
+
+// The plugin manager owns the installed copy (a versioned cache dir), so an update goes through it:
+// refresh the marketplace (pins the newest tag), update the plugin, then let the engine re-read it.
+async function updatePlugin($: EngineInterface) {
+  if (!$.plugin.root.includes('/.claude/plugins/cache/')) {
+    return [
+      `Plugin đang chạy từ thư mục dev (${$.plugin.root}), không phải bản cài từ marketplace.`,
+      'Cài bản phát hành để nhận update:',
+      `  /plugin marketplace add thangvofastboy/${MARKETPLACE}`,
+      `  /plugin install ${PLUGIN_ID}`,
+    ].join('\n')
+  }
+  const current = await currentVersion($)
+  let latest: string | undefined
+  try {
+    latest = await latestTag($)
+  } catch {
+    // unknown: let the plugin manager decide
+  }
+  if (latest && compareVersions(latest, current) <= 0) return `✓ Đã là bản mới nhất (v${current}).`
+  const outputs: string[] = []
+  for (const args of [
+    ['plugin', 'marketplace', 'update', MARKETPLACE],
+    ['plugin', 'update', PLUGIN_ID],
+  ]) {
+    const run = await $.process.run(['claude', ...args], { timeoutMs: 120000 })
+    const out = `${run.stdout}${run.stderr}`.trim()
+    if (run.exitCode !== 0) return `✗ 'claude ${args.join(' ')}' thất bại (mã ${run.exitCode})${out ? `:\n${out}` : ''}`
+    if (out) outputs.push(out)
+  }
+  // The new version is only on disk: have the engine re-read plugins once this command has returned.
+  $.clock.after(500, () => void $.command.run({ command: 'reload-plugins' }).catch(() => undefined))
+  return [...outputs, `✓ v${current} → ${latest ?? 'bản mới nhất'}`, '🔄 Đang nạp lại plugin (/reload-plugins)...'].join('\n')
+}
+
+export const register: Register = on => {
+  on('command.run', async ($, e, next) => {
+    if (!OURS.test(e.command)) return next(e)
+    const sub = e.args.trim().split(/\s+/)[0]
+    if (sub !== 'update' && sub !== 'version') return next(e)
+    try {
+      return { text: sub === 'update' ? await updatePlugin($) : await versionText($) }
+    } catch (error) {
+      return { text: `✗ ${sub} thất bại: ${error instanceof Error ? error.message : String(error)}` }
+    }
+  })
+}
