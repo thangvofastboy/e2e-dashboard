@@ -92,7 +92,7 @@ Mỗi file một trách nhiệm; `store`, `live`, `runner`, `ai`, `git` không p
 |---|---|---|
 | Reporter | Mọi run (sau `setup`) | `onEvent` → `POST /api/events` không await, nuốt lỗi. `onRunFinished` → `archive()`. Nguồn duy nhất có live từng step |
 | Watcher | Server đang chạy | `fs.watch` `<output>/report.json`, debounce 500 ms |
-| Hook | Claude chạy Bash khớp `\be2e\s+(run|explore)\b` | `node bin/archive.mjs --project "$CLAUDE_PROJECT_DIR"`, luôn exit 0, timeout 10 s |
+| Hook | Claude chạy Bash | `matcher: "Bash"`; `bin/archive.mjs` đọc JSON của hook từ stdin, chỉ làm việc khi `tool_input.command` khớp `\be2e\s+(run|explore)\b`. Luôn exit 0, timeout 10 s |
 | Dashboard | Bấm Run/Rerun | server spawn e2e; chưa có reporter thì live = stdout, xong thì watcher archive |
 
 **Reporter trong project**: `setup` copy `reporter/e2e-dashboard.reporter.mjs` thành `<project>/e2e-dashboard.reporter.mjs` (được commit, 0 dependency) và thêm vào `reporters` trong `e2e.config.ts` cạnh reporter hiện có. Reporter:
@@ -103,20 +103,23 @@ Mỗi file một trách nhiệm; `store`, `live`, `runner`, `ai`, `git` không p
 
 Reporter chạy trong process e2e (không có plugin), nên file reporter **tự chứa** hàm `archive()` và export nó (`export function archive`, `export default reporter`). `server/store.mjs` và `bin/archive.mjs` import `archive` từ chính file `reporter/e2e-dashboard.reporter.mjs` của plugin → một nguồn logic duy nhất; `setup` copy nguyên văn. File có hằng `VERSION`; dashboard cảnh báo khi bản trong project cũ hơn bản của plugin và gợi ý chạy lại `setup`.
 
-### 4.2 `archive(projectRoot, {source, rerunOf?})`
+### 4.2 `archive(projectRoot, {source, rerunOf?, report?, reportPath?, artifactsRoot?, traces?})`
 
-1. Đọc `<output>/report.json` (`output` từ `.e2e-dashboard/config.json`, mặc định `.e2e`). `schemaVersion !== 'report-1'` → bỏ qua, ghi cảnh báo.
+1. Lấy report:
+   - **Reporter** truyền dữ liệu trong bộ nhớ từ `FinishedRun` (`report`, `reportPath`, `artifactsRoot`, `traces`); `reportPath` có thể undefined khi e2e ghi file thất bại, vẫn archive được từ `report`.
+   - **Hook / watcher / dashboard** đọc đĩa: `<output>/report.json`, với `<output>` theo thứ tự ưu tiên: `artifactsRoot` server học được từ event `run-started` gần nhất → `output` trong `.e2e-dashboard/config.json` → `.e2e`. Khi `artifactsRoot` từ event khác với thư mục đang watch, watcher chuyển sang theo dõi thư mục mới.
+   - `schemaVersion !== 'report-1'` → bỏ qua, ghi cảnh báo.
 2. Nếu đã có `runs/*_<run.id>` → dừng (idempotent).
 3. Ghi vào `runs/.tmp-<random>/` rồi `rename` thành tên đích; rename thất bại vì đã tồn tại → xoá tmp, coi như thành công (race giữa reporter và watcher).
 4. Copy `trace.md` (từ `traces` của FinishedRun, hoặc dò `results/<test>/trace.md`) và artifact của result có `status !== 'passed'`; artifact không có `path` thì bỏ qua; video có `url` giữ nguyên url.
 5. `meta.json`: `runId, startedAt, finishedAt, status, exitCode, summary (đếm theo status), tokens (tổng input/output), modelCalls, replay (replayedActions/totalActions), targets, git {branch, commit, dirty}, source, rerunOf, pinned:false, baseline:false, kind ('run'|'explore')`.
-6. Retention: giữ 50 run mới nhất (cấu hình được) không tính run `pinned`.
+6. Retention: giữ 50 run mới nhất (cấu hình được) không tính run `pinned`. Reporter và watcher có thể dọn cùng lúc, nên xoá phải bỏ qua `ENOENT`.
 
 Không có file index; server quét `meta.json` khi cần.
 
 ### 4.3 API server
 
-Mọi route dưới `127.0.0.1:<port>`. Request ghi (POST) yêu cầu header `X-E2E-Dashboard-Token` khớp `server.json` **và** `Origin` là chính server (hoặc không có Origin đối với reporter). Sai → 403. GET của UI đi kèm token qua cookie đặt khi mở URL `/?token=…`.
+Mọi route dưới `127.0.0.1:<port>`. Request ghi (POST) yêu cầu header `X-E2E-Dashboard-Token` khớp `server.json` **và** `Origin` là chính server (hoặc không có Origin đối với reporter). Sai → 403. Mọi GET (kể cả `/api/*` và `/files/*`) cũng yêu cầu token: lần đầu mở URL `/?token=…`, server đặt cookie `HttpOnly; SameSite=Strict; Path=/` rồi redirect bỏ token khỏi URL. `SameSite=Strict` để tab của site khác không đọc được dữ liệu test (có thể chứa nội dung trang).
 
 | Route | Việc |
 |---|---|
@@ -241,4 +244,11 @@ Dùng `node --test`, không dependency.
 | **M2** Phân tích & biểu đồ | flaky + heatmap, so sánh 2 run, nhóm lỗi, chi phí & cache, so sánh model + ngân sách, step chậm nhất, visual diff, tìm kiếm, bản đồ route, setup timing, so sánh branch, nhiều project, health score, report flaky/chi phí/so sánh |
 | **M3** AI nâng cao & tích hợp | AI: vì sao flaky, nhóm lỗi, chi phí, giải thích khác biệt, finding → test, hỏi AI tự do; Linear (tạo issue, gắn issue, chống trùng); lint câu lệnh agent; agent step → locator; CODEOWNERS; digest tuần; status line; thông báo desktop |
 
-M1 có thể tách M1a (thu thập + xem + export) và M1b (chạy test + AI) nếu plan quá lớn.
+### M1 được tách thành hai phần, mỗi phần một plan
+
+| Phần | Nội dung | Mục spec |
+|---|---|---|
+| **M1a** Thu thập & xem | plugin + lệnh `/e2e-dashboard` (open/setup/export/stop), reporter + hook + watcher + `archive()`, server chỉ đọc + SSE live, UI Overview / Run detail / Live / Tests (không có hộp thoại Run, không có nút AI), ghim/baseline, export HTML | 2, 3, 4.1–4.4, 5 (trừ Run/AI), 7, 8 |
+| **M1b** Điều khiển & AI | `POST /api/run`, `/api/run/stop`, hộp thoại Run, chọn test fail để rerun, hạ tầng AI + `analyze-failure` + `analyze-run`, panel AI | 4.5, 6, phần Run/AI của 5 |
+
+M1a không spawn tiến trình nào nên an toàn hơn để ra trước, và đã dùng được hằng ngày (live, lịch sử, debug, chia sẻ). Plan đầu tiên chỉ cho M1a.
