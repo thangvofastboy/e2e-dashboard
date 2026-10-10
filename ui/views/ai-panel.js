@@ -6,7 +6,7 @@ import { icon } from '../icons.js';
 let aiAbort = null;
 
 // Right-hand drawer that streams an AI analysis (spec §6). In the export it only shows saved results.
-export function openAiPanel({ action, runId, resultId = null, title, saved = null }) {
+export function openAiPanel({ action, runId, resultId = null, title, saved = null, extra = {} }) {
   aiAbort?.abort();
   document.getElementById('ai-panel')?.remove();
   const panel = document.createElement('aside');
@@ -70,12 +70,12 @@ export function openAiPanel({ action, runId, resultId = null, title, saved = nul
     }
     actions.innerHTML = `${action !== 'followup' ? `<button type="button" data-refresh>${icon('recycle', { size: 14 })}Phân tích lại</button>` : ''}
       ${sessionId ? `<form class="followup"><input name="q" placeholder="Hỏi thêm về kết quả này…" aria-label="Câu hỏi thêm" maxlength="4000" required><button type="submit" aria-label="Gửi">${icon('send', { size: 14 })}</button></form>` : ''}`;
-    actions.querySelector('[data-refresh]')?.addEventListener('click', () => run(`/api/ai/${action}`, { runId, resultId, refresh: true }));
+    actions.querySelector('[data-refresh]')?.addEventListener('click', () => run(`/api/ai/${action}`, { ...extra, runId, resultId, refresh: true }));
     actions.querySelector('.followup')?.addEventListener('submit', (e) => {
       e.preventDefault();
       const q = new FormData(e.target).get('q');
       run('/api/ai/followup', { runId, sessionId, question: q }, `${body.innerHTML}<hr><p><strong>${escapeHtml(q)}</strong></p>`);
     });
   };
-  run(`/api/ai/${action}`, { runId, resultId });
+  run(`/api/ai/${action}`, { ...extra, runId, resultId });
 }

@@ -35,6 +35,34 @@ export async function findRunDir(root, runId) {
   return !isLink(full) && realInside(runsDir(root), full) ? full : null;
 }
 
+// Archived reports never change: parse each once, keyed by its run directory.
+const reportCache = new Map();
+async function cachedReport(root, dir) {
+  const key = join(runsDir(root), dir);
+  if (!reportCache.has(key)) {
+    if (reportCache.size > 400) reportCache.delete(reportCache.keys().next().value);
+    reportCache.set(key, readJson(join(key, 'report.json')).catch((e) => {
+      reportCache.delete(key);
+      throw e;
+    }));
+  }
+  return reportCache.get(key);
+}
+
+// The last n runs as {meta, report}, newest first (what server/analytics.mjs works on).
+export async function loadHistory(root, n = 30) {
+  const out = [];
+  for (const meta of (await listRuns(root)).slice(0, n)) {
+    if (isLink(join(runsDir(root), meta.dir))) continue;
+    try {
+      out.push({ meta, report: await cachedReport(root, meta.dir) });
+    } catch {
+      // removed by retention meanwhile
+    }
+  }
+  return out;
+}
+
 export async function getRun(root, runId) {
   const dir = await findRunDir(root, runId);
   if (!dir) return null;
@@ -139,11 +167,12 @@ export async function writeAi(root, runId, key, { action, resultId, markdown, cr
   const dir = await findRunDir(root, runId);
   if (!dir || !AI_KEY.test(key)) return false;
   // resultId ends up in a file; only a real result id (64 hex) for a failure analysis is stored
-  if (action === 'analyze-failure' && !RESULT_ID.test(resultId ?? '')) return false;
+  const perResult = action === 'analyze-failure' || action === 'suggest-locator';
+  if (perResult && !RESULT_ID.test(resultId ?? '')) return false;
   const aiDir = join(dir, 'ai');
   if (isLink(aiDir)) return false;
   await mkdir(aiDir, { recursive: true });
-  const entry = { action: String(action), resultId: action === 'analyze-failure' ? resultId : null, markdown: String(markdown), createdAt: String(createdAt) };
+  const entry = { action: String(action), resultId: perResult ? resultId : null, markdown: String(markdown), createdAt: String(createdAt) };
   await safeWrite(join(aiDir, `${key}.json`), JSON.stringify(entry, null, 2));
   return true;
 }

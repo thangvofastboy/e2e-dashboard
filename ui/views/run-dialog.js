@@ -3,7 +3,7 @@ import { escapeHtml } from '../format.js';
 import { icon } from '../icons.js';
 
 // Modal to start an e2e run (spec §4.5): tests are file:line, plus targets/agents and run flags.
-export function openRunDialog({ tests, targets = [], agents = [], allTargets = targets, allAgents = agents, rerunOf = null, title = 'Chạy test' }) {
+export function openRunDialog({ tests, targets = [], agents = [], allTargets = targets, allAgents = agents, rerunOf = null, title = 'Chạy test', repeatEach = null }) {
   document.getElementById('run-dialog')?.remove();
   const box = (name, values, checked) => values
     .map((v) => `<label class="pill"><input type="checkbox" name="${name}" value="${escapeHtml(v)}" ${checked.includes(v) ? 'checked' : ''}>${escapeHtml(v)}</label>`)
@@ -18,7 +18,7 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
     ${allAgents.length > 1 ? `<fieldset><legend>Agent</legend>${box('agent', allAgents, agents)}</fieldset>` : ''}
     <div class="row">
       <label>Retries <input type="number" name="retries" min="0" max="10" placeholder="theo config"></label>
-      <label>Repeat each <input type="number" name="repeatEach" min="1" max="50" placeholder="1"></label>
+      <label>Repeat each <input type="number" name="repeatEach" min="1" max="50" placeholder="1"${Number.isInteger(repeatEach) ? ` value="${repeatEach}"` : ''}></label>
       <label class="pill"><input type="checkbox" name="noCache"> --no-cache</label>
     </div>
     <p class="err" hidden></p>

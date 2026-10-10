@@ -65,3 +65,36 @@ export function kpis(metas, t) {
     { key: 'replay', value: replay, delta: null, health: rateHealth(replay, t.replay), series: chron.map((m) => (m.replay?.total ? m.replay.replayed / m.replay.total : null)) },
   ];
 }
+
+// Health score 0–100: one number for "how is this suite doing", from the last 10 runs.
+// `flakyShare` (flaky tests / tests, from the flaky analysis) is optional: without it the share of
+// flaky results in the run summaries stands in.
+const HEALTH_WEIGHTS = { passRate: 40, stability: 25, speed: 15, cost: 10, cache: 10 };
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
+
+export function healthScore(metas, { flakyShare = null } = {}) {
+  const recent = (metas ?? []).slice(0, 10);
+  if (!recent.length) return null;
+  const n = (v) => Number(v) || 0;
+  const rates = recent.map(passRate).filter((v) => v != null);
+  let share = flakyShare;
+  if (share == null) {
+    const executed = recent.reduce((s, m) => s + n(m.summary?.passed) + n(m.summary?.flaky) + n(m.summary?.failed) + n(m.summary?.interrupted), 0);
+    share = executed ? recent.reduce((s, m) => s + n(m.summary?.flaky), 0) / executed : null;
+  }
+  const dDur = versusRecent(metas, (m) => m.durationMs);
+  const dTok = versusRecent(metas, tokensOf);
+  const latest = recent[0];
+  const parts = [
+    { key: 'passRate', label: 'Pass rate (TB 10 run)', value: mean(rates), score: mean(rates) },
+    { key: 'stability', label: 'Độ ổn định (ít flaky)', value: share, score: share == null ? null : clamp01(1 - share * 4) },
+    { key: 'speed', label: 'Thời gian so với TB', value: dDur, score: dDur == null ? null : clamp01(1 - Math.max(0, dDur) / 0.5) },
+    { key: 'cost', label: 'Token so với TB', value: dTok, score: dTok == null ? null : clamp01(1 - Math.max(0, dTok) / 0.5) },
+    { key: 'cache', label: 'Replay cache', value: latest.replay?.total ? latest.replay.replayed / latest.replay.total : null, score: latest.replay?.total ? clamp01(latest.replay.replayed / latest.replay.total) : null },
+  ].map((p) => ({ ...p, weight: HEALTH_WEIGHTS[p.key] }));
+  const used = parts.filter((p) => p.score != null);
+  if (!used.some((p) => p.key === 'passRate')) return null;
+  const total = used.reduce((s, p) => s + p.weight, 0);
+  const score = Math.round((used.reduce((s, p) => s + p.score * p.weight, 0) / total) * 100);
+  return { score, health: score >= 85 ? 'good' : score >= 65 ? 'warn' : 'bad', parts };
+}

@@ -259,3 +259,22 @@ Phát hiện thêm khi chạy thật:
 | **M1b** Điều khiển & AI | `POST /api/run`, `/api/run/stop`, hộp thoại Run, chọn test fail để rerun, hạ tầng AI + `analyze-failure` + `analyze-run`, panel AI | 4.5, 6, phần Run/AI của 5 |
 
 M1a không spawn tiến trình nào nên an toàn hơn để ra trước, và đã dùng được hằng ngày (live, lịch sử, debug, chia sẻ). Plan đầu tiên chỉ cho M1a.
+
+## 11. M2 + M3 (đã làm, v0.3.0)
+
+Phạm vi theo roadmap rút gọn: M2 = flaky, so sánh 2 run, nhóm lỗi, chi phí & cache, visual diff, bản đồ route, so sánh branch, nhiều project, health score. M3 = Linear (chống trùng), digest tuần, status line, thông báo desktop, agent step → locator.
+
+| Phần | File | Ghi chú |
+|---|---|---|
+| Phân tích thuần | `server/analytics.mjs` | Hàm thuần trên `[{meta, report}]` (`store.loadHistory`, report đã lưu được cache theo thư mục). Flaky: hỏng một lần sau commit mới là regression, không tính |
+| Health score | `ui/health.js` `healthScore()` | Dùng chung server (Projects, digest) và UI |
+| API | `server/app.mjs` | `GET /api/{health,flaky,compare,errors,cost,routes,branches,branches/compare,projects,digest,locators,linear}`, `POST /api/linear/{draft,issue}`, `POST /api/projects/forget`, `POST /api/ai/suggest-locator` |
+| Visual diff | `ui/visual.js` | Canvas trong trình duyệt, không thư viện; nhận bộ `-expected/-actual/-diff` của `toHaveScreenshot`. `"screenshots": "all"` giữ ảnh cả test pass |
+| Locator | `analytics.traceToCode()` | Đọc bản ghi `trace-1` ở `.e2e/cache/<entry>.json` (`step.cache.entry`) → `screen.getByRole(role, name).tap()`… Không có locator ổn định → `// TODO` |
+| Nhiều project | `server/projects.mjs` | `~/.e2e-dashboard/projects.json` (`E2E_DASHBOARD_HOME` để đổi) |
+| Linear | `server/linear.mjs` | GraphQL `issues(filter: {description: {contains: fp}})` trước khi `issueCreate`; key chỉ từ env / `~/.e2e-dashboard/config.json`; không key → prompt cho Claude + Linear MCP |
+| Status line | `bin/statusline.mjs` | Tự chứa, chỉ đọc `runs/*/meta.json` và `live.json` (server ghi, tối đa 1 lần/giây) |
+| Thông báo | `server/notify.mjs` | Khi watcher thấy run mới kết thúc; argv/env, không shell |
+| Digest | `analytics.digest()`, `bin/dashboard.mjs digest` | Markdown, lưu `.e2e-dashboard/digests/<ngày>.md` |
+
+Chưa làm (để sau): AI "vì sao flaky", hỏi AI tự do, CODEOWNERS, lint câu lệnh agent, so sánh model + ngân sách theo model, tìm kiếm, setup timing.
