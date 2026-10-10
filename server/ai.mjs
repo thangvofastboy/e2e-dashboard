@@ -53,12 +53,14 @@ export function buildPrompt(action, { report, meta, resultId, runDir = '', commi
     if (!r) throw new Error('unknown result');
     const attempts = resultAttempts(report, r);
     const a = attempts.at(-1);
+    // only trace paths archive() wrote (ids checked to be hex), never one built from report text
+    const trace = runDir && typeof meta.traces?.[r.id] === 'string' ? `${runDir}/${meta.traces[r.id]}` : null;
     return `${FRAME(language, fence)}
 
-Nhiệm vụ: phân tích vì sao test này fail.
-Trace (đọc bằng Read): ${runDir ? `${runDir}/traces/${r.id}.md` : '(không có)'}
+Nhiệm vụ: phân tích vì sao test này fail. Đường dẫn trace (đọc bằng Read) nằm trong khối dữ liệu.
 
 <${fence}>
+Trace: ${trace ? clip(trace) : '(không có)'}
 Test: ${title(r)}
 File: ${clip(r.source?.file ?? r.file)}:${clip(r.source?.line ?? '?')}
 Target: ${clip(r.targetId)} · agent: ${clip(r.agent ?? 'default')} · status: ${clip(r.status)} · ${attempts.length} attempt
@@ -133,7 +135,7 @@ export function commitsBetween(cwd, from, to) {
     execFile('git', ['log', '--oneline', '-n', '30', `${from}..${to}`], { cwd, timeout: 5000 }, (err, out) => ok(err ? [] : out.trim().split('\n').filter(Boolean))));
 }
 
-export function createAi({ projectRoot, spawnImpl = nodeSpawn, maxConcurrent = 2, timeoutMs = 300_000, model }) {
+export function createAi({ projectRoot, spawnImpl = nodeSpawn, maxConcurrent = 2, maxQueue = 8, timeoutMs = 300_000, model }) {
   let active = 0;
   const queue = [];
   const next = () => {
@@ -162,6 +164,8 @@ export function createAi({ projectRoot, spawnImpl = nodeSpawn, maxConcurrent = 2
       timer.unref?.();
       signal?.addEventListener?.('abort', abort, { once: true });
       if (signal?.aborted) abort();
+      child.stdout.setEncoding?.('utf8'); // Vietnamese answers: never split a character across reads
+      child.stderr.setEncoding?.('utf8');
       child.stdout.on('data', (c) => {
         buf += c;
         const lines = buf.split('\n');
@@ -186,7 +190,12 @@ export function createAi({ projectRoot, spawnImpl = nodeSpawn, maxConcurrent = 2
   return {
     run(opts) {
       return new Promise((resolve) => {
+        if (queue.length >= maxQueue) {
+          opts.onEvent({ type: 'error', message: 'AI đang bận (quá nhiều phân tích đang chờ), thử lại sau.' });
+          return resolve();
+        }
         queue.push(() => {
+          if (opts.signal?.aborted) return resolve(); // the tab left while waiting: never spawn claude
           active++;
           runOne(opts).then(() => {
             active--;

@@ -13,6 +13,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: true
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -21,6 +22,13 @@ jobs:
         run: |
           version=$(node -p "require('./.claude-plugin/plugin.json').version")
           tag="v$version"
+          # `/e2e-dashboard update` installs what marketplace.json points at: a tag it does not
+          # point at would announce an update that installs nothing (use `npm run release`).
+          ref=$(node -p "(require('./.claude-plugin/marketplace.json').plugins.find(p => p.name === 'e2e-dashboard').source || {}).ref || ''")
+          if [ "$ref" != "$tag" ]; then
+            echo "marketplace.json points at '$ref', not $tag — not tagging (run npm run release)"
+            exit 0
+          fi
           if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
             echo "$tag already exists"
           else

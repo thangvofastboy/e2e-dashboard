@@ -37,10 +37,10 @@ test('runner spawns without a shell, streams output into live, refuses a second 
   const live = createLive({ throttleMs: 1 });
   const { calls, spawnImpl } = fakeSpawn();
   const finished = [];
-  const runner = createRunner({ projectRoot: '/p', live, spawnImpl, onExit: (r) => finished.push(r) });
+  const runner = createRunner({ projectRoot: '/p', live, spawnImpl, onExit: (r) => finished.push(r), resolveBin: () => '/p/node_modules/e2e/cli.js' });
   assert.equal(runner.start({ tests: ['tests/a.e2e.ts:3'], rerunOf: 'r-old' }).ok, true);
-  assert.equal(calls[0].cmd, 'npx');
-  assert.deepEqual(calls[0].args, ['e2e', 'run', 'tests/a.e2e.ts:3']);
+  assert.equal(calls[0].cmd, process.execPath);
+  assert.deepEqual(calls[0].args, ['/p/node_modules/e2e/cli.js', 'run', 'tests/a.e2e.ts:3']);
   assert.equal(calls[0].opts.cwd, '/p');
   assert.notEqual(calls[0].opts.shell, true);
   assert.equal(live.snapshot().status, 'running');
@@ -50,18 +50,19 @@ test('runner spawns without a shell, streams output into live, refuses a second 
   assert.match(live.snapshot().output.at(-1).text, /shows the form/);
   calls[0].child.emit('close', 1);
   assert.equal(runner.state().running, false);
-  assert.deepEqual(finished, [{ exitCode: 1, rerunOf: 'r-old' }]);
+  assert.deepEqual(finished, [{ exitCode: 1, rerunOf: 'r-old', before: null }]);
   assert.equal(live.snapshot().status, 'finished');
 });
 
 test('stop sends SIGINT, then SIGTERM after the grace period', async () => {
   const { calls, spawnImpl } = fakeSpawn();
-  const runner = createRunner({ projectRoot: '/p', live: createLive(), spawnImpl, graceMs: 20 });
+  const sent = [];
+  const runner = createRunner({ projectRoot: '/p', live: createLive(), spawnImpl, graceMs: 20, resolveBin: () => '/p/cli.js', killImpl: (_t, sig) => sent.push(sig) });
   runner.start({});
   assert.equal(runner.stop(), true);
-  assert.deepEqual(calls[0].child.killed, ['SIGINT']);
-  await new Promise((r) => setTimeout(r, 40));
-  assert.deepEqual(calls[0].child.killed, ['SIGINT', 'SIGTERM']);
+  assert.deepEqual(sent, ['SIGINT']);
+  await new Promise((r) => setTimeout(r, 30));
+  assert.deepEqual(sent, ['SIGINT', 'SIGTERM']);
   calls[0].child.emit('close', 130);
   assert.equal(runner.stop(), false);
 });

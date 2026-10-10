@@ -2,7 +2,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { createReadStream, readFileSync } from 'node:fs';
 import { join, extname, basename, relative } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
-import { safeJoin, realInside, readConfig, VERSION } from '../reporter/e2e-dashboard.reporter.mjs';
+import { safeJoin, realInside, readConfig, VERSION, RUN_ID, RESULT_ID } from '../reporter/e2e-dashboard.reporter.mjs';
 import { listRuns, getRun, findRunDir, setFlag, testHistory, getAi, writeAi, listAi } from './store.mjs';
 import { buildPrompt, cacheKey, commitsBetween } from './ai.mjs';
 import { estimateEta } from './live.mjs';
@@ -186,6 +186,8 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         const body = await readBody(req);
         const run = await getRun(projectRoot, body.runId);
         if (!run) return send(res, 404, { error: 'run not found' });
+        const ac = new AbortController();
+        res.on('close', () => !res.writableEnded && ac.abort()); // tab closed → never start or keep claude
         let prompt;
         let resume;
         let key = null;
@@ -195,6 +197,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
           prompt = body.question;
           resume = body.sessionId;
         } else {
+          if (action === 'analyze-failure' && !RESULT_ID.test(String(body.resultId ?? ''))) return send(res, 400, { error: 'invalid resultId' });
           if (action === 'analyze-failure' && !(run.report.run.results ?? []).some((r) => r.id === body.resultId)) return send(res, 404, { error: 'result not found' });
           key = cacheKey(action, run.meta.runId, action === 'analyze-failure' ? body.resultId : '');
           const cached = body.refresh ? null : await getAi(projectRoot, run.meta.runId, key);
@@ -207,9 +210,8 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
           const commits = await commitsFor(projectRoot, run, action, body.resultId);
           prompt = buildPrompt(action, { report: run.report, meta: run.meta, resultId: body.resultId, runDir: relative(projectRoot, run.dir), commits, language: readConfig(projectRoot).ai?.language });
         }
+        if (ac.signal.aborted) return res.end();
         const write = startSse(res);
-        const ac = new AbortController();
-        res.on('close', () => !res.writableEnded && ac.abort()); // tab closed → kill claude
         let text = '';
         let final = null;
         await ai.run({
@@ -227,6 +229,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       }
       if (p === '/api/run') {
         const body = await readBody(req);
+        if (body.rerunOf !== undefined && !RUN_ID.test(String(body.rerunOf))) return send(res, 400, { error: 'invalid rerunOf' });
         let out;
         try {
           const RUN_KEYS = ['tests', 'targets', 'agents', 'retries', 'repeatEach', 'noCache', 'rerunOf'];
@@ -235,7 +238,8 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
           return send(res, 400, { error: e.message });
         }
         if (out.ok) return send(res, 202, { started: true, pid: out.pid ?? null });
-        return send(res, out.error === 'busy' ? 409 : 503, { error: out.error });
+        if (out.error === 'busy') return send(res, 409, { error: 'busy' });
+        return send(res, 503, { error: out.error === 'e2e-missing' ? 'Project chưa cài e2e (node_modules/e2e) — chạy npm install rồi thử lại.' : out.error });
       }
       if (p === '/api/run/stop') return send(res, 200, { stopped: runner.stop() });
       const m = /^\/api\/runs\/([^/]+)\/(pin|baseline)$/.exec(p);

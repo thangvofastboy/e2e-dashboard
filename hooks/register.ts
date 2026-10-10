@@ -2,10 +2,23 @@
 // Every other `/e2e-dashboard …` falls through to the markdown command (commands/e2e-dashboard.md).
 import type { EngineInterface, Register } from 'claude-code'
 
-const REPO = 'git@github.com:thangvofastboy/e2e-dashboard.git'
+// HTTPS: works without a GitHub SSH key (the marketplace itself is added over HTTPS)
+const REPO = 'https://github.com/thangvofastboy/e2e-dashboard.git'
 const MARKETPLACE = 'e2e-dashboard'
 const PLUGIN_ID = `e2e-dashboard@${MARKETPLACE}`
 const OURS = /^(e2e-dashboard:)?e2e-dashboard$/
+
+// Version the plugin manager now has installed, from `claude plugin list --json`.
+async function installedVersion($: EngineInterface) {
+  try {
+    const run = await $.process.run(['claude', 'plugin', 'list', '--json'], { timeoutMs: 30000 })
+    if (run.exitCode !== 0) return undefined
+    const list = JSON.parse(run.stdout) as Array<{ id?: string; version?: string }>
+    return list.find(p => p.id === PLUGIN_ID)?.version
+  } catch {
+    return undefined
+  }
+}
 
 async function currentVersion($: EngineInterface) {
   try {
@@ -33,7 +46,7 @@ export function compareVersions(a: string, b: string) {
 // Release tags on the repository (vX.Y.Z), newest first.
 async function latestTag($: EngineInterface) {
   // From `/`, outside any repo: an open repo's own core.sshCommand never applies.
-  const run = await $.process.run(['git', 'ls-remote', '--tags', '--refs', REPO], { cwd: '/', timeoutMs: 20000 })
+  const run = await $.process.run(['git', 'ls-remote', '--tags', '--refs', REPO], { cwd: '/', timeoutMs: 20000, env: { GIT_TERMINAL_PROMPT: '0' } })
   if (run.exitCode !== 0) throw new Error(run.stderr.trim() || `git ls-remote thoát mã ${run.exitCode}`)
   return run.stdout
     .split('\n')
@@ -56,7 +69,8 @@ async function versionText($: EngineInterface) {
 // The plugin manager owns the installed copy (a versioned cache dir), so an update goes through it:
 // refresh the marketplace (pins the newest tag), update the plugin, then let the engine re-read it.
 async function updatePlugin($: EngineInterface) {
-  if (!$.plugin.root.includes('/.claude/plugins/cache/')) {
+  // installed copies live in <config dir>/plugins/cache/… (any CLAUDE_CONFIG_DIR, any path separator)
+  if (!$.plugin.root.replaceAll('\\', '/').includes('/plugins/cache/')) {
     return [
       `Plugin đang chạy từ thư mục dev (${$.plugin.root}), không phải bản cài từ marketplace.`,
       'Cài bản phát hành để nhận update:',
@@ -82,9 +96,14 @@ async function updatePlugin($: EngineInterface) {
     if (run.exitCode !== 0) return `✗ 'claude ${args.join(' ')}' thất bại (mã ${run.exitCode})${out ? `:\n${out}` : ''}`
     if (out) outputs.push(out)
   }
+  // Report what the plugin manager actually installed, not what the tag list promised.
+  const installed = await installedVersion($)
+  if (installed && compareVersions(installed, current) <= 0) {
+    return [...outputs, `ℹ Vẫn là v${current}: marketplace chưa trỏ tới bản mới hơn${latest ? ` (${latest})` : ''}.`].join('\n')
+  }
   // The new version is only on disk: have the engine re-read plugins once this command has returned.
   $.clock.after(500, () => void $.command.run({ command: 'reload-plugins' }).catch(() => undefined))
-  return [...outputs, `✓ v${current} → ${latest ?? 'bản mới nhất'}`, '🔄 Đang nạp lại plugin (/reload-plugins)...'].join('\n')
+  return [...outputs, `✓ v${current} → v${installed ?? latest ?? 'mới nhất'}`, '🔄 Đang nạp lại plugin (/reload-plugins)...'].join('\n')
 }
 
 export const register: Register = on => {

@@ -63,7 +63,7 @@ export function summarize(report, { source, rerunOf = null, git = null }) {
 
 // run.id and result ids come from report.json and end up in file names: only accept their documented shapes.
 export const RUN_ID = /^[0-9a-f-]{8,}$/i;
-const RESULT_ID = /^[0-9a-f]{64}$/i;
+export const RESULT_ID = /^[0-9a-f]{64}$/i;
 
 export function runDirName(report) {
   return `${String(report.run.startedAt).replace(/[^0-9A-Za-z]/g, '-')}_${report.run.id}`;
@@ -88,7 +88,7 @@ export function realInside(root, p) {
   }
 }
 
-const isLink = (p) => {
+export const isLink = (p) => {
   try {
     return lstatSync(p).isSymbolicLink();
   } catch {

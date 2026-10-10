@@ -32,9 +32,9 @@ test('POST /api/run starts, validates and refuses a second run', async () => {
   const { server, base, post } = await serve(runner);
   try {
     assert.equal((await post('/api/run', { tests: ['--evil'] })).status, 400);
-    const ok = await post('/api/run', { tests: ['tests/a.e2e.ts:3'], rerunOf: 'r1' });
+    const ok = await post('/api/run', { tests: ['tests/a.e2e.ts:3'], rerunOf: '018f0f5c-7b2a-7abc-8abc-0123456789ab' });
     assert.equal(ok.status, 202);
-    assert.deepEqual(started[0], { tests: ['tests/a.e2e.ts:3'], rerunOf: 'r1' });
+    assert.deepEqual(started[0], { tests: ['tests/a.e2e.ts:3'], rerunOf: '018f0f5c-7b2a-7abc-8abc-0123456789ab' });
     assert.equal((await post('/api/run', {})).status, 409);
     const info = await (await fetch(`${base}/api/info`, { headers: { 'x-e2e-dashboard-token': 't' } })).json();
     assert.deepEqual(info.runner, { running: true, pid: 1 });

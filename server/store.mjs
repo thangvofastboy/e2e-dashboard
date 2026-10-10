@@ -1,6 +1,7 @@
-import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readdir, readFile, writeFile, mkdir, rename, rm, lstat } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
-import { DATA_DIR, RUN_ID, resultAttempts } from '../reporter/e2e-dashboard.reporter.mjs';
+import { DATA_DIR, RUN_ID, RESULT_ID, resultAttempts, realInside, isLink } from '../reporter/e2e-dashboard.reporter.mjs';
 
 const runsDir = (root) => join(root, DATA_DIR, 'runs');
 const readJson = async (p) => JSON.parse(await readFile(p, 'utf8'));
@@ -25,9 +26,13 @@ export async function listRuns(root) {
 
 export async function findRunDir(root, runId) {
   if (typeof runId !== 'string' || !RUN_ID.test(runId)) return null;
+  if (isLink(join(root, DATA_DIR)) || isLink(runsDir(root))) return null;
   const names = await readdir(runsDir(root)).catch(() => []);
   const dir = names.find((d) => d.endsWith(`_${runId}`));
-  return dir ? join(runsDir(root), dir) : null;
+  if (!dir) return null;
+  // a hostile clone can commit runs/<x> as a symlink: only real directories under runs/ count
+  const full = join(runsDir(root), dir);
+  return !isLink(full) && realInside(runsDir(root), full) ? full : null;
 }
 
 export async function getRun(root, runId) {
@@ -36,9 +41,21 @@ export async function getRun(root, runId) {
   return { meta: await readJson(join(dir, 'meta.json')), report: await readJson(join(dir, 'report.json')), dir };
 }
 
+// Write via a temp file + rename: a symlink planted at the target is replaced, never written through.
+async function safeWrite(path, text) {
+  const tmp = `${path}.tmp-${randomBytes(6).toString('hex')}`;
+  await writeFile(tmp, text, { flag: 'wx' });
+  try {
+    await rename(tmp, path);
+  } catch (e) {
+    await rm(tmp, { force: true });
+    throw e;
+  }
+}
+
 async function writeMeta(dir, meta) {
   const { dir: _ignored, ...rest } = meta;
-  await writeFile(join(dir, 'meta.json'), JSON.stringify(rest, null, 2));
+  await safeWrite(join(dir, 'meta.json'), JSON.stringify(rest, null, 2));
   return rest;
 }
 
@@ -105,27 +122,39 @@ export async function testHistory(root, n = 10) {
 // Cached AI analyses live with their run (removed by retention, embedded by the export).
 const AI_KEY = /^[0-9a-f]{64}$/;
 
+// Regular files only: a planted symlink in ai/ must never be read (exfiltration via the export).
+async function readAiFile(dir, name) {
+  const p = join(dir, 'ai', name);
+  if (isLink(join(dir, 'ai')) || !(await lstat(p).catch(() => null))?.isFile()) return null;
+  return readJson(p).catch(() => null);
+}
+
 export async function getAi(root, runId, key) {
   const dir = await findRunDir(root, runId);
   if (!dir || !AI_KEY.test(key)) return null;
-  return readJson(join(dir, 'ai', `${key}.json`)).catch(() => null);
+  return readAiFile(dir, `${key}.json`);
 }
 
-export async function writeAi(root, runId, key, entry) {
+export async function writeAi(root, runId, key, { action, resultId, markdown, createdAt }) {
   const dir = await findRunDir(root, runId);
   if (!dir || !AI_KEY.test(key)) return false;
-  await mkdir(join(dir, 'ai'), { recursive: true });
-  await writeFile(join(dir, 'ai', `${key}.json`), JSON.stringify(entry, null, 2));
+  // resultId ends up in a file; only a real result id (64 hex) for a failure analysis is stored
+  if (action === 'analyze-failure' && !RESULT_ID.test(resultId ?? '')) return false;
+  const aiDir = join(dir, 'ai');
+  if (isLink(aiDir)) return false;
+  await mkdir(aiDir, { recursive: true });
+  const entry = { action: String(action), resultId: action === 'analyze-failure' ? resultId : null, markdown: String(markdown), createdAt: String(createdAt) };
+  await safeWrite(join(aiDir, `${key}.json`), JSON.stringify(entry, null, 2));
   return true;
 }
 
 export async function listAi(root, runId) {
   const dir = await findRunDir(root, runId);
   if (!dir) return null;
-  const names = (await readdir(join(dir, 'ai')).catch(() => [])).filter((n) => AI_KEY.test(n.replace(/\.json$/, '')));
+  const names = isLink(join(dir, 'ai')) ? [] : (await readdir(join(dir, 'ai')).catch(() => [])).filter((n) => AI_KEY.test(n.replace(/\.json$/, '')));
   const entries = [];
   for (const n of names) {
-    const e = await readJson(join(dir, 'ai', n)).catch(() => null);
+    const e = await readAiFile(dir, n);
     if (e) entries.push({ key: n.replace(/\.json$/, ''), ...e });
   }
   return entries.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));

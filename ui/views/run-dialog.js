@@ -17,8 +17,8 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
     ${allTargets.length ? `<fieldset><legend>Target</legend>${box('target', allTargets, targets)}</fieldset>` : ''}
     ${allAgents.length > 1 ? `<fieldset><legend>Agent</legend>${box('agent', allAgents, agents)}</fieldset>` : ''}
     <div class="row">
-      <label>Retries <input type="number" name="retries" min="0" max="10" value="0"></label>
-      <label>Repeat each <input type="number" name="repeatEach" min="1" max="50" value="1"></label>
+      <label>Retries <input type="number" name="retries" min="0" max="10" placeholder="theo config"></label>
+      <label>Repeat each <input type="number" name="repeatEach" min="1" max="50" placeholder="1"></label>
       <label class="pill"><input type="checkbox" name="noCache"> --no-cache</label>
     </div>
     <p class="err" hidden></p>
@@ -36,8 +36,9 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
       tests,
       targets: fd.getAll('target'),
       agents: allAgents.length > 1 ? fd.getAll('agent') : agents,
-      retries: Number(fd.get('retries')),
-      repeatEach: Number(fd.get('repeatEach')),
+      // blank = the project's own config (e.g. its retries), so only what the user typed is sent
+      ...(fd.get('retries') !== '' ? { retries: Number(fd.get('retries')) } : {}),
+      ...(fd.get('repeatEach') !== '' ? { repeatEach: Number(fd.get('repeatEach')) } : {}),
       noCache: fd.get('noCache') === 'on',
       ...(rerunOf ? { rerunOf } : {}),
     };
