@@ -120,12 +120,19 @@ function stepItem(step, video, attempt) {
     </details></li>`;
 }
 
+// The export leaves videos out (size); say which file instead of a silent "no video".
+export function videoNote(video, src) {
+  if (src) return '';
+  if (video?.path) return `<p class="muted">Video không được nhúng vào file export: <code>${escapeHtml(video.path.split('/').pop())}</code></p>`;
+  return '<p class="muted">Không có video.</p>';
+}
+
 function mediaTab(row, attempt, runId) {
   if (row.status === 'passed') return '<p class="muted">Artifact chỉ được lưu cho test không pass.</p>';
   const { video, screenshots } = artifactsOf(attempt);
   const failShot = attempt.failure?.screen;
   const v = video && mediaSrc(runId, video);
-  const vid = v ? `<video id="run-video" controls preload="metadata" src="${escapeHtml(v)}"></video>` : '<p class="muted">Không có video.</p>';
+  const vid = v ? `<video id="run-video" controls preload="metadata" src="${escapeHtml(v)}"></video>` : videoNote(video, v);
   const shots = screenshots
     .map((s) => {
       const src = mediaSrc(runId, s);

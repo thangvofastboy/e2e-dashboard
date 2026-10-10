@@ -63,7 +63,8 @@ test('start spawns a detached server, second start reuses it, stop ends it', asy
   const a = await start(root, { open: false });
   try {
     assert.equal(a.reused, false);
-    assert.ok(readFileSync(join(root, '.gitignore'), 'utf8').split('\n').includes('.e2e-dashboard/'));
+    assert.equal(readFileSync(join(root, '.e2e-dashboard/.gitignore'), 'utf8'), '*\n');
+    assert.equal(readFileSync(join(root, '.gitignore'), 'utf8'), 'node_modules/\n');
     const b = await start(root, { open: false });
     assert.equal(b.reused, true);
     assert.equal(b.url, a.url);

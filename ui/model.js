@@ -19,8 +19,8 @@ export function flattenResults(report) {
     return {
       id: r.id,
       testId: r.testId,
-      title: r.titlePath.join(' › '),
-      titlePath: r.titlePath,
+      title: Array.isArray(r.titlePath) ? r.titlePath.join(' › ') : String(r.testId ?? r.id),
+      titlePath: Array.isArray(r.titlePath) ? r.titlePath : [String(r.testId ?? r.id)],
       file: r.source?.file ?? r.file,
       line: r.source?.line ?? null,
       target: r.targetId,

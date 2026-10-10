@@ -32,9 +32,30 @@ export function fileUrl(runId, rel) {
   return `/files/${encodePath(key)}`;
 }
 
+// One EventSource per page, shared by every subscriber (nav badge + Live view), so tabs do not
+// exhaust the browser's per-host connection limit.
+let liveSource = null;
+let liveLast = null;
+const liveSubs = new Set();
+
 export function liveStream(onSnapshot) {
   if (EXPORT) return () => {};
-  const es = new EventSource('/api/live');
-  es.onmessage = (e) => onSnapshot(JSON.parse(e.data));
-  return () => es.close();
+  liveSubs.add(onSnapshot);
+  if (!liveSource) {
+    liveSource = new EventSource('/api/live');
+    liveSource.onmessage = (e) => {
+      liveLast = JSON.parse(e.data);
+      for (const fn of liveSubs) fn(liveLast);
+    };
+  } else if (liveLast) {
+    onSnapshot(liveLast);
+  }
+  return () => {
+    liveSubs.delete(onSnapshot);
+    if (!liveSubs.size && liveSource) {
+      liveSource.close();
+      liveSource = null;
+      liveLast = null;
+    }
+  };
 }

@@ -1,6 +1,6 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { DATA_DIR, resultAttempts } from '../reporter/e2e-dashboard.reporter.mjs';
+import { DATA_DIR, RUN_ID, resultAttempts } from '../reporter/e2e-dashboard.reporter.mjs';
 
 const runsDir = (root) => join(root, DATA_DIR, 'runs');
 const readJson = async (p) => JSON.parse(await readFile(p, 'utf8'));
@@ -24,7 +24,7 @@ export async function listRuns(root) {
 }
 
 export async function findRunDir(root, runId) {
-  if (typeof runId !== 'string' || !/^[0-9a-f-]{8,}$/i.test(runId)) return null;
+  if (typeof runId !== 'string' || !RUN_ID.test(runId)) return null;
   const names = await readdir(runsDir(root)).catch(() => []);
   const dir = names.find((d) => d.endsWith(`_${runId}`));
   return dir ? join(runsDir(root), dir) : null;
@@ -72,7 +72,7 @@ export async function testHistory(root, n = 10) {
         rows.set(key, {
           key,
           testId: r.testId,
-          title: r.titlePath.join(' › '),
+          title: Array.isArray(r.titlePath) ? r.titlePath.join(' › ') : String(r.testId ?? r.id),
           file: r.source?.file ?? r.file,
           line: r.source?.line ?? null,
           target: r.targetId,

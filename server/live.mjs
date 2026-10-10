@@ -45,11 +45,14 @@ export function createLive({ throttleMs = 250 } = {}) {
         break;
       case 'test-started': {
         const key = keyOf(e.testId, e.target, e.agent, e.repeat);
+        if (byKey.has(key)) {
+          busy[byKey.get(key).lane] = false; // serial member re-run: free its lane before taking one
+          state.tests = state.tests.filter((x) => x.key !== key);
+        }
         const t = {
           key, testId: e.testId, title: e.title, file: e.file, target: e.target, agent: e.agent ?? 'default', repeat: e.repeat ?? 0,
           lane: takeLane(), status: 'running', startedAt: e.at, finishedAt: null, durationMs: null, activity: null, steps: [],
         };
-        if (byKey.has(key)) state.tests = state.tests.filter((x) => x.key !== key); // serial member re-run
         byKey.set(key, t);
         state.tests.push(t);
         break;
@@ -116,10 +119,17 @@ export function createLive({ throttleMs = 250 } = {}) {
   };
 }
 
+// Spec §4.4: history averages of the tests still to finish (median for tests without history),
+// divided by the lanes currently busy. Keys: live `testId|target|agent|repeat`, history `testId|target|agent`.
 export function estimateEta(snapshot, avgByKey) {
   if (snapshot.status !== 'running' || !avgByKey.size) return null;
   const remaining = Math.max(0, snapshot.total - snapshot.done);
-  const values = [...avgByKey.values()];
-  const avg = values.reduce((a, b) => a + b, 0) / values.length;
-  return Math.round((remaining * avg) / Math.max(1, snapshot.lanes));
+  const histKey = (k) => k.split('|').slice(0, 3).join('|');
+  const finished = new Set(snapshot.tests.filter((t) => t.status !== 'running').map((t) => histKey(t.key)));
+  const known = [...avgByKey].filter(([k]) => !finished.has(k)).map(([, v]) => v).slice(0, remaining);
+  const sorted = [...avgByKey.values()].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  const total = known.reduce((a, b) => a + b, 0) + (remaining - known.length) * median;
+  const busy = snapshot.tests.filter((t) => t.status === 'running').length;
+  return Math.round(total / Math.max(1, busy));
 }

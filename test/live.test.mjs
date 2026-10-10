@@ -74,7 +74,7 @@ test('subscribers receive throttled snapshots; flush sends immediately', () => {
 
 test('estimateEta uses history averages for remaining tests divided by lanes', () => {
   const snap = { status: 'running', total: 4, done: 2, lanes: 2, tests: [] };
-  assert.equal(estimateEta(snap, new Map([['a', 2000], ['b', 4000]])), 3000); // 2 left × 3000 avg ÷ 2 lanes
+  assert.equal(estimateEta(snap, new Map([['a', 2000], ['b', 4000]])), 6000); // 2 left, both with history; no busy lane → ÷ 1
   assert.equal(estimateEta(snap, new Map()), null);
   assert.equal(estimateEta({ ...snap, status: 'finished' }, new Map([['a', 1]])), null);
 });

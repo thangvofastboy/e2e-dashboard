@@ -5,7 +5,7 @@ import { readFile, writeFile, copyFile, mkdir, rm, appendFile, lstat } from 'nod
 import { existsSync, openSync, closeSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DATA_DIR, readServerInfo } from '../reporter/e2e-dashboard.reporter.mjs';
+import { DATA_DIR, readServerInfo, ensureDataDir } from '../reporter/e2e-dashboard.reporter.mjs';
 import { findProjectRoot, findConfig } from './project.mjs';
 import { exportRun } from '../server/export.mjs';
 
@@ -118,8 +118,7 @@ export async function start(root, { open = true } = {}) {
     return { url, reused: true };
   }
   await refuseSymlink(join(root, DATA_DIR));
-  await mkdir(join(root, DATA_DIR), { recursive: true });
-  await ensureGitignore(root); // the dashboard creates .e2e-dashboard/ in the user's repo
+  await ensureDataDir(root); // self-ignoring .e2e-dashboard/; the user's .gitignore is only touched by setup
   await rm(join(root, DATA_DIR, 'server.json'), { force: true });
   await refuseSymlink(join(root, DATA_DIR, 'server.log'));
   const log = openSync(join(root, DATA_DIR, 'server.log'), 'a');

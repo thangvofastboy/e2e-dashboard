@@ -62,7 +62,7 @@ export function summarize(report, { source, rerunOf = null, git = null }) {
 }
 
 // run.id and result ids come from report.json and end up in file names: only accept their documented shapes.
-const RUN_ID = /^[0-9a-f-]{8,}$/i;
+export const RUN_ID = /^[0-9a-f-]{8,}$/i;
 const RESULT_ID = /^[0-9a-f]{64}$/i;
 
 export function runDirName(report) {
@@ -174,17 +174,27 @@ async function resolveTraces(projectRoot, report, artRoot, traces) {
   const found = await findFiles(artRoot, 'trace.md');
   for (const r of report.run.results ?? []) {
     const paths = (r.attempts ?? []).flatMap((a) => (a.artifacts ?? []).map((x) => x.path).filter(Boolean));
-    const byId = found.find((t) => basename(dirname(t)).endsWith(`-${r.id.slice(0, 16)}`));
-    const hit = byId ?? found.find((t) => {
+    const byId = typeof r.id === 'string' && found.find((t) => basename(dirname(t)).endsWith(`-${r.id.slice(0, 16)}`));
+    const hit = byId || found.find((t) => {
       const dir = relative(artRoot, dirname(t)).split(sep).join('/');
       return paths.some((p) => p.startsWith(`${dir}/`));
     });
-    if (hit) map.set(r.id, hit);
+    if (hit && typeof r.id === 'string') map.set(r.id, hit);
   }
   return map;
 }
 
-export async function archive(projectRoot, { source, rerunOf = null, report, reportPath, artifactsRoot, traces, outputDir, keep } = {}) {
+// Creates <project>/.e2e-dashboard (never through a planted symlink) and makes git ignore it.
+export async function ensureDataDir(projectRoot) {
+  const dataDir = join(projectRoot, DATA_DIR);
+  if (isLink(dataDir)) return null;
+  await mkdir(dataDir, { recursive: true });
+  // run data holds page text and logs: keep it out of git even when nobody ran setup
+  if (!existsSync(join(dataDir, '.gitignore'))) await writeFile(join(dataDir, '.gitignore'), '*\n');
+  return dataDir;
+}
+
+export async function archive(projectRoot, { source, rerunOf = null, report, reportPath, artifactsRoot, traces, outputDir, keep, signal } = {}) {
   const cfg = readConfig(projectRoot);
   const output = resolve(projectRoot, outputDir ?? cfg.output ?? '.e2e');
   if (!report) {
@@ -196,12 +206,10 @@ export async function archive(projectRoot, { source, rerunOf = null, report, rep
   }
   if (report?.schemaVersion !== 'report-1' || !RUN_ID.test(report.run?.id ?? '')) return { status: 'skipped', reason: 'unsupported-schema' };
 
-  const dataDir = join(projectRoot, DATA_DIR);
-  const runsDir = join(dataDir, 'runs');
-  if (isLink(dataDir) || isLink(runsDir)) return { status: 'skipped', reason: 'unsafe-path' };
+  const dataDir = await ensureDataDir(projectRoot);
+  const runsDir = join(projectRoot, DATA_DIR, 'runs');
+  if (!dataDir || isLink(runsDir)) return { status: 'skipped', reason: 'unsafe-path' };
   await mkdir(runsDir, { recursive: true });
-  // run data holds page text and logs: keep it out of git even when nobody ran setup
-  if (!existsSync(join(dataDir, '.gitignore'))) await writeFile(join(dataDir, '.gitignore'), '*\n');
   const name = runDirName(report);
   const existing = (await readdir(runsDir)).find((d) => d.endsWith(`_${report.run.id}`));
   if (existing) return { status: 'exists', runDir: join(runsDir, existing) };
@@ -210,7 +218,11 @@ export async function archive(projectRoot, { source, rerunOf = null, report, rep
   const tmp = join(runsDir, `.tmp-${randomBytes(6).toString('hex')}`);
   const final = join(runsDir, name);
   await mkdir(tmp);
+  const aborted = () => {
+    if (signal?.aborted) throw Object.assign(new Error('aborted'), { code: 'E2ED_ABORTED' });
+  };
   try {
+    aborted();
     await writeFile(join(tmp, 'report.json'), JSON.stringify(report));
     const traceMeta = {};
     for (const [id, abs] of await resolveTraces(projectRoot, report, artRoot, traces)) {
@@ -219,12 +231,17 @@ export async function archive(projectRoot, { source, rerunOf = null, report, rep
       await copyFile(abs, join(tmp, 'traces', `${id}.md`));
       traceMeta[id] = `traces/${id}.md`;
     }
-    for (const a of nonPassedArtifacts(report)) if (a.path) await copyInto(artRoot, join(tmp, 'artifacts'), a.path);
+    for (const a of nonPassedArtifacts(report)) {
+      aborted();
+      if (a.path) await copyInto(artRoot, join(tmp, 'artifacts'), a.path);
+    }
+    aborted();
     const meta = { ...summarize(report, { source, rerunOf, git: report.run.vcs ? null : gitInfo(projectRoot) }), traces: traceMeta };
     await writeFile(join(tmp, 'meta.json'), JSON.stringify(meta, null, 2));
     await rename(tmp, final);
   } catch (e) {
     await rm(tmp, { recursive: true, force: true });
+    if (e.code === 'E2ED_ABORTED') return { status: 'skipped', reason: 'aborted' };
     if (e.code === 'ENOTEMPTY' || e.code === 'EEXIST') return { status: 'exists', runDir: final };
     throw e;
   }
@@ -235,12 +252,18 @@ export async function archive(projectRoot, { source, rerunOf = null, report, rep
 export async function applyRetention(projectRoot, keep = 50) {
   if (!Number.isInteger(keep) || keep < 1) keep = 50; // config.json is repo-controlled
   const runsDir = join(projectRoot, DATA_DIR, 'runs');
-  let names;
+  let all;
   try {
-    names = (await readdir(runsDir)).filter((n) => !n.startsWith('.')).sort().reverse(); // names start with ISO time
+    all = await readdir(runsDir);
   } catch {
     return [];
   }
+  // an archive killed mid-copy (hook timeout) leaves .tmp-*; anything older than 10 minutes is dead
+  for (const n of all.filter((x) => x.startsWith('.tmp-'))) {
+    const st = await stat(join(runsDir, n)).catch(() => null);
+    if (st && Date.now() - st.mtimeMs > 600_000) await rm(join(runsDir, n), { recursive: true, force: true });
+  }
+  const names = all.filter((n) => !n.startsWith('.')).sort().reverse(); // names start with ISO time
   const removed = [];
   let kept = 0;
   for (const n of names) {
@@ -300,6 +323,7 @@ export function createReporter({ env = process.env, fetchImpl = globalThis.fetch
           reportPath: run.reportPath,
           artifactsRoot: run.artifactsRoot,
           traces: run.traces,
+          signal,
         });
         const s = server ?? readServerInfo(run.projectRoot);
         if (res.status !== 'skipped' && s) return [{ label: 'Dashboard', text: `http://127.0.0.1:${s.port}/#/run/${run.report.run.id}` }];
