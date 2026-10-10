@@ -78,3 +78,18 @@ test('estimateEta uses history averages for remaining tests divided by lanes', (
   assert.equal(estimateEta(snap, new Map()), null);
   assert.equal(estimateEta({ ...snap, status: 'finished' }, new Map([['a', 1]])), null);
 });
+
+test('unselected tests (filtered out of the run) do not count as progress', () => {
+  const live = createLive();
+  live.apply({ type: 'run-started', at: at(0), runId: 'r1' });
+  live.apply({ type: 'plan', at: at(0), total: 3, files: [] });
+  live.apply({ type: 'test-finished', at: at(1), result: { testId: 'X', targetId: 'web', agent: 'default', repeat: 0, status: 'skipped', selected: false, attempts: [] } });
+  live.apply({ type: 'test-finished', at: at(1), result: { testId: 'Y', targetId: 'web', agent: 'default', repeat: 0, status: 'skipped', selected: false, attempts: [] } });
+  const s = live.snapshot();
+  assert.equal(s.total, 1);
+  assert.equal(s.done, 0);
+});
+
+test('no ETA when nothing is left to run', () => {
+  assert.equal(estimateEta({ status: 'running', total: 0, done: 0, lanes: 0, tests: [] }, new Map([['a', 1000]])), null);
+});

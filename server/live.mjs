@@ -75,6 +75,11 @@ export function createLive({ throttleMs = 250 } = {}) {
       }
       case 'test-finished': {
         const r = e.result ?? {};
+        if (r.selected === false) {
+          // filtered out of this run (e.g. a rerun of one test): not progress, and not part of the total
+          state.total = Math.max(0, state.total - 1);
+          break;
+        }
         const t = byKey.get(keyOf(r.testId, r.targetId, r.agent, r.repeat));
         state.done += 1;
         if (!t) break;
@@ -124,6 +129,7 @@ export function createLive({ throttleMs = 250 } = {}) {
 export function estimateEta(snapshot, avgByKey) {
   if (snapshot.status !== 'running' || !avgByKey.size) return null;
   const remaining = Math.max(0, snapshot.total - snapshot.done);
+  if (!remaining) return null;
   const histKey = (k) => k.split('|').slice(0, 3).join('|');
   const finished = new Set(snapshot.tests.filter((t) => t.status !== 'running').map((t) => histKey(t.key)));
   const known = [...avgByKey].filter(([k]) => !finished.has(k)).map(([, v]) => v).slice(0, remaining);
