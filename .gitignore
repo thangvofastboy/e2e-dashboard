@@ -1,4 +1,38 @@
+# ── Dependencies ─────────────────────────────────────────────
+# The plugin has zero npm dependencies; this only guards local experiments.
+node_modules/
+package-lock.json
+
+# ── Dashboard data (when dogfooding the plugin on itself) ─────
+.e2e-dashboard/
+e2e-dashboard.reporter.mjs
+e2e-dashboard.reporter.d.mts
+!reporter/e2e-dashboard.reporter.mjs
+
+# ── e2e output (if an e2e project is run from this repo) ──────
+.e2e/
+
+# ── Local agent / tool state ──────────────────────────────────
 .remember/
 .superpowers/
-node_modules/
-.e2e-dashboard/
+.claude/settings.local.json
+
+# ── Logs & temp ───────────────────────────────────────────────
+*.log
+npm-debug.log*
+.tmp-*
+*.tmp
+coverage/
+
+# ── Environment & secrets ─────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Editors & OS ──────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
