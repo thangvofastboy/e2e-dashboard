@@ -2,7 +2,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { createReadStream, readFileSync } from 'node:fs';
 import { join, extname, basename } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
-import { safeJoin, realInside, VERSION } from '../reporter/e2e-dashboard.reporter.mjs';
+import { safeJoin, realInside, readConfig, VERSION } from '../reporter/e2e-dashboard.reporter.mjs';
 import { listRuns, getRun, findRunDir, setFlag, testHistory } from './store.mjs';
 import { estimateEta } from './live.mjs';
 import { bundleUi } from '../ui/bundle.mjs';
@@ -104,7 +104,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       if (p === '/') return send(res, 200, await readFile(join(uiDir, 'index.html'), 'utf8'), { ...ui, 'content-type': 'text/html; charset=utf-8' });
       if (p === '/app.js') return send(res, 200, await bundleUi(uiDir), { ...ui, 'content-type': 'text/javascript; charset=utf-8' });
       if (p === '/style.css') return send(res, 200, await readFile(join(uiDir, 'style.css'), 'utf8'), { ...ui, 'content-type': 'text/css; charset=utf-8' });
-      if (p === '/api/info') return send(res, 200, { version: VERSION, pid: process.pid, project: basename(projectRoot), reporter: reporterStatus(projectRoot), lastArchive: lastArchive() });
+      if (p === '/api/info') return send(res, 200, { version: VERSION, pid: process.pid, project: basename(projectRoot), reporter: reporterStatus(projectRoot), lastArchive: lastArchive(), thresholds: readConfig(projectRoot).thresholds ?? null });
       if (p === '/api/runs') return send(res, 200, await listRuns(projectRoot));
       if (p === '/api/tests') return send(res, 200, await testHistory(projectRoot, 10));
       if (p === '/api/live') {

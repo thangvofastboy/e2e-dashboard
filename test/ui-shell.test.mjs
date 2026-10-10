@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseRoute, runHref } from '../ui/router.js';
-import { passRate, runTable } from '../ui/views/overview.js';
+import { runTable } from '../ui/views/overview.js';
+import { passRate } from '../ui/health.js';
 import { fileURLToPath } from 'node:url';
 import { bundleUi } from '../ui/bundle.mjs';
 

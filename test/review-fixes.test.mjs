@@ -154,3 +154,16 @@ test('I6: the data directory ignores itself in git', async () => {
   await archive(root, { source: 'hook', report: fixture() });
   assert.equal(readFileSync(join(root, '.e2e-dashboard/.gitignore'), 'utf8'), '*\n');
 });
+
+test('/api/info passes thresholds from .e2e-dashboard/config.json to the UI', async () => {
+  const root = tmp();
+  put(root, '.e2e-dashboard/config.json', JSON.stringify({ thresholds: { passRate: { good: 0.99 } } }));
+  const server = http.createServer(createApp({ projectRoot: root, token: 't', uiDir: UI, live: createLive() }));
+  await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+  try {
+    const info = await (await fetch(`http://127.0.0.1:${server.address().port}/api/info`, { headers: { 'x-e2e-dashboard-token': 't' } })).json();
+    assert.deepEqual(info.thresholds, { passRate: { good: 0.99 } });
+  } finally {
+    server.close();
+  }
+});

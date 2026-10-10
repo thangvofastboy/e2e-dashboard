@@ -2,16 +2,11 @@ import { getJson } from '../api.js';
 import { lineChart, stackedBarChart, legend } from '../charts.js';
 import { fmtDuration, fmtTokens, fmtRelative, statusBadge, countChips, escapeHtml } from '../format.js';
 import { runHref } from '../router.js';
+import { passRate } from '../health.js';
 
 const RUN_KEYS = ['passed', 'flaky', 'failed', 'interrupted', 'skipped'];
 const EMPTY_RUNS = '<div class="empty-state"><h2>Chưa có run nào</h2><p>Chạy <code>npx e2e run</code> (hoặc nhờ Claude chạy) — run sẽ tự xuất hiện ở đây.</p></div>';
 
-export function passRate(meta) {
-  const s = meta.summary ?? {};
-  const ok = (s.passed ?? 0) + (s.flaky ?? 0);
-  const done = ok + (s.failed ?? 0) + (s.interrupted ?? 0);
-  return done ? ok / done : null;
-}
 
 function gitCell(git) {
   if (!git?.commit) return '—';
