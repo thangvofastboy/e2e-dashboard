@@ -38,7 +38,7 @@ test('runTable links each run and escapes branch names', () => {
   }]);
   assert.match(html, /href="#\/run\/r1"/);
   assert.match(html, /&lt;b&gt;@aaaaaaa/);
-  assert.match(html, /📌/);
+  assert.match(html, /#i-pin/);
 });
 
 test('runTable escapes numbers taken from a tampered report', () => {

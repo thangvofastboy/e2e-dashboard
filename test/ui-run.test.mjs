@@ -22,10 +22,10 @@ test('mediaSrc uses the archived file, else the hosted url', () => {
 });
 
 test('eventLine renders each event kind and escapes app text', () => {
-  assert.match(eventLine({ kind: 'model', reasoning: 'close <modal>', inputTokens: 100, outputTokens: 20, durationMs: 2840 }), /💭 close &lt;modal&gt;.*100\/20 tok/);
-  assert.match(eventLine({ kind: 'engine', name: 'tap', detail: 'tap button "Close"' }), /⚙ tap button &quot;Close&quot;/);
-  assert.match(eventLine({ kind: 'navigation', detail: 'navigated to /cart' }), /↪ navigated to \/cart/);
-  assert.match(eventLine({ kind: 'poll', detail: 'x3' }), /⟳ x3/);
+  assert.match(eventLine({ kind: 'model', reasoning: 'close <modal>', inputTokens: 100, outputTokens: 20, durationMs: 2840 }), /ev-model.*#i-bulb.*close &lt;modal&gt;.*100\/20 tok/);
+  assert.match(eventLine({ kind: 'engine', name: 'tap', detail: 'tap button "Close"' }), /ev-engine.*#i-bolt.*tap button &quot;Close&quot;/);
+  assert.match(eventLine({ kind: 'navigation', detail: 'navigated to /cart' }), /ev-nav.*#i-arrow.*navigated to \/cart/);
+  assert.match(eventLine({ kind: 'poll', detail: 'x3' }), /ev-poll.*#i-eye.*x3/);
   assert.match(eventLine({ kind: 'weird', name: 'n' }), /weird n/);
 });
 

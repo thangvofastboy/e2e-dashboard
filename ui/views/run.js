@@ -3,10 +3,13 @@ import { flattenResults, facets, applyFilters, matrix, isFailure, stepVideoOffse
 import { fmtDuration, fmtTokens, statusBadge, countChips, escapeHtml } from '../format.js';
 import { renderMarkdown } from '../markdown.js';
 import { runHref } from '../router.js';
+import { icon } from '../icons.js';
+import { donutChart, legend } from '../charts.js';
+import { passRate } from '../health.js';
 
 // View state survives re-renders of the same run (filters, matrix toggle, chosen attempt, tab).
 const ui = { runId: null, data: null, filters: {}, matrix: false, attempt: new Map(), tab: 'media' };
-const TABS = [['media', 'Video & ảnh'], ['log', 'Log'], ['trace', 'Trace'], ['source', 'Source']];
+const TABS = [['media', 'Video & ảnh', 'video'], ['log', 'Log', 'terminal'], ['trace', 'Trace', 'route'], ['source', 'Source', 'code']];
 const FILTERS = [['statuses', 'Status'], ['targets', 'Target'], ['agents', 'Agent'], ['tags', 'Tag'], ['files', 'File']];
 
 export function artifactsOf(attempt) {
@@ -26,12 +29,13 @@ export function mediaSrc(runId, artifact) {
 
 export function eventLine(e) {
   const dur = e.durationMs ? ` <span class="muted">${fmtDuration(e.durationMs)}</span>` : '';
+  const line = (cls, ic, body) => `<li class="${cls}">${icon(ic, { size: 14 })}<span>${body}${dur}</span></li>`;
   if (e.kind === 'model')
-    return `<li>💭 ${escapeHtml(e.reasoning ?? e.name ?? 'model')} <span class="muted">(${escapeHtml(e.inputTokens ?? 0)}/${escapeHtml(e.outputTokens ?? 0)} tok)</span>${dur}</li>`;
-  if (e.kind === 'engine') return `<li>⚙ ${escapeHtml(e.detail ?? e.name)}${dur}</li>`;
-  if (e.kind === 'navigation') return `<li>↪ ${escapeHtml(e.detail)}</li>`;
-  if (e.kind === 'poll') return `<li>⟳ ${escapeHtml(e.detail ?? e.name)}${dur}</li>`;
-  return `<li>• ${escapeHtml(e.kind)} ${escapeHtml(e.detail ?? e.name ?? '')}${dur}</li>`;
+    return line('ev-model', 'bulb', `${escapeHtml(e.reasoning ?? e.name ?? 'model')} <span class="muted">(${escapeHtml(e.inputTokens ?? 0)}/${escapeHtml(e.outputTokens ?? 0)} tok)</span>`);
+  if (e.kind === 'engine') return line('ev-engine', 'bolt', escapeHtml(e.detail ?? e.name));
+  if (e.kind === 'navigation') return line('ev-nav', 'arrow', escapeHtml(e.detail));
+  if (e.kind === 'poll') return line('ev-poll', 'eye', escapeHtml(e.detail ?? e.name));
+  return line('ev-other', 'info', `${escapeHtml(e.kind)} ${escapeHtml(e.detail ?? e.name ?? '')}`);
 }
 
 export function cacheText(cache) {
@@ -52,22 +56,24 @@ function errorBox(err) {
 
 function header(meta, report) {
   const s = meta.summary ?? {};
-  const counts = countChips(s);
   const tokens = (meta.tokens?.input ?? 0) + (meta.tokens?.output ?? 0);
-  const replay = meta.replay?.total ? ` · ♻ ${Math.round((meta.replay.replayed / meta.replay.total) * 100)}% replay` : '';
-  const git = meta.git?.commit ? ` · ${escapeHtml(meta.git.branch ?? '?')}@${escapeHtml(meta.git.commit.slice(0, 7))}${meta.git.dirty ? ' (dirty)' : ''}` : '';
+  const replay = meta.replay?.total ? `<span class="m-replay">${icon('recycle', { size: 14 })}${Math.round((meta.replay.replayed / meta.replay.total) * 100)}% replay</span>` : '';
+  const git = meta.git?.commit ? `<span class="m-git">${icon('branch', { size: 14 })}${escapeHtml(meta.git.branch ?? '?')}@${escapeHtml(String(meta.git.commit).slice(0, 7))}${meta.git.dirty ? ' (dirty)' : ''}</span>` : '';
   const actions = isExport()
     ? ''
-    : `<button data-flag="pin">${meta.pinned ? '📌 Bỏ ghim' : '📌 Ghim'}</button>
-       <button data-flag="baseline">${meta.baseline ? '⭐ Bỏ baseline' : '⭐ Baseline'}</button>
-       <a class="button" href="/api/runs/${encodeURIComponent(meta.runId)}/export" download>⤓ Export HTML</a>`;
+    : `<button class="btn-pin" data-flag="pin">${icon('pin', { size: 15 })}${meta.pinned ? 'Bỏ ghim' : 'Ghim'}</button>
+       <button class="btn-star" data-flag="baseline">${icon('star', { size: 15 })}${meta.baseline ? 'Bỏ baseline' : 'Baseline'}</button>
+       <a class="button btn-export" href="/api/runs/${encodeURIComponent(meta.runId)}/export" download>${icon('download', { size: 15 })}Export HTML</a>`;
   const runErrors = (report.run.errors ?? []).map(errorBox).join('');
+  const rate = passRate(meta);
+  const keys = ['passed', 'flaky', 'failed', 'interrupted', 'skipped'];
   return `<div class="run-head">
       <div><h1>Run ${escapeHtml(meta.runId.slice(-8))} ${statusBadge(meta.status)}</h1>
-        <div class="muted">${new Date(meta.startedAt).toLocaleString('vi-VN')} · ${fmtDuration(meta.durationMs)} · 🪙 ${fmtTokens(tokens)} tok${replay}${git}</div>
-        <div>${counts}</div></div>
+        <div class="run-meta"><span class="m-time">${icon('clock', { size: 14 })}${new Date(meta.startedAt).toLocaleString('vi-VN')} · ${fmtDuration(meta.durationMs)}</span><span class="m-tok">${icon('coins', { size: 14 })}${fmtTokens(tokens)} tok</span>${replay}${git}</div></div>
       <div class="actions">${actions}</div>
-    </div>${runErrors}`;
+    </div>
+    <section class="panel run-summary">${donutChart({ segments: keys.map((k) => ({ key: k, value: s[k] ?? 0 })), center: rate == null ? '—' : `${Math.round(rate * 100)}%`, ariaLabel: 'Kết quả run' })}
+      <div><div>${countChips(s)}</div>${legend(keys.filter((k) => s[k]))}</div></section>${runErrors}`;
 }
 
 function filterBar(all) {
@@ -77,7 +83,7 @@ function filterBar(all) {
       .map((v) => `<option ${ui.filters[k]?.[0] === v ? 'selected' : ''}>${escapeHtml(v)}</option>`)
       .join('')}</select></label>`)
     .join('');
-  return `<div class="filters">${selects}<button data-toggle="matrix" aria-pressed="${ui.matrix}">⊞ Ma trận</button></div>`;
+  return `<div class="filters">${selects}<button class="btn-matrix" data-toggle="matrix" aria-pressed="${ui.matrix}">${icon('table', { size: 15 })}Ma trận</button></div>`;
 }
 
 function testList(rows, runId, selectedId) {
@@ -157,7 +163,7 @@ function detail(row, meta, runId) {
   const skip = attempt.skip?.reason ? `<p class="muted">Skip: ${escapeHtml(attempt.skip.reason)}</p>` : '';
   const steps = (attempt.steps ?? []).map((s) => stepItem(s, video, attempt)).join('');
   const tabs = TABS.filter(([k]) => k !== 'trace' || meta.traces?.[row.id])
-    .map(([k, label]) => `<button data-tab="${k}" aria-pressed="${ui.tab === k}">${label}</button>`)
+    .map(([k, label, ic]) => `<button data-tab="${k}" aria-pressed="${ui.tab === k}">${icon(ic, { size: 15 })}${label}</button>`)
     .join('');
   const body = { media: () => mediaTab(row, attempt, runId), log: () => logTab(attempt), trace: () => '<div id="trace" class="md">Đang tải trace…</div>', source: () => sourceTab(row, attempt) }[ui.tab]();
   return `${head}${pills}${skip}${errorBox(attempt.error)}

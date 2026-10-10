@@ -6,23 +6,52 @@ import { getJson, isExport, liveStream } from './api.js';
 import { attachTooltips } from './charts.js';
 import { escapeHtml } from './format.js';
 import { parseRoute } from './router.js';
+import { icon, ICON_SPRITE } from './icons.js';
 
-const NAV = [['overview', '#/', 'Overview'], ['runs', '#/runs', 'Runs'], ['live', '#/live', 'Live'], ['tests', '#/tests', 'Tests']];
+const NAV = [['overview', '#/', 'Overview', 'grid'], ['runs', '#/runs', 'Runs', 'list'], ['live', '#/live', 'Live', 'activity'], ['tests', '#/tests', 'Tests', 'flask']];
 const VIEWS = { overview: renderOverview, runs: renderRunsPage, run: renderRun, live: renderLive, tests: renderTests };
 let cleanup = null;
 let lastStatus = null;
 
+// Theme: follows the OS until the viewer picks one; the choice is a per-viewer convenience.
+function storedTheme() {
+  try {
+    return localStorage.getItem('e2ed-theme');
+  } catch {
+    return null;
+  }
+}
+
+function applyTheme(theme) {
+  if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+  else delete document.documentElement.dataset.theme;
+}
+
+function toggleTheme() {
+  const current = document.documentElement.dataset.theme ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  const next = current === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+  try {
+    localStorage.setItem('e2ed-theme', next);
+  } catch {
+    // storage blocked: the toggle still works for this page view
+  }
+}
+
 function shell() {
+  applyTheme(storedTheme());
+  document.body.insertAdjacentHTML('afterbegin', ICON_SPRITE);
   const nav = NAV.filter(([v]) => !(isExport() && (v === 'live' || v === 'tests')))
-    .map(([v, href, label]) => `<a href="${href}" data-nav="${v}">${label}</a>`)
+    .map(([v, href, label, ic]) => `<a href="${href}" data-nav="${v}" class="n-${v}"><span class="ni">${icon(ic)}</span>${label}${v === 'live' ? '<span class="live-dot" aria-label="đang chạy"></span>' : ''}</a>`)
     .join('');
   document.getElementById('app').innerHTML = `
     <aside class="nav">
-      <a class="brand" href="#/">e2e <span>dashboard</span></a>
-      <nav>${nav}</nav>
-      <div class="nav-foot" id="nav-foot"></div>
+      <a class="brand" href="#/"><span class="logo">${icon('flask', { size: 17 })}</span>e2e <span>dashboard</span></a>
+      <nav aria-label="Điều hướng">${nav}</nav>
+      <div class="nav-foot"><button class="theme-toggle" type="button" aria-label="Chuyển giao diện sáng / tối">${icon('sun')}Sáng / Tối</button><div id="nav-foot"></div></div>
     </aside>
     <main id="main" tabindex="-1"></main>`;
+  document.querySelector('.theme-toggle').addEventListener('click', toggleTheme);
   attachTooltips(document.getElementById('main'));
 }
 
