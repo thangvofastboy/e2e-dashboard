@@ -2,7 +2,7 @@
 // Exported archive() is also used by the e2e-dashboard plugin (hook + server).
 import { mkdir, readFile, writeFile, copyFile, rename, rm, readdir, stat } from 'node:fs/promises';
 import { readFileSync, existsSync } from 'node:fs';
-import { join, dirname, resolve, relative, sep, isAbsolute } from 'node:path';
+import { join, dirname, basename, resolve, relative, sep, isAbsolute } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
@@ -132,9 +132,9 @@ async function findFiles(dir, name, out = []) {
   return out;
 }
 
-// resultId -> absolute trace.md path. Without an explicit map, a trace belongs to the result
-// whose artifact paths live under the trace's directory.
-// ponytail: directory-prefix heuristic, verified against a real run in Task 12.
+// resultId -> absolute trace.md path. Without an explicit map: e2e names each test's results
+// directory `<slug>-<first 16 hex of result id>` (seen in e2e 0.19 and its docs); fall back to the
+// result whose artifact paths live under the trace's directory.
 async function resolveTraces(projectRoot, report, artRoot, traces) {
   const map = new Map();
   if (traces) {
@@ -144,7 +144,8 @@ async function resolveTraces(projectRoot, report, artRoot, traces) {
   const found = await findFiles(artRoot, 'trace.md');
   for (const r of report.run.results ?? []) {
     const paths = (r.attempts ?? []).flatMap((a) => (a.artifacts ?? []).map((x) => x.path).filter(Boolean));
-    const hit = found.find((t) => {
+    const byId = found.find((t) => basename(dirname(t)).endsWith(`-${r.id.slice(0, 16)}`));
+    const hit = byId ?? found.find((t) => {
       const dir = relative(artRoot, dirname(t)).split(sep).join('/');
       return paths.some((p) => p.startsWith(`${dir}/`));
     });

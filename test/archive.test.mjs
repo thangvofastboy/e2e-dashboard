@@ -140,3 +140,12 @@ test('result ids that are not hex digests never become trace file names', async 
   assert.equal(existsSync(join(root, 'pwned.md')), false);
   assert.deepEqual(JSON.parse(readFileSync(join(res.runDir, 'meta.json'), 'utf8')).traces, {});
 });
+
+test('without a traces map, a trace is matched by the result id suffix of its directory (passed tests too)', async () => {
+  const { root, report } = makeProject();
+  const passed = report.run.results.find((r) => r.status === 'passed');
+  put(root, `.e2e/results/example-opens-app-${passed.id.slice(0, 16)}/trace.md`, '# by id');
+  const res = await archive(root, { source: 'hook' });
+  const meta = JSON.parse(readFileSync(join(res.runDir, 'meta.json'), 'utf8'));
+  assert.equal(readFileSync(join(res.runDir, meta.traces[passed.id]), 'utf8'), '# by id');
+});
