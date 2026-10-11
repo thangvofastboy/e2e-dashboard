@@ -302,3 +302,16 @@ Phần còn lại đã làm ở M5.
 | Webhook, trạng thái GitHub | `server/webhook.mjs`, `github.setStatus` | Slack `text` + Discord `content`; commit status qua `gh api` |
 | Dung lượng | `server/storage.mjs`, `applyRetention({ keep, keepFailed })` | Không bao giờ xoá run đã ghim |
 | UX | `ui/router.js` (params), `ui/shortcuts.js`, `ui/toast.js` | Bộ lọc trên URL, phím tắt, toast, skeleton, thử lại, menu thu gọn, mobile, tiêu đề tab |
+
+## 14. M6 — Mở rộng (v0.6.0)
+
+| Phần | File | Ghi chú |
+|---|---|---|
+| MCP server | `bin/mcp.mjs`, `.mcp.json` | JSON-RPC qua stdio (initialize, tools/list, tools/call, ping); chỉ đọc; project = `CLAUDE_PROJECT_DIR` hoặc cwd |
+| Sửa bằng Claude Code | `bin/dashboard.mjs fix`, `commands/e2e-dashboard.md` | `FIX_REQUEST`; text report nằm trong `<test-data>` (đã vô hiệu thẻ đóng), coi là dữ liệu không tin cậy |
+| Coverage | `server/coverage.mjs` | Route từ `app/`, `pages/`, `src/routes`, `sitemap.xml`, fallback path trong router; AI action `route-test` |
+| Gate, SLO, môi trường | `server/insights.mjs`, `server/gate.mjs` | Bỏ run explore; hotspot khi lift ≥ 1.5 và ≥ 2 fail |
+| Mention owner | `server/webhook.mjs` | Map chỉ từ home config, giá trị phải dạng `<@…>`/`<!…>`/`<#…>` |
+| Tiếng Anh | `ui/i18n.js` | Từ điển áp lên text node + thuộc tính; bỏ qua code, log, Markdown, câu trả lời AI |
+| Lịch sử lớn | `server/store.mjs` | Cache `meta.json` theo mtime + size; trang Runs tải dần 50 run |
+| Báo cáo / CSV / có gì mới | `ui/views/report.js`, `server/csv.mjs`, `server/changelog.mjs` | CSV có BOM, chặn formula injection; `CHANGELOG.md` mục đầu phải trùng version plugin |

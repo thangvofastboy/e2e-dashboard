@@ -83,7 +83,40 @@ async function diffCanvas(left, right) {
   return { canvas: out, changed: d.changed, total: d.total, sizeDiffers: a.naturalWidth !== b.naturalWidth || a.naturalHeight !== b.naturalHeight };
 }
 
+// Two videos played as one: play, pause, seek and speed follow whichever the viewer drives.
+export function syncedVideosHtml({ left, right, leftLabel = 'Run A', rightLabel = 'Run B' }) {
+  if (!left || !right) return '';
+  return `<div class="visual vsync" data-vsync><div class="visual-bar"><strong>${icon('video', { size: 14 })} Video cạnh nhau (phát đồng bộ)</strong>
+      <span class="seg-btns"><button type="button" data-vplay>${icon('play', { size: 13 })}Phát / dừng</button>
+      <label class="muted small">Tốc độ <select data-vrate><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label></span></div>
+    <div class="visual-body"><figure><figcaption>${escapeHtml(leftLabel)}</figcaption><video src="${escapeHtml(left)}" preload="metadata" controls muted></video></figure>
+      <figure><figcaption>${escapeHtml(rightLabel)}</figcaption><video src="${escapeHtml(right)}" preload="metadata" controls muted></video></figure></div></div>`;
+}
+
+export function attachSyncedVideos(root) {
+  root.querySelectorAll('[data-vsync]').forEach((box) => {
+    const [a, b] = box.querySelectorAll('video');
+    let syncing = false;
+    const follow = (from, to) => {
+      for (const ev of ['play', 'pause', 'seeked', 'ratechange']) from.addEventListener(ev, () => {
+        if (syncing) return;
+        syncing = true;
+        if (Math.abs(to.currentTime - from.currentTime) > 0.25) to.currentTime = from.currentTime;
+        to.playbackRate = from.playbackRate;
+        if (ev === 'play') to.play().catch(() => {});
+        if (ev === 'pause') to.pause();
+        setTimeout(() => (syncing = false), 50);
+      });
+    };
+    follow(a, b);
+    follow(b, a);
+    box.querySelector('[data-vplay]').addEventListener('click', () => (a.paused ? a.play().catch(() => {}) : a.pause()));
+    box.querySelector('[data-vrate]').addEventListener('change', (e) => (a.playbackRate = Number(e.target.value) || 1));
+  });
+}
+
 export function attachVisualCompare(root) {
+  attachSyncedVideos(root);
   root.querySelectorAll('[data-visual]').forEach((box) => {
     const body = box.querySelector('[data-vbody]');
     const stat = box.querySelector('[data-vstat]');

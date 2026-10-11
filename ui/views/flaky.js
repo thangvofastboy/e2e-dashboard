@@ -33,7 +33,7 @@ export async function renderFlaky(main) {
         <ul>${q.list.map((x) => `<li>${escapeHtml(x.title)} <span class="muted small">đến ${escapeHtml(x.until.slice(0, 10))}${q.expired.includes(x.key) ? ' · quá hạn: sửa hoặc gỡ' : ''}</span> <button type="button" class="small-btn" data-unlock="${escapeHtml(x.key)}">Gỡ</button></li>`).join('')}</ul>
         ${q.command ? `<p class="muted small">Dashboard tự bỏ các test này khi bạn tick “Bỏ qua test đang cách ly” lúc chạy. Cho CI: <button type="button" class="small-btn" data-copy-q>${icon('copy', { size: 13 })}Copy lệnh</button> (hoặc <code>/e2e-dashboard quarantine</code>).</p>` : ''}</section>`
     : '';
-  const head = pageHead('Flaky', 'shuffle', 'Test có lúc pass lúc fail: pass nhờ retry (flaky) hoặc đổi kết quả giữa các run. Điểm cao hơn khi đổi kết quả trên cùng một commit.', picker.html);
+  const head = pageHead('Flaky', 'shuffle', 'Test có lúc pass lúc fail: pass nhờ retry (flaky) hoặc đổi kết quả giữa các run. Điểm cao hơn khi đổi kết quả trên cùng một commit.', `${picker.html}<a class="button" href="/api/export/flaky.csv?n=${analysisCount()}" download>${icon('download', { size: 14 })}CSV</a>`);
   main.innerHTML = tests.length
     ? `${head}${qbox}<table class="table"><thead><tr><th>Test</th><th>Điểm flaky</th><th class="num">Flaky</th><th class="num">Đổi kết quả</th><th class="num">Tỉ lệ fail</th><th>Lịch sử (cũ → mới)</th><th></th></tr></thead><tbody>${tests.map((t) => flakyRowHtml(t, locks.get(t.key))).join('')}</tbody></table>`
     : `${head}${qbox}${emptyBox('Không có test flaky', 'Trong các run đã chọn, không test nào pass nhờ retry hay đổi kết quả.')}`;

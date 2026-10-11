@@ -19,6 +19,12 @@ import { renderAppErrors } from './views/app-errors.js';
 import { renderSettings } from './views/settings.js';
 import { openAskPanel } from './views/ai-panel.js';
 import { bindShortcuts, setPageKeys, shortcutHelp } from './shortcuts.js';
+import { renderCoverage } from './views/coverage.js';
+import { renderEnvironment } from './views/environment.js';
+import { renderReport } from './views/report.js';
+import { initI18n, setLang, currentLang } from './i18n.js';
+import { openModal } from './analysis.js';
+import { renderMarkdown } from './markdown.js';
 import { getJson, isExport, liveStream } from './api.js';
 import { attachTooltips } from './charts.js';
 import { escapeHtml } from './format.js';
@@ -28,17 +34,17 @@ import { icon, ICON_SPRITE } from './icons.js';
 // [view, href, label, icon]; groups after the first get a heading. Analysis pages need the server.
 const NAV = [
   [null, [['overview', '#/', 'Overview', 'grid'], ['runs', '#/runs', 'Runs', 'list'], ['live', '#/live', 'Live', 'activity'], ['tests', '#/tests', 'Tests', 'flask']]],
-  ['Phân tích', [['flaky', '#/flaky', 'Flaky', 'shuffle'], ['errors', '#/errors', 'Nhóm lỗi', 'layers'], ['cost', '#/cost', 'Chi phí & cache', 'coins'], ['routes', '#/routes', 'Bản đồ route', 'route'], ['branches', '#/branches', 'Branch', 'branch'], ['models', '#/models', 'Model & ngân sách', 'cpu'], ['locators', '#/locators', 'Gợi ý locator', 'crosshair'], ['lint', '#/lint', 'Lint agent', 'lint'], ['app-errors', '#/app-errors', 'Lỗi app', 'terminal']]],
-  ['Tích hợp', [['projects', '#/projects', 'Projects', 'folder'], ['digest', '#/digest', 'Digest tuần', 'newspaper'], ['settings', '#/settings', 'Tự động & lưu trữ', 'gauge']]],
+  ['Phân tích', [['flaky', '#/flaky', 'Flaky', 'shuffle'], ['errors', '#/errors', 'Nhóm lỗi', 'layers'], ['cost', '#/cost', 'Chi phí & cache', 'coins'], ['routes', '#/routes', 'Bản đồ route', 'route'], ['branches', '#/branches', 'Branch', 'branch'], ['models', '#/models', 'Model & ngân sách', 'cpu'], ['locators', '#/locators', 'Gợi ý locator', 'crosshair'], ['lint', '#/lint', 'Lint agent', 'lint'], ['app-errors', '#/app-errors', 'Lỗi app', 'terminal'], ['coverage', '#/coverage', 'Coverage', 'crosshair'], ['environment', '#/environment', 'Môi trường', 'cpu']]],
+  ['Tích hợp', [['projects', '#/projects', 'Projects', 'folder'], ['digest', '#/digest', 'Digest tuần', 'newspaper'], ['report', '#/report', 'Báo cáo', 'file'], ['settings', '#/settings', 'Tự động & lưu trữ', 'gauge']]],
 ];
 const EXPORT_VIEWS = new Set(['overview', 'runs', 'run']);
 const VIEWS = {
   overview: renderOverview, runs: renderRunsPage, run: renderRun, live: renderLive, tests: renderTests,
   flaky: renderFlaky, compare: renderCompare, errors: renderErrors, cost: renderCost, routes: renderRoutes,
   branches: renderBranches, projects: renderProjects, digest: renderDigest, locators: renderLocators, models: renderModels, lint: renderLint,
-  test: renderTest, 'app-errors': renderAppErrors, settings: renderSettings,
+  test: renderTest, 'app-errors': renderAppErrors, settings: renderSettings, coverage: renderCoverage, environment: renderEnvironment, report: renderReport,
 };
-const TITLES = { overview: 'Overview', runs: 'Runs', run: 'Run', live: 'Live', tests: 'Tests', test: 'Test', compare: 'So sánh', flaky: 'Flaky', errors: 'Nhóm lỗi', cost: 'Chi phí', routes: 'Route', branches: 'Branch', projects: 'Projects', digest: 'Digest', locators: 'Locator', models: 'Model', lint: 'Lint', 'app-errors': 'Lỗi app', settings: 'Cài đặt' };
+const TITLES = { overview: 'Overview', runs: 'Runs', run: 'Run', live: 'Live', tests: 'Tests', test: 'Test', compare: 'So sánh', flaky: 'Flaky', errors: 'Nhóm lỗi', cost: 'Chi phí', routes: 'Route', branches: 'Branch', projects: 'Projects', digest: 'Digest', locators: 'Locator', models: 'Model', lint: 'Lint', 'app-errors': 'Lỗi app', settings: 'Cài đặt', coverage: 'Coverage', environment: 'Môi trường', report: 'Báo cáo' };
 
 // Which nav groups are folded: a per-viewer convenience, so storage failures are fine.
 function foldedGroups() {
@@ -102,7 +108,7 @@ function shell() {
       <div class="nav-body" id="nav-body">
       ${isExport() ? '' : `<div class="nav-tools"><button type="button" class="nav-search" data-search>${icon('search', { size: 15 })}Tìm kiếm <kbd>Ctrl K</kbd></button><button type="button" class="nav-ask btn-ai" data-ask title="Hỏi AI về bộ test">${icon('sparkles', { size: 15 })}Hỏi AI</button></div>`}
       <nav aria-label="Điều hướng">${nav}</nav>
-      <div class="nav-foot"><div class="foot-btns"><button class="theme-toggle" type="button" aria-label="Chuyển giao diện sáng / tối">${icon('sun')}Sáng / Tối</button>${isExport() ? '' : `<button type="button" class="icon-btn" data-keys title="Phím tắt (?)" aria-label="Phím tắt">${icon('bolt', { size: 15 })}</button>`}</div><div id="nav-foot"></div></div>
+      <div class="nav-foot"><div class="foot-btns"><button class="theme-toggle" type="button" aria-label="Chuyển giao diện sáng / tối">${icon('sun')}Sáng / Tối</button>${isExport() ? '' : `<button type="button" class="icon-btn" data-keys title="Phím tắt (?)" aria-label="Phím tắt">${icon('bolt', { size: 15 })}</button>`}<button type="button" class="icon-btn lang-btn" data-lang title="Tiếng Việt / English" aria-label="Ngôn ngữ">${currentLang() === 'en' ? 'VI' : 'EN'}</button></div><div id="nav-foot"></div></div>
       </div>
     </aside>
     <main id="main" tabindex="-1"></main>`;
@@ -110,6 +116,7 @@ function shell() {
   document.querySelector('[data-search]')?.addEventListener('click', openSearch);
   document.querySelector('[data-ask]')?.addEventListener('click', openAskPanel);
   document.querySelector('[data-keys]')?.addEventListener('click', shortcutHelp);
+  document.querySelector('[data-lang]').addEventListener('click', () => setLang(currentLang() === 'en' ? 'vi' : 'en'));
   const toggle = document.querySelector('.nav-toggle');
   toggle.addEventListener('click', () => {
     const open = document.body.classList.toggle('nav-open');
@@ -148,10 +155,38 @@ async function footer() {
   const skipped = info.lastArchive?.status === 'skipped' && info.lastArchive.reason !== 'no-report'
     ? `<p class="hint">Report gần nhất không được lưu: ${escapeHtml(info.lastArchive.reason)}.</p>`
     : '';
-  el.innerHTML = `<div class="muted">${escapeHtml(info.project)} · v${escapeHtml(info.version)}</div>${hint}${skipped}`;
+  el.innerHTML = `<div class="muted">${escapeHtml(info.project)} · v${escapeHtml(info.version)} · <a href="#" data-whatsnew>Có gì mới</a></div>${hint}${skipped}`;
+  el.querySelector('[data-whatsnew]').addEventListener('click', (e) => {
+    e.preventDefault();
+    whatsNew(info.version, true);
+  });
+  whatsNew(info.version, false);
 }
 
 let routeSeq = 0;
+
+// "What's new": once after each update (per viewer), or on demand from the footer link.
+async function whatsNew(version, force) {
+  let seen = null;
+  try {
+    seen = localStorage.getItem('e2ed-seen-version');
+    localStorage.setItem('e2ed-seen-version', version);
+  } catch {
+    if (!force) return; // no storage: never nag on every load
+  }
+  if (!force && (!seen || seen === version)) return; // first visit or nothing new
+  const { entries } = await getJson('/api/changelog').catch(() => ({ entries: [] }));
+  const fresh = force ? entries.slice(0, 3) : entries.filter((e) => cmpVersion(e.version, seen) > 0);
+  if (!fresh.length) return;
+  openModal('whatsnew-dialog', 'Có gì mới', 'sparkles', `<div class="md whatsnew">${fresh.map((e) => `<h2>v${escapeHtml(e.version)}${e.date ? ` <span class="muted small">${escapeHtml(e.date)}</span>` : ''}</h2>${renderMarkdown(e.body)}`).join('')}</div>`);
+}
+
+function cmpVersion(a, b) {
+  const x = String(a).split('.').map(Number);
+  const y = String(b ?? '0.0.0').split('.').map(Number);
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0);
+  return 0;
+}
 
 async function route() {
   cleanup?.();
@@ -209,6 +244,7 @@ function watchLive() {
 
 if (isExport() && !location.hash) location.hash = `#/run/${encodeURIComponent(globalThis.__E2ED_EXPORT__.runId)}`;
 shell();
+initI18n();
 footer();
 watchLive();
 window.addEventListener('hashchange', route);

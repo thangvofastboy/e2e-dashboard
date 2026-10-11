@@ -10,6 +10,10 @@ import { DATA_DIR, readServerInfo, ensureDataDir } from '../reporter/e2e-dashboa
 import { findProjectRoot, findConfig } from './project.mjs';
 import { exportRun } from '../server/export.mjs';
 import { buildDigest } from '../server/digest.mjs';
+import { runGate } from '../server/gate.mjs';
+import { getRun, listRuns, getAi } from '../server/store.mjs';
+import { cacheKey, commitsBetween } from '../server/ai.mjs';
+import { resultAttempts, RESULT_ID } from '../reporter/e2e-dashboard.reporter.mjs';
 import { projectSummaries, homeDir } from '../server/projects.mjs';
 import { readQuarantine, quarantineFlags } from '../server/quarantine.mjs';
 import { importReport, importFromGithub, sharePush, sharePull } from '../server/share.mjs';
@@ -209,6 +213,46 @@ export async function installStatusline(env = process.env) {
   return { target, command, changed: true, settingsPath };
 }
 
+const FAILING = new Set(['failed', 'timed-out', 'interrupted', 'flaky']);
+
+// Everything Claude Code needs to fix a failing test, behind a FIX_REQUEST marker that
+// commands/e2e-dashboard.md turns into "read, fix, rerun". Report text is fenced as data.
+export async function fixContext(root, runId, resultId) {
+  const metas = await listRuns(root);
+  const id = runId && runId !== 'latest' ? runId : metas.find((m) => m.summary?.failed || m.summary?.flaky)?.runId;
+  const run = id && (await getRun(root, id));
+  if (!run) return null;
+  const results = (run.report.run.results ?? []).filter((r) => (resultId ? r.id === resultId : FAILING.has(r.status))).slice(0, 5);
+  if (!results.length) return { run, text: null };
+  const prevPass = metas.slice(metas.findIndex((m) => m.runId === id) + 1).find((m) => m.status === 'passed');
+  const commits = await commitsBetween(root, prevPass?.git?.commit, run.meta.git?.commit);
+  const lines = ['FIX_REQUEST', `Run: ${run.meta.runId} · ${run.meta.git?.branch ?? '?'}@${String(run.meta.git?.commit ?? '').slice(0, 10)}`, '<test-data>'];
+  const specs = [];
+  for (const r of results) {
+    const a = resultAttempts(run.report, r).at(-1);
+    const e = a?.error;
+    const spec = r.source?.line ? `${r.source.file ?? r.file}:${r.source.line}` : r.source?.file ?? r.file;
+    if (/^[\w./@+-]+(:\d+)?$/.test(spec ?? '')) specs.push(spec);
+    const failed = (a?.steps ?? []).find((x) => x.status !== 'passed');
+    lines.push(`## ${(r.titlePath ?? []).join(' › ')} [${r.targetId}] (${r.status})`, `File: ${spec}`);
+    if (e) lines.push(`Lỗi: ${e.code ?? 'ERROR'}: ${String(e.message ?? '').slice(0, 800)}`, ...['locator', 'expected', 'observed'].filter((k) => e.details?.[k]).map((k) => `${k}: ${String(e.details[k]).slice(0, 300)}`));
+    if (e?.source) lines.push(`Vị trí lỗi: ${e.source.file}:${e.source.line}`);
+    if (failed) lines.push(`Step fail: ${failed.api} "${String(failed.label ?? '').slice(0, 300)}"`);
+    if (a?.failure?.url) lines.push(`URL lúc fail: ${a.failure.url}`);
+    const logs = (a?.appLog ?? []).filter((l) => l.level === 'error').slice(0, 8);
+    if (logs.length) lines.push('Log app:', ...logs.map((l) => `- [${l.source}] ${String(l.text).slice(0, 200)}`));
+    if (run.meta.traces?.[r.id] && RESULT_ID.test(r.id)) lines.push(`Trace: ${join(DATA_DIR, 'runs', basename(run.dir), run.meta.traces[r.id])}`);
+    const ai = await getAi(root, run.meta.runId, cacheKey('analyze-failure', run.meta.runId, r.id));
+    if (ai?.markdown) lines.push('Phân tích AI đã có:', ai.markdown.slice(0, 3000));
+    lines.push('');
+  }
+  if (commits.length) lines.push(`Commit kể từ lần pass gần nhất:`, ...commits.slice(0, 15).map((c) => `- ${c}`));
+  // report text must not be able to close the data fence early
+  for (let i = 3; i < lines.length; i++) lines[i] = lines[i].replace(/<(\/?)test-data/gi, '‹$1test-data');
+  lines.push('</test-data>', '', `Chạy lại sau khi sửa: npx e2e run ${[...new Set(specs)].join(' ')} --retries 0`);
+  return { run, text: lines.join('\n') };
+}
+
 export async function main(argv, cwd) {
   const [first] = argv;
   if (first === 'projects') {
@@ -243,6 +287,22 @@ export async function main(argv, cwd) {
   if (cmd === 'export') {
     const p = await exportRun(root, argv[1]);
     return p ? { code: 0, out: `Đã xuất: ${p}` } : { code: 1, out: argv[1] ? `Không tìm thấy run ${argv[1]}.` : 'Chưa có run nào để xuất.' };
+  }
+  if (cmd === 'gate') {
+    const num = (flag) => {
+      const i = argv.indexOf(flag);
+      return i >= 0 && Number.isFinite(Number(argv[i + 1])) ? Number(argv[i + 1]) : undefined;
+    };
+    const o = { maxNewFailures: num('--max-new-failures'), minHealth: num('--min-health'), maxTokens: num('--max-tokens'), ...(argv.includes('--slo') ? { requireSlo: true } : {}) };
+    const g = await runGate(root, Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)));
+    const out = [`${g.pass ? '✅ GATE PASS' : '❌ GATE FAIL'}${g.runId ? ` · run ${g.runId}` : ''}`, ...g.checks.map((c) => `${c.pass ? '  ✓' : '  ✗'} ${c.detail}${c.tests?.length ? `: ${c.tests.join('; ')}` : ''}`)];
+    return { code: g.pass ? 0 : 1, out: out.join('\n') };
+  }
+  if (cmd === 'fix') {
+    const r = await fixContext(root, argv[1], argv[2]);
+    if (!r) return { code: 1, out: argv[1] ? `Không tìm thấy run ${argv[1]}.` : 'Chưa có run nào có test fail.' };
+    if (!r.text) return { code: 0, out: `Run ${r.run.meta.runId} không có test fail${argv[2] ? ` nào khớp ${argv[2]}` : ''}.` };
+    return { code: 0, out: r.text };
   }
   if (cmd === 'quarantine') {
     const q = quarantineFlags(await readQuarantine(root));
@@ -298,7 +358,7 @@ export async function main(argv, cwd) {
     }
     return { code: 0, out: `${r.markdown}\nĐã lưu: ${r.file}${sent}` };
   }
-  return { code: 1, out: 'Dùng: /e2e-dashboard [setup|export [runId]|stop|status|digest [ngày]|projects|statusline [install]|quarantine|import …|share push|pull [dir]]' };
+  return { code: 1, out: 'Dùng: /e2e-dashboard [setup|export [runId]|stop|status|digest [ngày]|projects|statusline [install]|quarantine|import …|share push|pull [dir]|fix [runId] [resultId]|gate]' };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

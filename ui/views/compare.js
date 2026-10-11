@@ -2,7 +2,7 @@ import { getJson } from '../api.js';
 import { openPrDialog } from './actions.js';
 import { flattenResults } from '../model.js';
 import { artifactsOf, mediaSrc } from './run.js';
-import { visualCompareHtml, attachVisualCompare, screenshotTriplets } from '../visual.js';
+import { visualCompareHtml, attachVisualCompare, screenshotTriplets, syncedVideosHtml } from '../visual.js';
 import { pageHead, fmtPoints, fmtSignedMs, fmtUsd } from '../analysis.js';
 import { escapeHtml, fmtDuration, fmtTokens, statusBadge } from '../format.js';
 import { runHref, compareHref } from '../router.js';
@@ -31,6 +31,12 @@ function shotsOf(runData, resultId) {
   return [...screenshots].sort((x, y) => (y.id === fail) - (x.id === fail)).map((s) => ({ ...s, src: mediaSrc(runData.meta.runId, s) })).filter((s) => s.src);
 }
 
+function videoOf(runData, resultId) {
+  const r = runData && flattenResults(runData.report).find((x) => x.id === resultId);
+  const a = r?.attempts.at(-1);
+  return a ? mediaSrc(runData.meta.runId, artifactsOf(a).video) : null;
+}
+
 function visualFor(row, A, B) {
   const left = row.a && shotsOf(A, row.a.resultId);
   const right = row.b && shotsOf(B, row.b.resultId);
@@ -38,6 +44,9 @@ function visualFor(row, A, B) {
   const triplets = right ? screenshotTriplets(right) : [];
   for (const t of triplets) parts.push(visualCompareHtml({ left: t.expected.src, right: t.actual.src, diff: t.diff?.src ?? null, leftLabel: 'Ảnh mẫu (expected)', rightLabel: 'Thực tế (actual)', title: `toHaveScreenshot · ${t.name}` }));
   if (left?.length && right?.length) parts.push(visualCompareHtml({ left: left[0].src, right: right[0].src, leftLabel: 'Run A', rightLabel: 'Run B', title: 'Screenshot giữa 2 run' }));
+  const va = row.a && videoOf(A, row.a.resultId);
+  const vb = row.b && videoOf(B, row.b.resultId);
+  if (va && vb) parts.push(syncedVideosHtml({ left: va, right: vb, leftLabel: `Run A (${row.a.status})`, rightLabel: `Run B (${row.b.status})` }));
   return parts.join('');
 }
 
@@ -100,7 +109,7 @@ export async function renderCompare(main, route) {
         if (tr.nextElementSibling?.classList.contains('visual-row')) return tr.nextElementSibling.remove();
         const [key, repeat] = [tr.dataset.row.slice(0, tr.dataset.row.lastIndexOf('|')), tr.dataset.row.split('|').pop()];
         const row = cmp.rows.find((r) => r.key === key && String(r.repeat) === repeat);
-        const html = visualFor(row, A, B) || '<p class="muted">Không có screenshot để so (artifact chỉ được lưu cho test không pass, hoặc mọi screenshot khi bật <code>"screenshots": "all"</code> trong config).</p>';
+        const html = visualFor(row, A, B) || '<p class="muted">Không có screenshot hay video ở cả hai run để so. Artifact chỉ được lưu cho test không pass; bật <code>"screenshots": "all"</code> / <code>"videos": "all"</code> trong config để giữ cả của test pass.</p>';
         tr.insertAdjacentHTML('afterend', `<tr class="visual-row"><td colspan="7">${html}</td></tr>`);
         attachVisualCompare(tr.nextElementSibling);
       }));

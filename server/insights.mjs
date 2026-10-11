@@ -363,3 +363,109 @@ export function exploreSummary(report) {
     findings: [...(e.findings ?? [])].sort((a, b) => num(b.severity) - num(a.severity)),
   };
 }
+
+// ---------------------------------------------------------------- failures by environment
+
+// Fail rate per value of each environment dimension; a value far above the overall rate is
+// where the failures live ("only on webkit", "only in the evening run").
+export function environmentBreakdown(history, { minResults = 3 } = {}) {
+  const dims = { target: new Map(), os: new Map(), browser: new Map(), runner: new Map(), hour: new Map(), branch: new Map() };
+  let total = 0;
+  let fails = 0;
+  const bump = (dim, value, failed) => {
+    if (value == null || value === '') return;
+    const m = dims[dim];
+    const k = String(value).slice(0, 80);
+    if (!m.has(k)) m.set(k, { value: k, results: 0, fails: 0 });
+    const x = m.get(k);
+    x.results++;
+    if (failed) x.fails++;
+  };
+  for (const { meta, report } of history) {
+    const env = report.run?.environment ?? {};
+    const hour = new Date(meta.startedAt).getHours();
+    for (const r of results(report)) {
+      if (r.status === 'skipped') continue;
+      const failed = FAIL.has(r.status);
+      total++;
+      if (failed) fails++;
+      const a = resultAttempts(report, r).at(-1);
+      bump('target', r.targetId, failed);
+      bump('os', env.os ? `${env.os}${env.arch ? ` ${env.arch}` : ''}` : null, failed);
+      bump('browser', a?.environment?.browser ? String(a.environment.browser).split(' ')[0] : null, failed);
+      bump('runner', report.run?.runner?.version ? `e2e ${report.run.runner.version}` : null, failed);
+      bump('hour', Number.isFinite(hour) ? `${String(hour).padStart(2, '0')}h` : null, failed);
+      bump('branch', meta.git?.branch, failed);
+    }
+  }
+  const overall = total ? fails / total : null;
+  const out = {};
+  for (const [dim, m] of Object.entries(dims)) {
+    const rows = [...m.values()].filter((x) => x.results >= minResults).map((x) => ({ ...x, failRate: x.fails / x.results, lift: overall ? x.fails / x.results / overall : null }));
+    if (rows.length > 1) out[dim] = rows.sort((a, b) => b.failRate - a.failRate);
+  }
+  const hotspots = Object.entries(out).flatMap(([dim, rows]) => rows.filter((x) => x.fails >= 2 && x.lift >= 1.5).map((x) => ({ dim, ...x }))).sort((a, b) => b.lift - a.lift).slice(0, 6);
+  return { total, fails, overall, dims: out, hotspots };
+}
+
+// ---------------------------------------------------------------- SLO / error budget
+
+// Target pass rate over a rolling window: the failures the target allows, how many are spent,
+// and how fast (burn rate > 1 means the budget runs out before the window does).
+export function sloStatus(history, { target = 0.95, days = 7, now = Date.now() } = {}) {
+  const from = now - days * 86_400_000;
+  let executed = 0;
+  let failed = 0;
+  const daily = new Map();
+  for (const { meta, report } of history) {
+    const t = Date.parse(meta.startedAt);
+    if (!(t >= from && t <= now)) continue;
+    const day = new Date(t).toISOString().slice(0, 10);
+    if (!daily.has(day)) daily.set(day, { day, executed: 0, failed: 0 });
+    const d = daily.get(day);
+    for (const r of results(report)) {
+      if (r.status === 'skipped') continue;
+      executed++;
+      d.executed++;
+      if (FAIL.has(r.status)) {
+        failed++;
+        d.failed++;
+      }
+    }
+  }
+  const allowed = executed * (1 - target);
+  const actual = executed ? 1 - failed / executed : null;
+  const remaining = allowed ? Math.max(0, 1 - failed / allowed) : executed ? (failed ? 0 : 1) : null;
+  const elapsed = Math.min(1, (now - from) / (days * 86_400_000));
+  return {
+    target, days, executed, failed, actual,
+    allowedFailures: Math.floor(allowed), remaining,
+    burnRate: allowed ? failed / allowed / elapsed : null,
+    met: actual == null ? null : actual >= target,
+    daily: [...daily.values()].sort((a, b) => a.day.localeCompare(b.day)),
+  };
+}
+
+// ---------------------------------------------------------------- quality gate
+
+// Pass/fail for CI or a pre-push hook: new failures vs the previous run (or the baseline),
+// health score, SLO and token budget. Each check says why.
+export function qualityGate({ history, health, slo, baseline = null, compare, rules = {} }) {
+  const r = { maxNewFailures: 0, minHealth: null, requireSlo: false, maxTokens: null, ...rules };
+  const latest = history[0];
+  if (!latest) return { pass: false, checks: [{ name: 'run', pass: false, detail: 'Chưa có run nào.' }] };
+  const base = baseline ?? history[1] ?? null;
+  const checks = [];
+  if (base) {
+    const c = compare(base, latest);
+    const n = c.counts.regressed;
+    checks.push({ name: 'new-failures', pass: n <= r.maxNewFailures, detail: `${n} test mới fail so với ${baseline ? 'baseline' : 'run trước'} (cho phép ${r.maxNewFailures})`, tests: c.rows.filter((x) => x.change === 'regressed').map((x) => x.title).slice(0, 10) });
+  } else checks.push({ name: 'new-failures', pass: latest.meta.status === 'passed', detail: 'Chưa có run để so: dùng kết quả run mới nhất.' });
+  if (Number.isFinite(r.minHealth) && health) checks.push({ name: 'health', pass: health.score >= r.minHealth, detail: `Health score ${health.score} (tối thiểu ${r.minHealth})` });
+  if (r.requireSlo && slo?.met != null) checks.push({ name: 'slo', pass: slo.met, detail: `Pass rate ${Math.round((slo.actual ?? 0) * 1000) / 10}% trong ${slo.days} ngày (mục tiêu ${Math.round(slo.target * 100)}%)` });
+  if (Number.isFinite(r.maxTokens)) {
+    const tok = num(latest.meta.tokens?.input) + num(latest.meta.tokens?.output);
+    checks.push({ name: 'tokens', pass: tok <= r.maxTokens, detail: `${tok} token ở run mới nhất (tối đa ${r.maxTokens})` });
+  }
+  return { pass: checks.every((c) => c.pass), runId: latest.meta.runId, checks };
+}

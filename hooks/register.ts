@@ -116,13 +116,14 @@ async function runCli($: EngineInterface, argv: string[]) {
   })
   const out = `${run.stdout}${run.stderr}`.trim() || `dashboard.mjs thoát mã ${run.exitCode}`
   // the config edit needs the model: the namespaced markdown command hands it to Claude
+  if (out.startsWith('FIX_REQUEST')) return `Để Claude sửa test này, chạy:\n  /${BARE}:${BARE} ${argv.join(' ')}`
   return out.includes('NEEDS_MANUAL_EDIT') ? `${out}\n\nChạy /${BARE}:${BARE} setup để Claude sửa config giúp.` : out
 }
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command
-      .register({ name: BARE, description: 'Mở dashboard e2e (live, lịch sử, debug)', argumentHint: '[setup|export [runId]|stop|status|digest [ngày]|projects|statusline [install]|quarantine|import <path>|share push|pull|update|version]' })
+      .register({ name: BARE, description: 'Mở dashboard e2e (live, lịch sử, debug)', argumentHint: '[setup|export [runId]|stop|status|digest [ngày]|projects|statusline [install]|quarantine|import <path>|share push|pull|fix [runId] [resultId]|gate|update|version]' })
       .catch(() => undefined)
     return next(e)
   })

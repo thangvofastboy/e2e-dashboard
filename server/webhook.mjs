@@ -21,6 +21,21 @@ export async function webhookConfig(env = process.env) {
     .map((w) => ({ url: w.url, events: Array.isArray(w.events) ? w.events.filter((e) => typeof e === 'string') : ['run-failed', 'digest'] }));
 }
 
+// Owners (from CODEOWNERS) → chat handles, e.g. { "@team-qa": "<!subteam^S123>", "@ana": "<@U456>" },
+// from ~/.e2e-dashboard/config.json "mentions"; only mention-shaped values are used.
+export async function mentionMap(env = process.env) {
+  try {
+    const m = JSON.parse(await readFile(join(homeDir(env), 'config.json'), 'utf8')).mentions;
+    return m && typeof m === 'object' ? Object.fromEntries(Object.entries(m).filter(([k, v]) => typeof k === 'string' && typeof v === 'string' && /^<[@!#][\w^|.-]{1,80}>$/.test(v))) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function mentionsFor(owners, map) {
+  return [...new Set(owners.map((o) => map[o]).filter(Boolean))].join(' ');
+}
+
 // Slack reads `text`, Discord `content`: send both.
 export async function sendWebhooks(hooks, event, text, { fetchImpl = globalThis.fetch } = {}) {
   const body = JSON.stringify({ text: String(text).slice(0, 3900), content: String(text).slice(0, 1900), event });
