@@ -1,9 +1,18 @@
 const PAGES = ['runs', 'live', 'tests', 'flaky', 'errors', 'cost', 'routes', 'projects', 'digest', 'locators', 'models', 'lint', 'app-errors', 'settings', 'coverage', 'environment', 'report', 'trends', 'triage', 'groups', 'release', 'traceability', 'lifecycle'];
 
+// a pasted link with a stray % ("#/test/100%") must still route, not throw
+const dec = (s) => {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+};
+
 // "#/run/<id>?status=failed" → view + params; params (filters) only appear when the hash has them.
 export function parseRoute(hash) {
   const [path, query] = (hash || '#/').split('?');
-  const parts = path.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
+  const parts = path.replace(/^#\/?/, '').split('/').filter(Boolean).map(dec);
   const params = query ? Object.fromEntries(new URLSearchParams(query)) : null;
   const withParams = (r) => (params ? { ...r, params } : r);
   if (!parts.length) return withParams({ view: 'overview' });

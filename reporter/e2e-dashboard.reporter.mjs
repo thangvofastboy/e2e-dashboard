@@ -6,7 +6,7 @@ import { join, dirname, basename, resolve, relative, sep, isAbsolute } from 'nod
 import { randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
-export const VERSION = '0.7.0';
+export const VERSION = '0.8.0';
 export const DATA_DIR = '.e2e-dashboard';
 
 function allSteps(report) {
@@ -231,15 +231,17 @@ export async function archive(projectRoot, { source, rerunOf = null, report, rep
     aborted();
     await writeFile(join(tmp, 'report.json'), JSON.stringify(report));
     const traceMeta = {};
+    // a committed `.e2e/results -> ~/.ssh` must not pull files from outside into runs/ (and share push)
+    const artOk = !isLink(artRoot);
     for (const [id, abs] of await resolveTraces(projectRoot, report, artRoot, traces)) {
-      if (!RESULT_ID.test(id) || !realInside(projectRoot, abs)) continue;
+      if (!RESULT_ID.test(id) || !(realInside(projectRoot, abs) || (artOk && realInside(artRoot, abs)))) continue; // CI imports live outside the project
       await mkdir(join(tmp, 'traces'), { recursive: true });
       await copyFile(abs, join(tmp, 'traces', `${id}.md`));
       traceMeta[id] = `traces/${id}.md`;
     }
     for (const a of keptArtifacts(report, { allScreenshots: cfg.screenshots === 'all', allVideos: cfg.videos === 'all' })) {
       aborted();
-      if (a.path) await copyInto(artRoot, join(tmp, 'artifacts'), a.path);
+      if (a.path && artOk) await copyInto(artRoot, join(tmp, 'artifacts'), a.path);
     }
     aborted();
     const meta = { ...summarize(report, { source, rerunOf, git: report.run.vcs ? null : gitInfo(projectRoot) }), traces: traceMeta };

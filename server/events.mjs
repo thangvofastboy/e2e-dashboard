@@ -28,8 +28,10 @@ export async function addEvent(root, { kind, label, at, url } = {}) {
     const list = await readEvents(root);
     const e = { id: `ev-${randomBytes(6).toString('hex')}`, kind, label: text, at: new Date(t).toISOString(), url: typeof url === 'string' && /^https:\/\/\S{1,500}$/.test(url) ? url : null, createdAt: new Date().toISOString() };
     list.push(e);
-    list.sort((a, b) => a.at.localeCompare(b.at));
-    await writeState(root, FILE, list.slice(-1000));
+    // cap by creation order: a backdated event must not be the one dropped (and still answer 201)
+    const kept = list.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))).slice(-1000);
+    kept.sort((a, b) => a.at.localeCompare(b.at));
+    await writeState(root, FILE, kept);
     return e;
   });
 }
@@ -65,18 +67,30 @@ export async function timeline(root, { from = 0, to = Date.now(), tags = true } 
 }
 
 // Last commit touching each file: { file: { commit, at, author } }, for the test lifecycle page.
+// Cached per HEAD: the answer for a file only changes when HEAD moves, and the page asks on every view.
+const commitCache = new Map();
 export async function lastCommits(root, files, { execImpl = execFile, limit = 200 } = {}) {
+  const head = await new Promise((ok) => execImpl('git', ['rev-parse', 'HEAD'], { cwd: root, timeout: 5000 }, (err, so) => ok(err ? null : String(so).trim())));
+  const key = `${root}\0${head}`;
+  if (head && !commitCache.has(key)) {
+    for (const k of commitCache.keys()) if (k.startsWith(`${root}\0`)) commitCache.delete(k);
+    commitCache.set(key, {});
+  }
+  const cache = head ? commitCache.get(key) : {};
   const out = {};
   const list = [...new Set(files.filter((f) => typeof f === 'string' && f && !f.startsWith('-') && !f.includes('\0')))].slice(0, limit);
+  for (const f of list) if (f in cache) out[f] = cache[f];
+  const todo = list.filter((f) => !(f in cache));
   let i = 0;
   const worker = async () => {
-    while (i < list.length) {
-      const f = list[i++];
+    while (i < todo.length) {
+      const f = todo[i++];
       out[f] = await new Promise((ok) =>
         execImpl('git', ['log', '-1', '--format=%h%x09%cI%x09%an', '--', f], { cwd: root, timeout: 5000 }, (err, so) => {
           const [commit, at, author] = err ? [] : String(so).trim().split('\t');
           ok(commit ? { commit, at, author: String(author ?? '').slice(0, 80) } : null);
         }));
+      if (out[f]) cache[f] = out[f]; // a timeout must not stick until HEAD moves
     }
   };
   await Promise.all(Array.from({ length: 6 }, worker));

@@ -34,14 +34,14 @@ export function renderMarkdown(src) {
   };
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const fence = /^(\s*)```/.exec(line);
+    const fence = /^(\s*)```\s*([\w+-]*)/.exec(line);
     if (fence) {
       flushPara();
       flushList();
       const code = [];
       const indent = fence[1].length; // fences inside list items come indented
       while (++i < lines.length && !/^\s*```/.test(lines[i])) code.push(lines[i].slice(Math.min(indent, lines[i].length - lines[i].trimStart().length)));
-      out.push(`<pre><code>${escapeHtml(code.join('\n'))}\n</code></pre>`);
+      out.push(`<pre><code${fence[2] ? ` class="language-${escapeHtml(fence[2].toLowerCase())}"` : ''}>${escapeHtml(code.join('\n'))}\n</code></pre>`);
       continue;
     }
     const h = /^(#{1,3})\s+(.*)$/.exec(line);

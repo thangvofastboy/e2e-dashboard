@@ -29,9 +29,10 @@ export async function renderReport(main) {
     renderReport(main);
   }));
   main.querySelector('[data-publish]')?.addEventListener('click', async (e) => {
-    e.target.disabled = true;
+    const btn = e.currentTarget; // e.target may be the inner <svg>; currentTarget is null after await
+    btn.disabled = true;
     const r = await postJson('/api/publish', {}).catch((x) => ({ error: x.message }));
-    e.target.disabled = false;
+    btn.disabled = false;
     if (r.error) return toast(r.error, 'bad');
     toast(`Đã xuất trang tĩnh (${r.runs} run): ${r.index}`, 'good', 8000);
   });

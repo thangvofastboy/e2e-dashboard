@@ -1,6 +1,7 @@
 import { readdir, readFile, writeFile, mkdir, rename, rm, lstat, stat } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
+import { serial } from './jsonstate.mjs';
 import { DATA_DIR, RUN_ID, RESULT_ID, resultAttempts, realInside, isLink } from '../reporter/e2e-dashboard.reporter.mjs';
 
 const runsDir = (root) => join(root, DATA_DIR, 'runs');
@@ -17,27 +18,27 @@ export async function listRuns(root) {
   } catch {
     return [];
   }
-  const metas = [];
+  const dirs = names.filter((n) => !n.startsWith('.')).sort().reverse();
   const live = new Set();
-  for (const dir of names.filter((n) => !n.startsWith('.')).sort().reverse()) {
+  const one = async (dir) => {
     const p = join(runsDir(root), dir, 'meta.json');
     live.add(p);
     try {
       const st = await stat(p);
       const hit = metaCache.get(p);
-      if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) {
-        metas.push({ ...hit.meta, dir });
-        continue;
-      }
+      if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return { ...hit.meta, dir };
       const meta = await readJson(p);
       metaCache.set(p, { mtimeMs: st.mtimeMs, size: st.size, meta });
-      metas.push({ ...meta, dir });
+      return { ...meta, dir };
     } catch {
-      // half-written or removed concurrently
+      return null; // half-written or removed concurrently
     }
-  }
+  };
+  const metas = [];
+  for (let i = 0; i < dirs.length; i += 32) metas.push(...(await Promise.all(dirs.slice(i, i + 32).map(one)))); // 32 stats in flight, order kept
   for (const k of metaCache.keys()) if (k.startsWith(runsDir(root)) && !live.has(k)) metaCache.delete(k); // removed by retention
-  return metas;
+  for (const k of reportCache.keys()) if (k.startsWith(runsDir(root)) && !live.has(join(k, 'meta.json'))) reportCache.delete(k);
+  return metas.filter(Boolean);
 }
 
 export async function findRunDir(root, runId) {
@@ -107,22 +108,27 @@ export async function setFlag(root, runId, flag, value) {
   if (flag !== 'pinned' && flag !== 'baseline') throw new Error(`unknown flag ${flag}`);
   const dir = await findRunDir(root, runId);
   if (!dir) return null;
-  if (flag === 'baseline' && value) {
-    for (const m of await listRuns(root))
-      if (m.baseline && m.runId !== runId) await writeMeta(join(runsDir(root), m.dir), { ...m, baseline: false });
-  }
-  const meta = await readJson(join(dir, 'meta.json'));
-  return writeMeta(dir, { ...meta, [flag]: Boolean(value) });
+  // meta.json is read-modify-written by pin/baseline and by annotateRun: one chain per project, no lost field
+  return serial(`meta:${root}`, async () => {
+    if (flag === 'baseline' && value) {
+      for (const m of await listRuns(root))
+        if (m.baseline && m.runId !== runId) await writeMeta(join(runsDir(root), m.dir), { ...m, baseline: false });
+    }
+    const meta = await readJson(join(dir, 'meta.json'));
+    return writeMeta(dir, { ...meta, [flag]: Boolean(value) });
+  });
 }
 
 // Runs started from the dashboard: remember that, and which run they reran (spec §4.5).
 export async function annotateRun(root, runId, { launchedBy, rerunOf } = {}) {
   const dir = await findRunDir(root, runId);
   if (!dir) return null;
-  const meta = await readJson(join(dir, 'meta.json'));
-  if (launchedBy !== undefined) meta.launchedBy = String(launchedBy);
-  if (rerunOf !== undefined && rerunOf !== null) meta.rerunOf = String(rerunOf);
-  return writeMeta(dir, meta);
+  return serial(`meta:${root}`, async () => {
+    const meta = await readJson(join(dir, 'meta.json'));
+    if (launchedBy !== undefined) meta.launchedBy = String(launchedBy);
+    if (rerunOf !== undefined && rerunOf !== null) meta.rerunOf = String(rerunOf);
+    return writeMeta(dir, meta);
+  });
 }
 
 const resultDuration = (report, r) => resultAttempts(report, r).reduce((s, a) => s + (a.durationMs ?? 0), 0);
@@ -130,9 +136,10 @@ const resultDuration = (report, r) => resultAttempts(report, r).reduce((s, a) =>
 export async function testHistory(root, n = 10) {
   const rows = new Map();
   for (const m of (await listRuns(root)).slice(0, n)) {
+    if (isLink(join(runsDir(root), m.dir))) continue;
     let report;
     try {
-      report = await readJson(join(runsDir(root), m.dir, 'report.json'));
+      report = await cachedReport(root, m.dir);
     } catch {
       continue;
     }

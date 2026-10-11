@@ -46,6 +46,7 @@ export function impactedTests(history, files) {
     }
   }
   const out = [];
+  const words = new Map(files.map((f) => [f, featureWords(f)]));
   for (const t of tests.values()) {
     const reasons = [];
     for (const f of files) {
@@ -53,11 +54,11 @@ export function impactedTests(history, files) {
         reasons.push(`sửa chính file test ${basename(f)}`);
         continue;
       }
-      const words = featureWords(f);
-      const route = t.routes.find((r) => r.split('/').some((seg) => seg.length >= 3 && words.includes(seg.toLowerCase())));
+      const fw = words.get(f);
+      const route = t.routes.find((r) => r.split('/').some((seg) => seg.length >= 3 && fw.includes(seg.toLowerCase())));
       if (route) reasons.push(`${basename(f)} ↔ route ${route}`);
       else {
-        const w = words.find((x) => t.words.has(x));
+        const w = fw.find((x) => t.words.has(x));
         if (w) reasons.push(`${basename(f)} ↔ tên test "${w}"`);
       }
     }

@@ -51,12 +51,22 @@ export function syncCi(root, c, { execImpl = execFile, importImpl = importFromGi
         try {
           res = await importImpl(root, String(r.databaseId), { artifact: c.artifact, execImpl });
         } catch (e) {
+          // a network blip or an artifact not uploaded yet: retry on the next syncs, give up after 3
+          state.failed ??= {};
+          state.failed[r.databaseId] = (state.failed[r.databaseId] ?? 0) + 1;
+          if (state.failed[r.databaseId] < 3) {
+            results.push({ id: r.databaseId, archived: 0, reason: e.message.slice(0, 200), retry: true });
+            await writeState(root, FILE, state);
+            continue;
+          }
           res = [{ status: 'skipped', reason: e.message.slice(0, 200) }];
         }
+        if (state.failed) delete state.failed[r.databaseId];
         const ok = res.filter((x) => x.status === 'archived').length;
         imported += ok;
         state.imported[r.databaseId] = { at: now(), branch: r.headBranch ?? null, conclusion: r.conclusion ?? null, reports: res.length, archived: ok, reason: res.find((x) => x.reason)?.reason ?? null };
         results.push({ id: r.databaseId, ...state.imported[r.databaseId] });
+        await writeState(root, FILE, state); // a killed sync (slash-command timeout) keeps what it already imported
       }
       state.lastError = null;
     } catch (e) {

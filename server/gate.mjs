@@ -12,9 +12,17 @@ export function sloConfig(cfg) {
   return { target: t > 0 && t < 1 ? t : 0.95, days: d > 0 && d <= 90 ? d : 7 };
 }
 
+// Every run inside the SLO window (a fixed count would cut "30 days" short on a busy repo), at least `min`.
+// ponytail: capped at 400 runs (the report parse cache size); a bigger window would re-parse every report per call
+export async function sloHistory(root, days, { min = 0, now = Date.now() } = {}) {
+  const from = now - days * 86_400_000;
+  const inWindow = (await listRuns(root)).filter((m) => Date.parse(m.startedAt) >= from).length;
+  return (await loadHistory(root, Math.min(400, Math.max(min, inWindow)))).filter((h) => h.meta.kind !== 'explore');
+}
+
 export async function runGate(root, overrides = {}) {
   const cfg = readConfig(root);
-  const history = (await loadHistory(root, 120)).filter((h) => h.meta.kind !== 'explore');
+  const history = await sloHistory(root, sloConfig(cfg).days, { min: 120 });
   const recent = history.slice(0, 20);
   const health = healthScore(recent.map((h) => h.meta), { flakyShare: flakyShare(recent) });
   const slo = sloStatus(history, sloConfig(cfg));

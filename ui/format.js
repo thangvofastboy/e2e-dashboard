@@ -19,8 +19,17 @@ export function fmtTokens(n) {
   return `${(n / 1_000_000).toFixed(1)}M`;
 }
 
+const pad2 = (n) => String(n).padStart(2, '0');
+export const fmtDate = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '—' : `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+};
+
 export function fmtRelative(iso, now = Date.now()) {
-  const s = Math.max(0, (now - Date.parse(iso)) / 1000);
+  const s = (now - Date.parse(iso)) / 1000;
+  if (!Number.isFinite(s)) return '—';
+  // a future time (clock skew, imported CI runs) or an old one reads better as a date than "vừa xong"
+  if (s < -60 || s >= 30 * 86_400) return fmtDate(iso);
   if (s < 60) return 'vừa xong';
   if (s < 3600) return `${Math.floor(s / 60)} phút trước`;
   if (s < 86_400) return `${Math.floor(s / 3600)} giờ trước`;
@@ -41,11 +50,11 @@ export const STATUS = {
   finished: { icon: 'check', tone: 'info', label: 'finished' },
 };
 
-const statusOf = (status) => STATUS[status] ?? { icon: 'info', tone: 'muted', label: status };
+const statusOf = (status) => (Object.hasOwn(STATUS, status) ? STATUS[status] : null) ?? { icon: 'info', tone: 'muted', label: status };
 
 export function statusBadge(status) {
   const s = statusOf(status);
-  return `<span class="chip tone-${s.tone}">${icon(s.icon, { size: 12 })}${escapeHtml(s.label)}</span>`;
+  return `<span class="chip tone-${s.tone}" data-status>${icon(s.icon, { size: 12 })}${escapeHtml(s.label)}</span>`;
 }
 
 const COUNT_KEYS = ['passed', 'flaky', 'failed', 'interrupted', 'skipped'];

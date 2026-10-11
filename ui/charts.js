@@ -39,7 +39,7 @@ export function lineChart({ points = [], yMax, yFormat = String, ariaLabel, area
   });
   if (cur.length) segments.push(cur);
   const lines = segments
-    .map((s) => `<path class="line series-1" d="M${s.map(([a, b]) => `${a.toFixed(1)},${b.toFixed(1)}`).join('L')}"/>`)
+    .map((s) => `<path class="line series-1" pathLength="1" d="M${s.map(([a, b]) => `${a.toFixed(1)},${b.toFixed(1)}`).join('L')}"/>`)
     .join('');
   const gid = `ag${++chartSeq}`;
   const base = PAD.top + ih;
@@ -50,7 +50,7 @@ export function lineChart({ points = [], yMax, yFormat = String, ariaLabel, area
       .join('')}`
     : '';
   const dots = points
-    .map((p, i) => (p.value == null ? '' : `<circle class="dot series-1" cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="4"/>`))
+    .map((p, i) => (p.value == null || points.length > 40 ? '' : `<circle class="dot series-1" cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="4"/>`))
     .join('');
   const lastIdx = points.findLastIndex((p) => p.value != null);
   const last = lastIdx >= 0

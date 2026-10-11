@@ -1,3 +1,4 @@
+import { toast } from '../toast.js';
 import { getJson, postJson } from '../api.js';
 import { openAiPanel } from './ai-panel.js';
 import { openRunDialog } from './run-dialog.js';
@@ -44,12 +45,14 @@ export async function renderFlaky(main) {
       const t = tests.find((x) => x.key === b.dataset.lock);
       const reason = prompt(`Lý do cách ly "${t.title}" (14 ngày):`, `flaky: ${t.flaky} lần, đổi kết quả ${t.flips} lần`);
       if (reason === null) return;
-      await postJson('/api/quarantine', { key: t.key, title: t.title, file: t.file, line: t.line, reason, days: 14 });
+      const ok = await postJson('/api/quarantine', { key: t.key, title: t.title, file: t.file, line: t.line, reason, days: 14 }).then(() => true, (x) => toast(x.message, 'bad'));
+      if (!ok) return;
       renderFlaky(main);
     }));
   main.querySelectorAll('[data-unlock]').forEach((b) =>
     b.addEventListener('click', async () => {
-      await postJson('/api/quarantine/remove', { key: b.dataset.unlock });
+      const ok = await postJson('/api/quarantine/remove', { key: b.dataset.unlock }).then(() => true, (x) => toast(x.message, 'bad'));
+      if (!ok) return;
       renderFlaky(main);
     }));
   main.querySelectorAll('[data-why]').forEach((b) =>

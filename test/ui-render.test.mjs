@@ -11,7 +11,7 @@ test('markdown renders the supported subset', () => {
   assert.match(html, /<code>code<\/code>/);
   assert.match(html, /<ul><li>một<\/li><li>hai<\/li><\/ul>/);
   assert.match(html, /<ol><li>a<\/li><li>b<\/li><\/ol>/);
-  assert.match(html, /<pre><code>const x = 1 &lt; 2;\n<\/code><\/pre>/);
+  assert.match(html, /<pre><code(?: class="language-\w+")?>const x = 1 &lt; 2;\n<\/code><\/pre>/);
   assert.match(html, /<a href="https:\/\/e2e\.tester\.army" rel="noopener noreferrer" target="_blank">docs<\/a>/);
 });
 
@@ -56,6 +56,6 @@ test('markdown drops links whose URL hides a scheme behind control characters', 
 
 test('markdown accepts indented code fences (e.g. inside a list item)', () => {
   const html = renderMarkdown('- Sửa dòng 13:\n\n   ```ts\n   await expect(x).toHaveText("a")\n   ```\n\nXong.');
-  assert.match(html, /<pre><code>await expect\(x\)\.toHaveText\(&quot;a&quot;\)\n<\/code><\/pre>/);
+  assert.match(html, /<pre><code class="language-ts">await expect\(x\)\.toHaveText\(&quot;a&quot;\)\n<\/code><\/pre>/);
   assert.match(html, /<p>Xong\.<\/p>/);
 });

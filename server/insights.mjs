@@ -1,7 +1,7 @@
 // More analyses over archived runs (after M3): search, anomalies, agent-instruction lint, models,
 // bisect plans. Pure functions over `history` ([{meta, report}], newest first), like analytics.mjs.
 import { resultAttempts } from '../reporter/e2e-dashboard.reporter.mjs';
-import { testKey, resultError } from './analytics.mjs';
+import { testKey, resultError, dayKey } from './analytics.mjs';
 
 const FAIL = new Set(['failed', 'timed-out', 'interrupted']);
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -30,13 +30,15 @@ export function search(history, query, { limit = 40 } = {}) {
   for (const { meta, report } of history) {
     const runHref = `#/run/${encodeURIComponent(meta.runId)}`;
     const when = meta.startedAt;
-    add('run', meta.runId, `Run ${meta.runId.slice(-8)} · ${meta.status}`, `${meta.git?.branch ?? ''}@${String(meta.git?.commit ?? '').slice(0, 7)} · ${when}`, runHref,
+    const d = new Date(when);
+    const shown = Number.isNaN(d.getTime()) ? '' : `${dayKey(d)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; // not raw ISO
+    add('run', meta.runId, `Run ${meta.runId.slice(-8)} · ${meta.status}`, `${meta.git?.branch ?? ''}@${String(meta.git?.commit ?? '').slice(0, 7)} · ${shown}`, runHref,
       `${meta.runId} ${meta.status} ${meta.git?.branch ?? ''} ${meta.git?.commit ?? ''} ${meta.source ?? ''}`, when);
     for (const r of results(report)) {
       const href = `${runHref}/test/${encodeURIComponent(r.id)}`;
       add('test', testKey(r), title(r), `${r.source?.file ?? r.file}:${r.source?.line ?? '?'} · ${r.targetId} · ${r.status}`, `#/test/${encodeURIComponent(testKey(r))}`, `${title(r)} ${r.source?.file ?? r.file} ${r.targetId} ${(r.tags ?? []).join(' ')}`, when);
       const e = resultError(report, r);
-      if (e) add('error', `${e.code}|${r.id}`, `${e.code ?? 'ERROR'}: ${String(e.message ?? '').split('\n')[0]}`, `${title(r)} · ${when}`, href, `${e.code} ${e.message} ${e.details?.locator ?? ''}`, when);
+      if (e) add('error', `${e.code}|${r.id}`, `${e.code ?? 'ERROR'}: ${String(e.message ?? '').split('\n')[0]}`, `${title(r)} · ${shown}`, href, `${e.code} ${e.message} ${e.details?.locator ?? ''}`, when);
       const url = resultAttempts(report, r).at(-1)?.failure?.url;
       if (url) add('url', `${url}|${r.id}`, url, `${title(r)} fail tại đây`, href, url, when);
     }
@@ -420,7 +422,7 @@ export function sloStatus(history, { target = 0.95, days = 7, now = Date.now() }
   for (const { meta, report } of history) {
     const t = Date.parse(meta.startedAt);
     if (!(t >= from && t <= now)) continue;
-    const day = new Date(t).toISOString().slice(0, 10);
+    const day = dayKey(t);
     if (!daily.has(day)) daily.set(day, { day, executed: 0, failed: 0 });
     const d = daily.get(day);
     for (const r of results(report)) {

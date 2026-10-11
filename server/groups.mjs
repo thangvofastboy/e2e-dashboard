@@ -39,7 +39,12 @@ export function grade(passRate, flakyShare) {
 export function groupReport(history, { by = 'module', modules = null, ownersOf = null, runs = 10 } = {}) {
   const recent = history.filter((h) => h.meta.kind !== 'explore');
   const files = [...new Set(recent.flatMap((h) => (h.report?.run?.results ?? []).map(fileOf)).filter(Boolean))];
-  const mod = moduleResolver(files, modules);
+  const memo = (fn) => {
+    const m = new Map();
+    return (f) => (m.has(f) ? m.get(f) : (m.set(f, fn(f)), m.get(f)));
+  };
+  const mod = memo(moduleResolver(files, modules));
+  if (ownersOf) ownersOf = memo(ownersOf); // CODEOWNERS rules × every result of every run otherwise
   const groupsOf = (r) => {
     if (by === 'tag') return (r.tags ?? []).length ? r.tags.map(String) : ['(không tag)'];
     if (by === 'owner') {

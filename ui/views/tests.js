@@ -50,7 +50,7 @@ export async function renderTests(main, route = {}) {
       .map((v) => `<option ${filter[k] === v ? 'selected' : ''}>${escapeHtml(v)}</option>`)
       .join('')}</select></label>`;
     const byFile = new Map();
-    for (const r of rows) byFile.set(r.file, [...(byFile.get(r.file) ?? []), r]);
+    for (const r of rows) (byFile.get(r.file) ?? byFile.set(r.file, []).get(r.file)).push(r);
     const body = [...byFile]
       .map(([file, tests]) => `<tr class="group"><td colspan="4"><code>${escapeHtml(file)}</code></td></tr>${tests.map(testRowHtml).join('')}`)
       .join('');

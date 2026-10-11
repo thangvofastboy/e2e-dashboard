@@ -113,7 +113,12 @@ export function createRunner({ projectRoot, live, spawnImpl = nodeSpawn, onExit 
       return { ok: true, pid: proc.pid };
     },
     stop() {
-      if (!child) return false;
+      if (!child) {
+        // an external run killed without run-finished would keep the dashboard busy forever
+        if (live.snapshot().status !== 'running') return false;
+        live.apply({ type: 'run-interrupted', at: now() });
+        return true;
+      }
       const proc = child;
       const target = process.platform === 'win32' ? proc.pid : -proc.pid; // the whole group: npx-free e2e + browsers
       signal(target, 'SIGINT'); // e2e finishes gracefully on the first interrupt

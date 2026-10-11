@@ -59,7 +59,7 @@ const EN = {
   // dialogs & AI
   'Chạy toàn bộ suite': 'Run the whole suite', 'Chạy test': 'Run tests', 'Toàn bộ suite': 'Whole suite', 'Danh sách test': 'Test list', 'Phân tích lại': 'Analyze again', 'Hỏi thêm về kết quả này…': 'Ask a follow-up…',
   'Câu hỏi của bạn…': 'Your question…', 'Hỏi AI về bộ test': 'Ask AI about the suite', 'Đang phân tích…': 'Analyzing…', 'Xong.': 'Done.', 'Bảng phím tắt này': 'This shortcut list', 'Test kế tiếp': 'Next test', 'Test trước': 'Previous test',
-  'Chạy lại test đang xem': 'Rerun the current test', 'Phân tích lỗi bằng AI': 'Analyze the failure with AI', 'Mô tả issue': 'Issue description', 'Copy cho Claude (Linear MCP)': 'Copy for Claude (Linear MCP)', 'Gửi lên Linear': 'Send to Linear',
+  'Đang chạy': 'Running', 'Đang nhận dữ liệu live': 'Receiving live data', 'Mở screenshot': 'Open screenshot', 'Mở screenshot lúc fail': 'Open failure screenshot', 'Chạy lại test đang xem': 'Rerun the current test', 'Phân tích lỗi bằng AI': 'Analyze the failure with AI', 'Mô tả issue': 'Issue description', 'Copy cho Claude (Linear MCP)': 'Copy for Claude (Linear MCP)', 'Gửi lên Linear': 'Send to Linear',
   // M6 pages
   'Không tìm thấy route nào của app': 'No app routes found', 'Fail tập trung ở': 'Failures concentrate in',
   'CSV run': 'Runs CSV', 'CSV test': 'Tests CSV', 'CSV flaky': 'Flaky CSV', 'Budget còn lại': 'Budget left', 'Video cạnh nhau (phát đồng bộ)': 'Videos side by side (synced)',

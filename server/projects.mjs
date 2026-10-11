@@ -8,6 +8,7 @@ import { randomBytes } from 'node:crypto';
 import { readServerInfo } from '../reporter/e2e-dashboard.reporter.mjs';
 import { listRuns } from './store.mjs';
 import { healthScore, passRate } from '../ui/health.js';
+import { serial } from './jsonstate.mjs';
 
 export const homeDir = (env = process.env) => resolve(env.E2E_DASHBOARD_HOME || join(homedir(), '.e2e-dashboard'));
 const registryPath = (env) => join(homeDir(env), 'projects.json');
@@ -22,23 +23,29 @@ export async function readRegistry(env = process.env) {
   }
 }
 
-export async function registerProject(root, env = process.env) {
-  const list = (await readRegistry(env)).filter((p) => resolve(p.root) !== resolve(root));
-  list.unshift({ root: resolve(root), name: basename(root), lastOpenedAt: new Date().toISOString() });
-  await mkdir(homeDir(env), { recursive: true });
-  const tmp = `${registryPath(env)}.tmp-${randomBytes(6).toString('hex')}`;
-  await writeFile(tmp, JSON.stringify(list.slice(0, MAX_PROJECTS), null, 2), { mode: 0o600 });
-  await rename(tmp, registryPath(env));
+// ponytail: in-process chain + re-read right before writing; two dashboards starting in the same
+// millisecond can still race (cross-process lock if that ever matters)
+export function registerProject(root, env = process.env) {
+  return serial(`registry:${registryPath(env)}`, async () => {
+    await mkdir(homeDir(env), { recursive: true });
+    const list = (await readRegistry(env)).filter((p) => resolve(p.root) !== resolve(root));
+    list.unshift({ root: resolve(root), name: basename(root), lastOpenedAt: new Date().toISOString() });
+    const tmp = `${registryPath(env)}.tmp-${randomBytes(6).toString('hex')}`;
+    await writeFile(tmp, JSON.stringify(list.slice(0, MAX_PROJECTS), null, 2), { mode: 0o600 });
+    await rename(tmp, registryPath(env));
+  });
 }
 
-export async function forgetProject(root, env = process.env) {
-  const list = await readRegistry(env);
-  const next = list.filter((p) => resolve(p.root) !== resolve(root));
-  if (next.length === list.length) return false;
-  const tmp = `${registryPath(env)}.tmp-${randomBytes(6).toString('hex')}`;
-  await writeFile(tmp, JSON.stringify(next, null, 2), { mode: 0o600 });
-  await rename(tmp, registryPath(env));
-  return true;
+export function forgetProject(root, env = process.env) {
+  return serial(`registry:${registryPath(env)}`, async () => {
+    const list = await readRegistry(env);
+    const next = list.filter((p) => resolve(p.root) !== resolve(root));
+    if (next.length === list.length) return false;
+    const tmp = `${registryPath(env)}.tmp-${randomBytes(6).toString('hex')}`;
+    await writeFile(tmp, JSON.stringify(next, null, 2), { mode: 0o600 });
+    await rename(tmp, registryPath(env));
+    return true;
+  });
 }
 
 const alive = (pid) => {

@@ -78,6 +78,9 @@ export function autoTransitions(entries, failing, history, now = new Date().toIS
     const l = latest.get(e.key);
     if (l && !FAIL.has(l.status) && Date.parse(l.at) > Date.parse(e.updatedAt)) {
       changed[fp] = { ...e, status: 'fixed', updatedAt: now, history: [...(e.history ?? []), { at: now, status: 'fixed', auto: 'passed' }].slice(-20) };
+    } else if (!l && history.filter((h) => Date.parse(h.meta.startedAt) > Date.parse(e.updatedAt)).length >= 10) {
+      // test deleted or renamed: absent from 10+ runs since, it would otherwise stay open forever
+      changed[fp] = { ...e, status: 'fixed', updatedAt: now, history: [...(e.history ?? []), { at: now, status: 'fixed', auto: 'gone' }].slice(-20) };
     }
   }
   return changed;

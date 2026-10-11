@@ -9,11 +9,11 @@
 ![Node](https://img.shields.io/badge/Node-%E2%89%A5%2020-339933?style=for-the-badge&logo=node.js&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-16a34a?style=for-the-badge)
 ![Build](https://img.shields.io/badge/build-kh%C3%B4ng%20c%E1%BA%A7n-2563eb?style=for-the-badge)
-![Tests](https://img.shields.io/badge/tests-275%20passing-16a34a?style=for-the-badge&logo=checkmarx&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-295%20passing-16a34a?style=for-the-badge&logo=checkmarx&logoColor=white)
 ![AI](https://img.shields.io/badge/AI-claude%20--p-a855f7?style=for-the-badge&logo=anthropic&logoColor=white)
 ![Database](https://img.shields.io/badge/database-kh%C3%B4ng%20c%E1%BA%A7n-8b5cf6?style=for-the-badge)
 
-[✨ Tính năng](#-tính-năng) · [📸 Ảnh chụp](#-ảnh-chụp) · [🚀 Cài đặt](#-cài-đặt) · [⌨️ Lệnh](#️-lệnh) · [✨ AI](#-phân-tích-bằng-ai) · [📊 Phân tích](#-phân-tích-m2) · [🔗 Tích hợp](#-tích-hợp-m3) · [🚦 Trạng thái](#-trạng-thái--ngưỡng) · [⚙️ Cấu hình](#️-cấu-hình) · [🔄 Cập nhật](#-cập-nhật--phát-hành) · [🔒 Bảo mật](#-bảo-mật) · [🛠️ Phát triển](#️-phát-triển) · [🗺️ Roadmap](#️-roadmap)
+[✨ Tính năng](#-tính-năng) · [📸 Ảnh chụp](#-ảnh-chụp) · [🚀 Cài đặt](#-cài-đặt) · [📖 Hướng dẫn](#-hướng-dẫn-sử-dụng) · [⌨️ Lệnh](#️-lệnh) · [✨ AI](#-phân-tích-bằng-ai) · [📊 Phân tích](#-phân-tích-m2) · [🔗 Tích hợp](#-tích-hợp-m3) · [🧰 Mở rộng](#-mở-rộng-m6) · [📈 Theo dõi](#-theo-dõi--báo-cáo-m7) · [🚦 Trạng thái](#-trạng-thái--ngưỡng) · [⚙️ Cấu hình](#️-cấu-hình) · [🔄 Cập nhật](#-cập-nhật--phát-hành) · [🔒 Bảo mật](#-bảo-mật) · [🛠️ Phát triển](#️-phát-triển) · [🗺️ Roadmap](#️-roadmap)
 
 <img src="docs/images/overview-light.jpeg" alt="Trang Overview ở chế độ sáng: 5 thẻ KPI có màu trạng thái, biểu đồ pass rate, donut, kết quả theo run, heatmap test × run" width="100%">
 
@@ -36,6 +36,9 @@
 | 🌿 | **Git context** | Mỗi run ghi branch, commit, có thay đổi chưa commit hay không |
 | 📤 | **Export HTML** | Một file tự chứa (ảnh nhúng base64, có CSP) để gửi qua chat, email hoặc đính kèm issue |
 | 🌗 | **Sáng / Tối** | Tự theo hệ điều hành, có nút chuyển và nhớ lựa chọn |
+| 📑 | **Giao diện kiểu báo cáo** | Status viết hoa căn giữa; bảng có tiêu đề viết hoa, cột số căn phải in đậm; cột pass rate / fail / flaky tự tô màu đánh giá (xanh · vàng · đỏ); số quan trọng nổi bật |
+| 🎨 | **Tô màu code & dữ liệu** | JSON (tự dàn dòng), code JS/TS, lệnh shell, `file:line`, log tô theo mức lỗi: ở Run detail, phân tích AI, config, bisect |
+| 💫 | **Hoạt cảnh trạng thái** | Thanh tiến trình khi đang tải, nút quay khi đang xử lý, nhãn *Đang chạy 3/9* nổi trên mọi trang, nhịp live ở trang Live; tự tắt khi hệ điều hành bật *giảm chuyển động* |
 | 🔗 | **Deep link** | Mỗi run và mỗi test có URL riêng (`#/run/<id>/test/<id>`) |
 | 🔄 | **Tự cập nhật** | `/e2e-dashboard update` lấy tag mới nhất rồi tự `/reload-plugins` |
 | ❤️ | **Health score** | Một điểm 0–100 cho cả suite: pass rate, độ ổn định, thời gian, token, replay cache |
@@ -160,6 +163,88 @@ Lệnh này copy `e2e-dashboard.reporter.mjs` (kèm `.d.mts`) vào project và t
 
 ---
 
+## 📖 Hướng dẫn sử dụng
+
+<details open>
+<summary>🧑‍💻 <b>Hằng ngày: chạy test và xem kết quả</b></summary>
+
+1. Mở dashboard một lần: `/e2e-dashboard` (server chạy nền, lần sau gõ lại chỉ mở trình duyệt).
+2. Chạy test như bình thường (`npx e2e run`, hoặc nhờ Claude chạy). Trang **Live** hiện tiến độ từng test, Gantt theo làn và ETA.
+3. Run xong tự vào **Runs** và **Overview**: thẻ KPI đổi màu theo ngưỡng, health score 0–100, heatmap test × run.
+4. Muốn chạy lại: trang **Tests** → tick test (hoặc *Chọn tất cả fail*) → **Chạy**; hoặc trang **Live** → *Chạy toàn bộ suite*.
+5. Đang ở trang khác vẫn biết có run đang chạy: nhãn **● Đang chạy 3/9** nổi ở góc dưới, bấm vào là sang Live.
+6. Đóng máy cũng không mất gì: lịch sử nằm trong `.e2e-dashboard/` của project. Tắt server bằng `/e2e-dashboard stop`.
+
+</details>
+
+<details>
+<summary>🔍 <b>Một test fail: tìm nguyên nhân và sửa</b></summary>
+
+1. **Runs** → bấm run fail → bấm test fail: xem timeline agent, video đồng bộ theo step, screenshot lúc fail, log app, trace.
+2. **✨ Phân tích lỗi**: Claude phân loại lỗi app / test / flaky / môi trường, chỉ ra `file:line`, gợi ý sửa; hỏi tiếp trong panel.
+3. Lỗi xuất hiện sau một commit? **Tìm commit gây lỗi** sinh sẵn lệnh `git bisect run` cho đúng test đó.
+4. **Sửa bằng Claude Code** copy lệnh `/e2e-dashboard:e2e-dashboard fix <run> <test>`; dán vào Claude Code để Claude sửa rồi chạy lại đúng test đó.
+5. Cần người khác xem: **Export** (một file HTML tự chứa), **Gửi Linear** (chống trùng), hoặc ghi người phụ trách ở **Triage lỗi**.
+
+</details>
+
+<details>
+<summary>🔀 <b>Test lúc pass lúc fail (flaky)</b></summary>
+
+1. Trang **Flaky** xếp test theo điểm; đổi kết quả trên **cùng commit** bị tính nặng hơn.
+2. **Chạy ×5** để xác nhận; **Vì sao flaky?** để Claude đọc lịch sử pass/fail theo commit, timing, cache và code test.
+3. Chưa sửa kịp: **Cách ly** (mặc định 14 ngày). Run từ dashboard bỏ qua test đó; `/e2e-dashboard quarantine` in lệnh `--grep-invert` cho CI; digest nhắc khi quá hạn.
+
+</details>
+
+<details>
+<summary>🚦 <b>Trước khi push / merge</b></summary>
+
+1. Trang **Tests** → *Test bị ảnh hưởng* (so với `main`) → chạy đúng những test liên quan tới thay đổi.
+2. `/e2e-dashboard gate` trả mã thoát 1 khi có test mới fail, health hoặc SLO dưới ngưỡng, vượt ngân sách token. Dùng được trong CI.
+3. Trang **So sánh 2 run** → *Đăng lên PR* để đưa kết quả (mới fail / đã sửa / vẫn fail) vào PR qua `gh`.
+
+</details>
+
+<details>
+<summary>☁️ <b>CI và làm việc theo team</b></summary>
+
+1. Reporter tự tắt khi `CI=true`. Để có lịch sử CI: upload `.e2e/report.json` làm artifact, rồi `import --gh <run id>` hoặc bật tự đồng bộ `"ci": { "github": { … } }` (cần `gh auth login`).
+2. Dùng chung lịch sử: đặt `"share": { "dir": "…" }` trong `~/.e2e-dashboard/config.json`, rồi `share push` / `share pull`.
+3. Đánh dấu deploy / release từ CI: `/e2e-dashboard mark deploy "v1.5"` (hiện trên biểu đồ xu hướng).
+4. Xuất trang tĩnh cho cả team xem: `/e2e-dashboard publish` → thư mục HTML đưa lên GitHub Pages hoặc thư mục chung.
+
+</details>
+
+<details>
+<summary>📬 <b>Báo cáo và cảnh báo</b></summary>
+
+1. Digest tuần: `/e2e-dashboard digest` (Markdown để dán Slack/email). Báo cáo tuần / tháng: `/e2e-dashboard report week --send`.
+2. Gửi tự động khi dashboard đang mở: `"reports": { "weekly": "mon 09:00" }` trong `.e2e-dashboard/config.json`.
+3. Webhook Slack/Discord và email chỉ đặt ở `~/.e2e-dashboard/config.json` (không bao giờ trong repo). Xem [Cảnh báo](#-theo-dõi--báo-cáo-m7) để tuỳ chỉnh luật.
+4. Hỏi nhanh ngay trong Claude Code, không cần mở dashboard: *"test nào flaky tuần này?"* (qua MCP server của plugin).
+
+</details>
+
+<details>
+<summary>🩺 <b>Gặp sự cố</b></summary>
+
+| Triệu chứng | Cách xử lý |
+|---|---|
+| `Unknown command: /e2e-dashboard` | `/reload-plugins` (hoặc mở lại Claude Code). Vẫn lỗi: dùng tên đầy đủ `/e2e-dashboard:e2e-dashboard` |
+| `Không tìm thấy e2e.config…` | Chạy lệnh trong thư mục project e2e (hoặc thư mục con của nó) |
+| Trang Live trống khi chạy test | Chưa gắn reporter: `/e2e-dashboard setup`. Không có reporter thì run vẫn được lưu khi xong |
+| Trình duyệt báo `401` | Mở lại bằng `/e2e-dashboard` (URL có token mới; cookie theo từng port) |
+| Không thấy run cũ | Retention mặc định giữ 50 run; tăng `"retention"`, ghim run cần giữ. Số liệu dài hạn ở trang **Xu hướng** không bị xoá |
+| Server không lên | `/e2e-dashboard status`, xem `.e2e-dashboard/server.log`; port bận thì tự lấy port kế tiếp |
+| Màu / hoạt cảnh gây rối mắt | Bật *giảm chuyển động* (Reduce motion) trong hệ điều hành: mọi hoạt cảnh tự tắt |
+| Live báo *running* mãi, không chạy được run mới | Run ngoài terminal bị kill giữa chừng: bấm **Dừng run** ở trang Live để xoá trạng thái |
+| `report --send` / `digest --send` trả mã 1 | Mọi webhook / email đều gửi lỗi: kiểm tra URL trong `~/.e2e-dashboard/config.json` |
+
+</details>
+
+---
+
 ## ⌨️ Lệnh
 
 | Lệnh | | Việc |
@@ -275,7 +360,7 @@ Màu không bao giờ đứng một mình: mọi trạng thái đều có icon k
 
 ---
 
-## 🧰 M6
+## 🧰 Mở rộng (M6)
 
 **🔌 MCP server.** Plugin tự khai báo server MCP `e2e-dashboard` (`.mcp.json`), nên trong Claude Code có thể hỏi *"test nào flaky tuần này?"*, *"vì sao run vừa rồi fail?"* mà không cần mở dashboard. Server chỉ đọc lịch sử trong `.e2e-dashboard/`, không chạy test.
 
@@ -354,12 +439,19 @@ Mọi thứ đều tuỳ chọn. Tạo `.e2e-dashboard/config.json` trong projec
 ├── live.json               ← tiến độ run hiện tại (cho status line)
 ├── issues.json             ← fingerprint → issue Linear đã gửi
 ├── quarantine.json         ← test đang cách ly
+├── triage.json             ← trạng thái, người phụ trách, ghi chú của từng lỗi
+├── events.json             ← deploy / release / sự cố đánh dấu trên biểu đồ
+├── alerts.json, ci-sync.json ← trạng thái cảnh báo và đồng bộ CI
+├── longterm/               ← số liệu gom theo ngày, giữ mãi (trang Xu hướng)
+├── reports/                ← báo cáo tuần / tháng (.html + .md)
 ├── digests/<ngày>.md       ← digest đã in
 ├── exports/run-<id>.html   ← file export
+├── site/                   ← trang tĩnh (`publish`)
 └── runs/<thời-điểm>_<runId>/
     ├── report.json         ← bản copy nguyên văn report của e2e
     ├── meta.json           ← tóm tắt: status, số test, token, git, ghim/baseline
     ├── traces/<resultId>.md
+    ├── ai/                 ← cache phân tích AI
     └── artifacts/…         ← video / screenshot / log của test không pass
 ```
 
@@ -426,7 +518,7 @@ Script kiểm tra (`npm test`, `claude plugin validate`, `claude plugin test`), 
 ## 🛠️ Phát triển
 
 ```bash
-npm test                   # node --test — 249 test, không dependency
+npm test                   # node --test — 295 test, không dependency
 claude plugin test .       # test của mod (update / version)
 node test/seed-demo.mjs    # project demo 12 run: flaky, 2 branch, route, cache, ảnh visual diff
 ```
@@ -455,10 +547,11 @@ node test/seed-demo.mjs    # project demo 12 run: flaky, 2 branch, route, cache,
 - [x] **M1b — Điều khiển & AI:** chạy và rerun test (chọn test fail) từ dashboard, nút ✨ *Phân tích lỗi* / *Phân tích run* qua `claude -p`, tự cập nhật theo tag
 - [x] **M2 — Phân tích:** flaky, so sánh 2 run, nhóm lỗi, chi phí & cache, visual diff, bản đồ route, so sánh branch, nhiều project, health score
 - [x] **M3 — Tích hợp:** gửi issue Linear (chống trùng), digest tuần, status line, thông báo desktop, đề xuất chuyển agent step thành locator
+- [x] **M4 — Vận hành:** tìm kiếm Ctrl K, cách ly flaky, AI vì sao flaky, bisect, so sánh model + ngân sách, bất thường, CODEOWNERS, lint agent, nhập CI, thư mục team, comment PR
 - [x] **M5 — Trải nghiệm:** trang test, lỗi app, test bị ảnh hưởng, hỏi AI tự do, setup timing, watch, lịch chạy, webhook, trạng thái GitHub, explore → test, dung lượng; menu thu gọn, mobile, phím tắt, toast, bộ lọc trên URL
 - [x] **M6 — Mở rộng:** MCP server, sửa bằng Claude Code, coverage, cổng chất lượng, SLO, lỗi theo môi trường, mention owner, tiếng Anh, video đồng bộ, lịch sử lớn, báo cáo/CSV, có gì mới
 - [x] **M7 — Theo dõi & báo cáo:** số liệu dài hạn, triage, MTTR, báo cáo tự gửi, module/team, phát hành, truy vết, lịch nhiệt, đồng bộ CI, cảnh báo, sự kiện, vòng đời test, trang tĩnh
-- [x] **M4 — Vận hành:** tìm kiếm Ctrl K, cách ly flaky, AI vì sao flaky, bisect, so sánh model + ngân sách, bất thường, CODEOWNERS, lint agent, nhập CI, thư mục team, comment PR
+- [x] **v0.8 — Chất lượng & giao diện:** rà soát bảo mật / lỗi / hiệu năng, giao diện kiểu báo cáo, tô màu code và dữ liệu, hoạt cảnh trạng thái, sửa mobile
 
 <div align="center">
 

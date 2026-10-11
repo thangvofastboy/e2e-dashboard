@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { DATA_DIR, isLink, resultAttempts } from '../reporter/e2e-dashboard.reporter.mjs';
 import { errorSignature, resultError, testKey } from './analytics.mjs';
 import { homeDir } from './projects.mjs';
+import { serial } from './jsonstate.mjs';
 
 const API = 'https://api.linear.app/graphql';
 const FP = /^e2ed-[0-9a-f]{12}$/;
@@ -144,9 +145,11 @@ export async function readIssueLinks(root) {
 
 export async function saveIssueLink(root, fp, issue) {
   if (!FP.test(fp) || isLink(join(root, DATA_DIR))) return;
-  const all = await readIssueLinks(root);
-  all[fp] = { identifier: String(issue.identifier ?? ''), url: /^https:\/\/linear\.app\//.test(issue.url ?? '') ? issue.url : null, title: String(issue.title ?? '').slice(0, 300), at: new Date().toISOString() };
-  const tmp = `${linksPath(root)}.tmp-${randomBytes(6).toString('hex')}`;
-  await writeFile(tmp, JSON.stringify(all, null, 2), { flag: 'wx' });
-  await rename(tmp, linksPath(root));
+  return serial(`${root}:issues`, async () => { // two tabs sending at once must not drop a link
+    const all = await readIssueLinks(root);
+    all[fp] = { identifier: String(issue.identifier ?? ''), url: /^https:\/\/linear\.app\//.test(issue.url ?? '') ? issue.url : null, title: String(issue.title ?? '').slice(0, 300), at: new Date().toISOString() };
+    const tmp = `${linksPath(root)}.tmp-${randomBytes(6).toString('hex')}`;
+    await writeFile(tmp, JSON.stringify(all, null, 2), { flag: 'wx' });
+    await rename(tmp, linksPath(root));
+  });
 }

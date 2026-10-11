@@ -27,6 +27,9 @@ export async function renderLive(main) {
   const info = await getJson('/api/info');
   let snap = null;
   let selectedKey = null;
+  let fresh = false; // a snapshot arrived since the last draw: the heartbeat flashes
+  let stopping = false; // survives the 1 s redraw, so the button stays disabled and the note stays
+  let stopNote = '';
 
   function draw() {
     if (!snap || snap.status === 'idle') {
@@ -37,12 +40,13 @@ export async function renderLive(main) {
       main.querySelector('[data-run-all]')?.addEventListener('click', () => openRunDialog({ tests: [], title: 'Chạy toàn bộ suite' }));
       return;
     }
+    if (snap.status !== 'running') snap = { ...snap, tests: snap.tests.map((t) => (t.status === 'running' ? { ...t, status: 'interrupted', steps: t.steps.map((s) => (s.status === 'running' ? { ...s, status: 'interrupted' } : s)) } : t)) };
     const pct = snap.total ? Math.round((snap.done / snap.total) * 100) : 0;
     const eta = snap.status === 'running' && snap.etaMs != null ? ` · còn khoảng ${fmtDuration(snap.etaMs)}` : '';
-    const blocks = ganttBlocks(snap);
-    const lanes = Array.from({ length: Math.max(snap.lanes, 1) }, (_, i) =>
+    const byLane = Array.from({ length: Math.max(snap.lanes, 1) }, () => []);
+    for (const b of ganttBlocks(snap)) byLane[b.lane]?.push(b); // one pass, not one filter per lane
+    const lanes = byLane.map((blocks, i) =>
       `<div class="lane"><span class="lane-label">làn ${i + 1}</span><div class="lane-track">${blocks
-        .filter((b) => b.lane === i)
         .map((b) => `<button class="block s-${escapeHtml(b.status)}" data-key="${escapeHtml(b.key)}" style="left:${b.left}%;width:${b.width}%" data-tip="${escapeHtml(`${b.title} · ${fmtDuration(b.durationMs)}`)}" aria-label="${escapeHtml(b.title)}"></button>`)
         .join('')}</div></div>`).join('');
     const running = snap.tests.filter((t) => t.status === 'running');
@@ -54,28 +58,48 @@ export async function renderLive(main) {
            .join('') || '<li class="muted">Chưa có step.</li>'}</ol>`
       : '';
     const out = snap.output.slice(-50).map((o) => escapeHtml(o.text)).join('');
-    main.innerHTML = `<h1>Live ${statusBadge(snap.status === 'finished' ? snap.runStatus ?? 'finished' : snap.status)}</h1>
-      ${snap.status === 'running' ? `<p><button type="button" class="btn-stop" data-stop>${icon('square', { size: 14 })}Dừng run</button> <span class="muted small" data-stop-note></span></p>` : ''}
-      <div class="progress"><div class="bar" style="width:${pct}%"></div></div>
-      <p class="muted">${escapeHtml(snap.done)}/${escapeHtml(snap.total)} test${eta}${snap.status === 'finished' ? ' · đã xong — xem ở Runs' : ''}</p>
+    main.style.setProperty('--phase', `-${Math.round(performance.now() % 2400)}ms`); // rebuilt nodes resume their loops (2.4 s = lcm of 0.8 s / 1.2 s)
+    const beat = snap.status === 'running' ? `<span class="beat${fresh ? '' : ' idle'}" title="Đang nhận dữ liệu live" aria-hidden="true"></span>` : '';
+    fresh = false;
+    main.innerHTML = `<h1>Live ${beat}${statusBadge(snap.status === 'finished' ? snap.runStatus ?? 'finished' : snap.status)}</h1>
+      ${snap.status === 'running' ? `<p><button type="button" class="btn-stop" data-stop${stopping ? ' disabled' : ''}>${icon('square', { size: 14 })}Dừng run</button> <span class="muted small" data-stop-note>${escapeHtml(stopNote)}</span></p>` : ''}
+      <div class="progress${snap.status === 'running' ? ' running' : ''}"><div class="bar" style="width:${pct}%"></div></div>
+      <p class="muted">${escapeHtml(snap.done)}/${escapeHtml(snap.total)} test${eta}</p>
+      ${snap.status !== 'running' ? `<p class="row-actions"><a class="button" href="#/runs">${icon('list', { size: 14 })}Xem ở Runs</a> <button type="button" data-run-all>${icon('play', { size: 14 })}Chạy lại toàn bộ suite</button></p>` : ''}
       ${snap.error ? `<div class="err">${escapeHtml(snap.error.message ?? '')}</div>` : ''}
       <section class="panel gantt">${lanes}<p class="muted small">Làn được xếp theo thời gian chạy chồng nhau, không phải số worker thật.</p></section>
       <section class="panel">${steps}</section>
       ${out ? `<section><h2>Output</h2><pre class="log">${out}</pre></section>` : ''}`;
-    main.querySelector('[data-stop]')?.addEventListener('click', async (e) => {
-      e.target.disabled = true;
-      const { stopped } = await postJson('/api/run/stop', {}).catch(() => ({ stopped: false }));
-      if (!stopped) main.querySelector('[data-stop-note]').textContent = 'Run này không do dashboard khởi động — dừng nó ở terminal (Ctrl-C).';
-    });
-    main.querySelectorAll('.block').forEach((b) =>
-      b.addEventListener('click', () => {
-        selectedKey = b.dataset.key;
-        draw();
-      }));
   }
 
+  // one delegated listener for the whole page: draw() rebuilds the DOM every second
+  const onClick = async (e) => {
+    if (e.target.closest('[data-run-all]') && snap?.status && snap.status !== 'idle') return openRunDialog({ tests: [], title: 'Chạy toàn bộ suite' });
+    const block = e.target.closest('.block');
+    if (block) {
+      selectedKey = block.dataset.key;
+      draw();
+      return;
+    }
+    if (!e.target.closest('[data-stop]') || stopping) return;
+    stopping = true;
+    draw();
+    const { stopped } = await postJson('/api/run/stop', {}).catch(() => ({ stopped: false }));
+    if (!stopped) {
+      stopping = false;
+      stopNote = 'Run này không do dashboard khởi động — dừng nó ở terminal (Ctrl-C).';
+    }
+    draw();
+  };
+  main.addEventListener('click', onClick);
+
   const stop = liveStream((s) => {
+    if (s?.startedAt !== snap?.startedAt) {
+      stopping = false; // a new run gets a fresh Stop button
+      stopNote = '';
+    }
     snap = s;
+    fresh = true;
     draw();
   });
   const tick = setInterval(() => snap?.status === 'running' && draw(), 1000); // grow running blocks
@@ -83,5 +107,6 @@ export async function renderLive(main) {
   return () => {
     stop();
     clearInterval(tick);
+    main.removeEventListener('click', onClick);
   };
 }

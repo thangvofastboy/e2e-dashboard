@@ -2,7 +2,7 @@
 // MTTR and time red, tests failing the longest, and the events list (deploys, releases, incidents…).
 import { getJson, postJson, isExport } from '../api.js';
 import { pageHead, emptyBox, fmtPct, fmtPoints, fmtSpan, toneFor, daysPicker } from '../analysis.js';
-import { lineChart, calendarHeatmap, attachTooltips } from '../charts.js';
+import { lineChart, calendarHeatmap } from '../charts.js';
 import { escapeHtml, fmtRelative } from '../format.js';
 import { testHref, runHref } from '../router.js';
 import { toast } from '../toast.js';
@@ -71,7 +71,6 @@ export async function renderTrends(main) {
       <section class="panel"><h2>Theo tuần</h2><table class="table compact"><thead><tr><th>Tuần từ</th><th>${escapeHtml(r.branch ?? 'branch')} đỏ</th><th>Lỗi mới</th><th>Đã sửa</th><th>MTTR</th></tr></thead><tbody>${weekly}</tbody></table></section></div>
     ${eventsPanelHtml(ev.events, ev.kinds)}`;
   picker.bind(main);
-  attachTooltips(main);
   main.querySelector('[data-ev-form]')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);

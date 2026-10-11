@@ -36,9 +36,14 @@ export function mentionsFor(owners, map) {
   return [...new Set(owners.map((o) => map[o]).filter(Boolean))].join(' ');
 }
 
+// Report text (test titles, branches, errors) must not ping anyone: break Slack <!channel>/<@U…> and
+// Discord @everyone/<@…> syntax with a zero-width space. Only `mentions` (from the user's config) stay live.
+export const defang = (s) => String(s).replace(/<([@!#])/g, '<\u200b$1').replace(/@(everyone|here|channel)\b/gi, '@\u200b$1');
+
 // Slack reads `text`, Discord `content`: send both.
-export async function sendWebhooks(hooks, event, text, { fetchImpl = globalThis.fetch } = {}) {
-  const body = JSON.stringify({ text: String(text).slice(0, 3900), content: String(text).slice(0, 1900), event });
+export async function sendWebhooks(hooks, event, text, { fetchImpl = globalThis.fetch, mentions = '' } = {}) {
+  const tail = mentions ? `\n${mentions}` : ''; // appended after the cut, so a long message keeps its mentions
+  const body = JSON.stringify({ text: defang(text).slice(0, 3900 - tail.length) + tail, content: defang(text).slice(0, 1900 - tail.length) + tail, event });
   const sent = [];
   for (const h of hooks.filter((x) => x.events.includes(event) || x.events.includes('*'))) {
     try {

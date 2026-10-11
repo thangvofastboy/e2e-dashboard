@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Entry for /e2e-dashboard: start | setup | export | stop | status | digest | projects | statusline.
+// Entry for /e2e-dashboard: start | setup | export | stop | status | digest | report | gate | fix | triage | quarantine | import | share | publish | mark | ci-sync | projects | statusline.
 import { spawn } from 'node:child_process';
 import { readFile, writeFile, copyFile, mkdir, rm, appendFile, lstat } from 'node:fs/promises';
 import { existsSync, openSync, closeSync } from 'node:fs';
@@ -144,7 +144,10 @@ export async function start(root, { open = true } = {}) {
   closeSync(log);
   const line = await new Promise((ok, fail) => {
     let buf = '';
-    const timer = setTimeout(() => fail(new Error('server không khởi động sau 10 s, xem .e2e-dashboard/server.log')), 10_000);
+    const timer = setTimeout(() => {
+      child.kill(); // a late start would otherwise leave an orphan server that `stop` cannot see
+      fail(new Error('server không khởi động sau 10 s, xem .e2e-dashboard/server.log'));
+    }, 10_000);
     child.stdout.on('data', (c) => {
       buf += c;
       const i = buf.indexOf('\n');
@@ -233,7 +236,8 @@ export async function fixContext(root, runId, resultId) {
   if (!results.length) return { run, text: null };
   const prevPass = metas.slice(metas.findIndex((m) => m.runId === id) + 1).find((m) => m.status === 'passed');
   const commits = await commitsBetween(root, prevPass?.git?.commit, run.meta.git?.commit);
-  const lines = ['FIX_REQUEST', `Run: ${run.meta.runId} · ${run.meta.git?.branch ?? '?'}@${String(run.meta.git?.commit ?? '').slice(0, 10)}`, '<test-data>'];
+  const one = (s, n) => String(s ?? '?').replace(/\s+/g, ' ').slice(0, n); // meta.json is repo-controlled: no injected lines
+  const lines = ['FIX_REQUEST', `Run: ${one(run.meta.runId, 40)} · ${one(run.meta.git?.branch, 80)}@${one(run.meta.git?.commit ?? '', 10)}`, '<test-data>'];
   const specs = [];
   for (const r of results) {
     const a = resultAttempts(run.report, r).at(-1);
@@ -358,12 +362,14 @@ export async function main(argv, cwd) {
     const days = Number.parseInt(argv.slice(1).find((a) => /^\d+$/.test(a)) ?? '7', 10);
     const r = await writeDigest(root, days > 0 && days <= 90 ? days : 7);
     let sent = '';
+    let sentFailed = false;
     if (argv.includes('--send')) {
       const hooks = await webhookConfig();
       const res = hooks.length ? await sendWebhooks(hooks, 'digest', r.markdown) : [];
+      sentFailed = res.length > 0 && !res.some((x) => x.ok);
       sent = res.length ? `\nĐã gửi webhook: ${res.map((x) => `${x.host} ${x.ok ? '✓' : `✗ ${x.status ?? x.error}`}`).join(', ')}` : '\nChưa có webhook (thêm "webhooks" vào ~/.e2e-dashboard/config.json).';
     }
-    return { code: 0, out: `${r.markdown}\nĐã lưu: ${r.file}${sent}` };
+    return { code: sentFailed ? 1 : 0, out: `${r.markdown}\nĐã lưu: ${r.file}${sent}` };
   }
   if (cmd === 'report') {
     const kind = argv.includes('month') || argv.includes('monthly') ? 'monthly' : 'weekly';
@@ -371,7 +377,8 @@ export async function main(argv, cwd) {
       const r = await sendReport(root, kind);
       const hooks = r.webhooks.length ? `Webhook: ${r.webhooks.map((x) => `${x.host} ${x.ok ? '✓' : '✗'}`).join(', ')}` : 'Chưa có webhook nhận sự kiện "report".';
       const mail = r.email ? `Email: ${r.email.ok ? '✓ đã gửi' : `✗ ${r.email.error}`}` : '';
-      return { code: 0, out: [r.markdown, '', `Đã lưu: ${r.file}`, hooks, mail].filter(Boolean).join('\n') };
+      const tried = [...r.webhooks, ...(r.email ? [r.email] : [])];
+      return { code: tried.length && !tried.some((x) => x.ok) ? 1 : 0, out: [r.markdown, '', `Đã lưu: ${r.file}`, hooks, mail].filter(Boolean).join('\n') }; // cron/CI must see a dead webhook
     }
     const data = await buildReport(root, { kind: kind === 'monthly' ? 'month' : 'week' });
     const file = await writeText(root, `reports/${kind}-preview.html`, reportHtml(data));

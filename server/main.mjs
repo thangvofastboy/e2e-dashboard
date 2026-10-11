@@ -125,7 +125,7 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
             const { rules } = readCodeowners(projectRoot);
             const owners = (run?.report.run.results ?? []).filter((r) => ['failed', 'timed-out', 'interrupted'].includes(r.status)).flatMap((r) => ownersOf(rules, r.source?.file ?? r.file));
             const who = mentionsFor(owners, await mentionMap().catch(() => ({})));
-            sendWebhooks(hooks, 'run-failed', `${m.title} · ${m.body}${found.length ? ` · ${found.length} bất thường` : ''}${who ? `\n${who}` : ''}`).catch(() => {});
+            sendWebhooks(hooks, 'run-failed', `${m.title} · ${m.body}${found.length ? ` · ${found.length} bất thường` : ''}`, { mentions: who }).catch(() => {});
           }
         }
       }
@@ -188,7 +188,13 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
       break;
     } catch (e) {
       if (e.code !== 'EADDRINUSE' || preferred === 0 || p >= preferred + 20) {
+        // nothing will call close(): stop every timer and watcher started above, or the process lingers
         watcher.close();
+        scheduler.close();
+        ci.close();
+        reports.close();
+        testWatcher.disable();
+        await liveFile.close().catch(() => {});
         throw e;
       }
     }
