@@ -18,6 +18,11 @@ import { anomalies } from './insights.mjs';
 import { createApp } from './app.mjs';
 import { createLive } from './live.mjs';
 import { watchReport, outputFromArtifactsRoot } from './watch.mjs';
+import { checkAlerts } from './tracking.mjs';
+import { syncLongterm } from './longterm.mjs';
+import { ciConfig, createCiSync, syncCi } from './cisync.mjs';
+import { reportSchedule, createReportScheduler, sendReport } from './reports.mjs';
+import { publishSite } from './site.mjs';
 
 const UI_DIR = fileURLToPath(new URL('../ui', import.meta.url));
 
@@ -106,6 +111,8 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
     last = r;
     if (r.runDir && (r.status === 'archived' || r.status === 'exists')) {
       const meta = await readMeta(r.runDir);
+      // M7: long-term rollups and alert rules follow every archived run
+      if (meta) void checkAlerts(projectRoot, { notifier }).catch(() => {});
       if (meta && Date.parse(meta.finishedAt ?? meta.startedAt) >= startedAt - 5000) {
         const found = await loadHistory(projectRoot, 31).then((h) => anomalies(h, { runId: meta.runId })).catch(() => []);
         notifier.runFinished(meta, { anomalies: found.length });
@@ -156,7 +163,16 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
       return { enabled: testWatcher.enabled(), ok };
     },
   };
+  // M7: CI auto-sync and scheduled reports, while the dashboard runs
+  void syncLongterm(projectRoot).catch(() => {});
+  const ci = createCiSync({ root: projectRoot, config: ciConfig(cfg), sync: (c) => syncCi(projectRoot, c).then(async (out) => {
+    if (out.imported) await checkAlerts(projectRoot, { notifier }).catch(() => {});
+    return out;
+  }) });
+  const reports = createReportScheduler({ root: projectRoot, schedule: reportSchedule(cfg) });
+  const tracking = { ci, sendReport: (kind) => sendReport(projectRoot, kind), publish: () => publishSite(projectRoot) };
   const app = createApp({
+    tracking,
     automation,
     projectRoot, token, uiDir, live, lastArchive: () => last, runner,
     ai: createAi({ projectRoot, model: typeof cfg.ai?.model === 'string' && /^[\w.:][\w.:-]{0,79}$/.test(cfg.ai.model) ? cfg.ai.model : undefined }),
@@ -188,6 +204,8 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
     async close() {
       watcher.close();
       scheduler.close();
+      ci.close();
+      reports.close();
       testWatcher.disable();
       await liveFile.close();
       server.closeAllConnections?.();

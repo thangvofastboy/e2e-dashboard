@@ -13,6 +13,12 @@ import { search, testDetail, appErrors } from '../server/insights.mjs';
 import { buildDigest, flakyShare } from '../server/digest.mjs';
 import { healthScore, passRate } from '../ui/health.js';
 import { resultAttempts, readConfig } from '../reporter/e2e-dashboard.reporter.mjs';
+import { syncLongterm, readDays, daySeries, totals, reliability } from '../server/longterm.mjs';
+import { syncTriage, triageBoard } from '../server/triage.mjs';
+import { groupReport } from '../server/groups.mjs';
+import { buildReport } from '../server/reports.mjs';
+import { reportMarkdown } from '../server/report-html.mjs';
+import { readCodeowners, ownersOf } from '../server/owners.mjs';
 
 const VERSION = JSON.parse(readFileSync(new URL('../.claude-plugin/plugin.json', import.meta.url), 'utf8')).version;
 const pct = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`);
@@ -31,6 +37,10 @@ export const TOOLS = [
   { name: 'e2e_gate', description: 'Cổng chất lượng: có test mới fail không, health score, SLO, ngân sách token. Dùng trước khi merge/push.', inputSchema: { type: 'object', properties: { minHealth: { type: 'integer' }, maxNewFailures: { type: 'integer' } } } },
   { name: 'e2e_coverage', description: 'Các trang (route) của app chưa có test e2e nào đi qua.', inputSchema: { type: 'object', properties: {} } },
   { name: 'e2e_digest', description: 'Tóm tắt Markdown của N ngày gần nhất (mặc định 7): run, pass rate, test mới fail, flaky, nhóm lỗi.', inputSchema: { type: 'object', properties: { days: { type: 'integer' } } } },
+  { name: 'e2e_trends', description: 'Xu hướng dài hạn (giữ cả khi run cũ đã bị xoá): pass rate theo tuần, MTTR, thời gian branch chính đỏ, test đang fail lâu nhất.', inputSchema: { type: 'object', properties: { days: { type: 'integer', description: 'Số ngày (mặc định 90, tối đa 730)' } } } },
+  { name: 'e2e_triage', description: 'Danh sách lỗi đang cần xử lý: trạng thái (mới / đang xem / đã biết / đã sửa / bỏ qua), người phụ trách, ghi chú, issue Linear.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'e2e_groups', description: 'Bảng điểm theo module, tag hoặc owner (CODEOWNERS): pass rate, test đang fail, flaky.', inputSchema: { type: 'object', properties: { by: { type: 'string', enum: ['module', 'tag', 'owner'] } } } },
+  { name: 'e2e_report', description: 'Báo cáo tuần hoặc tháng (Markdown) từ số liệu dài hạn, giống bản gửi tự động.', inputSchema: { type: 'object', properties: { kind: { type: 'string', enum: ['week', 'month'] } } } },
 ];
 
 async function runTool(root, name, args = {}) {
@@ -109,6 +119,32 @@ async function runTool(root, name, args = {}) {
     return [`${c.covered}/${c.total} route có test đi qua (${pct(c.share)}).`, 'Chưa có test:', ...c.untested.map((r) => `- ${r.route} (${r.source})`)].join('\n');
   }
   if (name === 'e2e_digest') return (await buildDigest(root, { days: int(args.days, 7, 90) })).markdown;
+  if (name === 'e2e_trends') {
+    const days = int(args.days, 90, 730);
+    const { index } = await syncLongterm(root);
+    const series = daySeries(await readDays(root, { from: Date.now() - (days - 1) * 86_400_000 }));
+    const t = totals(series);
+    const r = reliability(index, { days });
+    const weeks = [];
+    for (let i = 0; i < series.length; i += 7) {
+      const w = totals(series.slice(i, i + 7));
+      if (w.runs) weeks.push(`- tuần từ ${series[i].date}: ${pct(w.passRate)} · ${w.runs} run · ${w.failed} fail · ${w.flaky} flaky`);
+    }
+    return [`${days} ngày: pass rate ${pct(t.passRate)} · ${t.runs} run · ${t.flaky} kết quả flaky`, `MTTR: ${r.mttr.avgMs == null ? '—' : `${Math.round(r.mttr.avgMs / 3_600_000)} giờ`} (${r.mttr.count} lỗi đã sửa)${r.red ? ` · ${r.branch} đỏ ${Math.round(r.red.ms / 3_600_000)} giờ (${pct(r.red.share)})${r.red.now ? ', đang đỏ' : ''}` : ''}`, '', 'Đang fail:', ...(r.open.length ? r.open.slice(0, 10).map((o) => `- ${o.title} [${o.target}] từ ${o.since} (${o.runs} run)`) : ['- không có']), '', 'Theo tuần:', ...weeks].join('\n');
+  }
+  if (name === 'e2e_triage') {
+    const { entries, failing } = await syncTriage(root, await loadHistory(root, 60));
+    const b = triageBoard({ entries, failing });
+    if (!b.rows.length) return 'Không có lỗi nào cần xử lý.';
+    return b.rows.map((r) => `- [${r.status}] ${r.title} [${r.target ?? '?'}]${r.assignee ? ` · ${r.assignee}` : ''}${r.failingNow ? ` · fail ${r.streak} run từ ${r.since}` : ' · không còn fail'}${r.error ? ` · ${r.error.code}: ${r.error.message}` : ''}${r.note ? ` · ghi chú: ${r.note}` : ''}`).join('\n');
+  }
+  if (name === 'e2e_groups') {
+    const { rules } = readCodeowners(root);
+    const by = ['module', 'tag', 'owner'].includes(args.by) ? args.by : 'module';
+    const g = groupReport(await loadHistory(root, 30), { by, modules: readConfig(root).modules, ownersOf: rules.length ? (f) => ownersOf(rules, f) : null });
+    return g.rows.length ? g.rows.map((x) => `- ${x.grade} ${x.group}: ${x.tests} test · ${pct(x.passRate)} · ${x.failingNow.length} đang fail · ${x.flaky} flaky`).join('\n') : 'Chưa có dữ liệu.';
+  }
+  if (name === 'e2e_report') return reportMarkdown(await buildReport(root, { kind: args.kind === 'month' ? 'month' : 'week', calendar: false }));
   throw Object.assign(new Error(`unknown tool ${name}`), { code: -32602 });
 }
 

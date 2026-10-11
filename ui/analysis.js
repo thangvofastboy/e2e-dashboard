@@ -64,3 +64,18 @@ export function openModal(id, title, ic, html = '<p class="muted">Đang tải…
   dlg.showModal();
   return { dlg, body: dlg.querySelector('[data-body]') };
 }
+
+// A long span (MTTR, time red): minutes, hours or days.
+export function fmtSpan(ms) {
+  if (ms == null || !Number.isFinite(ms)) return '—';
+  const m = Math.round(ms / 60_000);
+  if (m < 60) return `${m} phút`;
+  const h = ms / 3_600_000;
+  return h < 48 ? `${Math.round(h * 10) / 10} giờ` : `${Math.round((h / 24) * 10) / 10} ngày`;
+}
+
+// "Last N days" picker shared by the long-term pages; the page re-renders on change.
+export function daysPicker(current, options, onChange) {
+  const html = `<label class="count-pick">Khoảng <select data-days-pick>${options.map((n) => `<option value="${n}" ${n === current ? 'selected' : ''}>${n} ngày</option>`).join('')}</select></label>`;
+  return { html, bind: (root) => root.querySelector('[data-days-pick]')?.addEventListener('change', (e) => onChange(Number(e.target.value))) };
+}

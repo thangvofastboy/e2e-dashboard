@@ -64,6 +64,17 @@ const EN = {
   'Không tìm thấy route nào của app': 'No app routes found', 'Fail tập trung ở': 'Failures concentrate in',
   'CSV run': 'Runs CSV', 'CSV test': 'Tests CSV', 'CSV flaky': 'Flaky CSV', 'Budget còn lại': 'Budget left', 'Video cạnh nhau (phát đồng bộ)': 'Videos side by side (synced)',
   'Đã copy lệnh: dán vào Claude Code để Claude sửa và chạy lại test': 'Command copied: paste it into Claude Code to have Claude fix and rerun the test',
+  // M7 tracking pages
+  'Theo dõi': 'Tracking', 'Xu hướng': 'Trends', 'Triage lỗi': 'Triage', 'Module / team': 'Modules / teams', 'Phát hành': 'Releases', 'Truy vết': 'Traceability', 'Vòng đời test': 'Test lifecycle',
+  'Xu hướng dài hạn': 'Long-term trends', 'Theo module / team': 'By module / team', 'Báo cáo phát hành': 'Release report', 'Truy vết yêu cầu': 'Requirement traceability',
+  'Báo cáo tự động': 'Scheduled reports', 'Cảnh báo': 'Alerts', 'Đồng bộ từ CI': 'CI sync', 'Sự kiện': 'Events', 'Đang fail lâu nhất': 'Failing the longest', 'Theo tuần': 'By week',
+  'Pass rate theo ngày': 'Pass rate by day', '12 tháng qua': 'Last 12 months', 'Mới': 'New', 'Đang xem': 'Investigating', 'Đã biết': 'Known', 'Bỏ qua': 'Ignored',
+  'Gửi ngay': 'Send now', 'Xem': 'View', 'Xuất trang tĩnh': 'Export static site', 'Đồng bộ ngay': 'Sync now', 'Đánh dấu': 'Mark', 'Sẵn sàng phát hành': 'Ready to release',
+  'Có rủi ro': 'At risk', 'Chưa nên phát hành': 'Not ready to release', 'Đang fail': 'Failing', 'Số run': 'Runs', 'Kết quả flaky': 'Flaky results', 'Đang pass': 'Passing',
+  'Test bị bỏ': 'Removed tests', 'Đổi tên': 'Renamed', 'Luôn fail': 'Always failing', 'Test đang chạy': 'Active tests', 'Phụ trách': 'Assignee', 'Ghi chú': 'Note', 'Trạng thái': 'Status',
+  'Lịch': 'Schedule', 'Gửi lần cuối': 'Last sent', 'Tuần': 'Week', 'Tháng': 'Month', 'Không có cảnh báo nào đang bật.': 'No active alerts.', 'Chưa bật.': 'Not enabled.',
+  'Trang báo cáo tĩnh cho cả team': 'Static report site for the team', 'Run được dùng': 'Runs used', 'Bản phát hành': 'Release', 'Pass rate ở tag': 'Pass rate at the tag',
+  'Flaky trong bản này': 'Flaky in this release', 'Story': 'Story', 'Điểm': 'Grade', 'Xu hướng ': 'Trend', 'Tất cả test (lâu đời nhất trước)': 'All tests (oldest first)',
   'Tìm test, mã lỗi, URL, branch, commit, run id…': 'Search tests, error codes, URLs, branches, commits, run ids…', 'Không có kết quả.': 'No results.',
 };
 

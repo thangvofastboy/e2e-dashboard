@@ -20,7 +20,7 @@ function grid(yMax, yFormat) {
     .join('');
 }
 
-export function lineChart({ points = [], yMax, yFormat = String, ariaLabel, area = false } = {}) {
+export function lineChart({ points = [], yMax, yFormat = String, ariaLabel, area = false, markers = [] } = {}) {
   if (!points.length) return EMPTY;
   const values = points.map((p) => p.value).filter((v) => v != null);
   const max = yMax ?? Math.max(1, ...values);
@@ -60,7 +60,32 @@ export function lineChart({ points = [], yMax, yFormat = String, ariaLabel, area
   const hits = points
     .map((p, i) => `<rect class="hit" x="${(x(i) - band / 2).toFixed(1)}" y="0" width="${band.toFixed(1)}" height="${H}" data-tip="${escapeHtml(p.tip ?? `${p.label}: ${p.value == null ? '—' : yFormat(p.value)}`)}"/>`)
     .join('');
-  return `${svgOpen(ariaLabel)}${grid(max, yFormat)}${fill}${lines}${dots}${last}${hits}</svg>`;
+  // timeline annotations (M7): a dashed line at the point each event belongs to
+  const marks = markers
+    .filter((m) => Number.isInteger(m.index) && m.index >= 0 && m.index < points.length)
+    .map((m) => `<g class="marker mk-${escapeHtml(m.kind ?? 'note')}" data-tip="${escapeHtml(m.label)}"><line x1="${x(m.index).toFixed(1)}" x2="${x(m.index).toFixed(1)}" y1="${PAD.top}" y2="${base}"/><circle cx="${x(m.index).toFixed(1)}" cy="${PAD.top}" r="4"/></g>`)
+    .join('');
+  return `${svgOpen(ariaLabel)}${grid(max, yFormat)}${fill}${lines}${dots}${last}${hits}${marks}</svg>`;
+}
+
+// GitHub-style calendar (M7): one square per day, coloured by pass rate. days: [{date, passRate, runs}].
+export function calendarHeatmap(days = [], { href = null } = {}) {
+  if (!days.length) return EMPTY;
+  const first = new Date(`${days[0].date}T12:00:00`);
+  const offset = (first.getDay() + 6) % 7; // weeks start on Monday
+  const cols = Math.ceil((days.length + offset) / 7);
+  const level = (d) => (!d.runs || d.passRate == null ? 0 : d.passRate >= 0.98 ? 4 : d.passRate >= 0.95 ? 3 : d.passRate >= 0.85 ? 2 : 1);
+  const cells = [...Array.from({ length: offset }, () => '<span class="cal-cell cal-pad"></span>'), ...days.map((d) => {
+    const tip = `${d.date}: ${d.runs ? `${Math.round(d.passRate * 100)}% · ${d.runs} run${d.failed ? ` · ${d.failed} fail` : ''}` : 'không chạy'}`;
+    const tag = href && d.runs ? 'a' : 'span';
+    return `<${tag} class="cal-cell cal-${level(d)}"${tag === 'a' ? ` href="${escapeHtml(href(d))}"` : ''} data-tip="${escapeHtml(tip)}" aria-label="${escapeHtml(tip)}"></${tag}>`;
+  })].join('');
+  const months = [];
+  days.forEach((d, i) => {
+    if (i === 0 || d.date.endsWith('-01')) months.push(`<span style="grid-column:${Math.floor((i + offset) / 7) + 1}">${escapeHtml(d.date.slice(0, 7))}</span>`);
+  });
+  return `<div class="cal" style="--cal-cols:${cols}"><div class="cal-months">${months.join('')}</div><div class="cal-grid">${cells}</div>
+    <div class="cal-legend"><span class="cal-cell cal-1"></span>&lt;85% <span class="cal-cell cal-2"></span>85–95% <span class="cal-cell cal-3"></span>95–98% <span class="cal-cell cal-4"></span>≥98% <span class="cal-cell cal-0"></span>không chạy</div></div>`;
 }
 
 // Rect with only the top corners rounded (the data end of a vertical bar).

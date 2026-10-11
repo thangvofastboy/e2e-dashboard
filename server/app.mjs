@@ -26,6 +26,17 @@ import { buildPrompt, cacheKey, commitsBetween } from './ai.mjs';
 import { estimateEta } from './live.mjs';
 import { bundleUi } from '../ui/bundle.mjs';
 import { buildExportHtml } from './export.mjs';
+import { syncLongterm, readDays, daySeries, totals, reliability, lifecycle, dayKey } from './longterm.mjs';
+import { syncTriage, triageBoard, updateTriage, TRIAGE_STATUSES } from './triage.mjs';
+import { groupReport } from './groups.mjs';
+import { traceMatrix, storyList } from './traceability.mjs';
+import { addEvent, removeEvent, timeline, lastCommits, EVENT_KINDS } from './events.mjs';
+import { releaseReport } from './release.mjs';
+import { alertRules, readAlerts, describeRule } from './alerts.mjs';
+import { ciConfig, readCiState } from './cisync.mjs';
+import { buildReport, reportSchedule, readReportState, lastOccurrence, emailConfig } from './reports.mjs';
+import { reportHtml } from './report-html.mjs';
+import { siteDir } from './site.mjs';
 
 const MAX_BODY = 1024 * 1024;
 const FILE_TYPES = {
@@ -156,7 +167,7 @@ async function askContext(projectRoot) {
 
 const IDLE_RUNNER = { start: () => ({ ok: false, error: 'unavailable' }), stop: () => false, state: () => ({ running: false, pid: null }) };
 
-export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER, ai = NO_AI, env = process.env, linearFetch, github = createGithub({ projectRoot }), ghImport = importFromGithub, automation = null }) {
+export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER, ai = NO_AI, env = process.env, linearFetch, github = createGithub({ projectRoot }), ghImport = importFromGithub, automation = null, tracking = null }) {
   let avgByKey = new Map();
   const refreshAverages = () =>
     testHistory(projectRoot, 10)
@@ -274,6 +285,91 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       if (p === '/api/slo') return send(res, 200, sloStatus((await loadHistory(projectRoot, 200)).filter((h) => h.meta.kind !== 'explore'), sloConfig(readConfig(projectRoot))));
       if (p === '/api/gate') return send(res, 200, await runGate(projectRoot));
       if (p === '/api/changelog') return send(res, 200, { version: VERSION, entries: await readChangelog() });
+      // ---- M7: tracking & reporting
+      const DAY = 86_400_000;
+      const spanDays = (def = 90) => {
+        const d = Number.parseInt(url.searchParams.get('days') ?? '', 10);
+        return Number.isInteger(d) ? Math.max(7, Math.min(730, d)) : def;
+      };
+      const ownersFn = () => {
+        const { rules } = readCodeowners(projectRoot);
+        return rules.length ? (f) => ownersOf(rules, f) : null;
+      };
+      if (p === '/api/trends') {
+        const days = spanDays(90);
+        const cfg = readConfig(projectRoot);
+        const { index } = await syncLongterm(projectRoot);
+        const now = Date.now();
+        const series = daySeries(await readDays(projectRoot, { from: now - (days - 1) * DAY, to: now }));
+        const prev = daySeries(await readDays(projectRoot, { from: now - (2 * days - 1) * DAY, to: now - days * DAY }));
+        const calendar = daySeries(await readDays(projectRoot, { from: now - 364 * DAY, to: now }));
+        const events = (await timeline(projectRoot, { from: now - 364 * DAY, to: now })).map((e) => ({ ...e, date: dayKey(Date.parse(e.at)) }));
+        const runs = Object.keys(index.seen).length;
+        return send(res, 200, { days, series, current: totals(series), previous: totals(prev), calendar, events, reliability: reliability(index, { days, now, branch: typeof cfg.mainBranch === 'string' ? cfg.mainBranch : null }), trackedRuns: runs, since: Object.values(index.seen).sort()[0] ?? null });
+      }
+      if (p === '/api/reliability') {
+        const { index } = await syncLongterm(projectRoot);
+        return send(res, 200, reliability(index, { days: spanDays(30) }));
+      }
+      if (p === '/api/lifecycle') {
+        const { index } = await syncLongterm(projectRoot);
+        const life = lifecycle(index, { days: spanDays(30) });
+        const now = Date.now();
+        const sizes = daySeries(await readDays(projectRoot, { from: now - 179 * DAY, to: now })).map((d) => ({ date: d.date, tests: d.runs ? d.tests : null }));
+        const commits = url.searchParams.get('git') === '0' ? {} : await lastCommits(projectRoot, life.tests.map((t) => t.file));
+        return send(res, 200, { ...life, sizes, commits });
+      }
+      if (p === '/api/triage') {
+        const history = await loadHistory(projectRoot, 60);
+        const { entries, failing } = await syncTriage(projectRoot, history);
+        return send(res, 200, { ...triageBoard({ entries, failing, links: await readIssueLinks(projectRoot), ownersOf: ownersFn() }), statuses: TRIAGE_STATUSES });
+      }
+      if (p === '/api/groups') {
+        const by = ['module', 'tag', 'owner'].includes(url.searchParams.get('by')) ? url.searchParams.get('by') : 'module';
+        return send(res, 200, groupReport(await loadHistory(projectRoot, runCount(url)), { by, modules: readConfig(projectRoot).modules, ownersOf: ownersFn() }));
+      }
+      if (p === '/api/traceability') return send(res, 200, traceMatrix(await loadHistory(projectRoot, runCount(url)), { stories: storyList(readConfig(projectRoot)) }));
+      if (p === '/api/timeline') {
+        const days = spanDays(365);
+        return send(res, 200, { kinds: EVENT_KINDS, events: await timeline(projectRoot, { from: Date.now() - days * DAY }) });
+      }
+      if (p === '/api/release') {
+        const cfg = readConfig(projectRoot);
+        const { entries, failing } = await syncTriage(projectRoot, await loadHistory(projectRoot, 60));
+        const open = triageBoard({ entries, failing }).rows.filter((r) => r.status === 'new' || r.status === 'investigating').length;
+        return send(res, 200, await releaseReport(projectRoot, { from: url.searchParams.get('from') || null, to: url.searchParams.get('to') || null, slo: sloConfig(cfg).target, openTriage: open }));
+      }
+      if (p === '/api/alerts') {
+        const rules = alertRules(readConfig(projectRoot));
+        const st = await readAlerts(projectRoot);
+        return send(res, 200, { rules: rules.map((r) => ({ ...r, description: describeRule(r) })), active: Object.entries(st.active).map(([id, a]) => ({ id, ...a })), log: st.log.slice(-50).reverse(), configured: Array.isArray(readConfig(projectRoot).alerts) });
+      }
+      if (p === '/api/ci') {
+        const c = ciConfig(readConfig(projectRoot));
+        const st = await readCiState(projectRoot);
+        return send(res, 200, { config: c, state: { lastSync: st.lastSync, lastError: st.lastError, lastImported: st.lastImported, recent: Object.entries(st.imported).sort((a, b) => Number(b[0]) - Number(a[0])).slice(0, 10).map(([id, x]) => ({ id: Number(id), ...x })) }, timer: tracking?.ci?.state() ?? null });
+      }
+      if (p === '/api/reports') {
+        const cfg = readConfig(projectRoot);
+        const schedule = reportSchedule(cfg);
+        const st = await readReportState(projectRoot);
+        const next = (spec, kind) => {
+          if (!spec) return null;
+          const last = lastOccurrence(spec, kind);
+          const d = new Date(last);
+          if (kind === 'weekly') d.setDate(d.getDate() + 7);
+          else d.setMonth(d.getMonth() + 1);
+          return d.toISOString();
+        };
+        const mail = await emailConfig(env);
+        return send(res, 200, { schedule, next: { weekly: next(schedule.weekly, 'weekly'), monthly: next(schedule.monthly, 'monthly') }, sent: st.sent, log: st.log.slice(-20).reverse(), webhooks: (await webhookConfig(env)).filter((w) => w.events.includes('report') || w.events.includes('*')).map((w) => new URL(w.url).host), email: mail ? { to: mail.to.length } : null, siteDir: await siteDir(projectRoot, null, env) });
+      }
+      const rep = /^\/api\/reports\/(week|month)\.(json|html)$/.exec(p);
+      if (rep) {
+        const data = await buildReport(projectRoot, { kind: rep[1] });
+        if (rep[2] === 'json') return send(res, 200, data);
+        return send(res, 200, reportHtml(data), { 'content-type': 'text/html; charset=utf-8', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; img-src data:", 'x-content-type-options': 'nosniff' });
+      }
       const csv = /^\/api\/export\/(runs|tests|flaky)\.csv$/.exec(p);
       if (csv) {
         const n = runCount(url, 100);
@@ -452,6 +548,41 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         const issue = await linear.create(old ? { ...draft, description: `Tái phát của ${old.identifier} (đã đóng).\n\n${draft.description}` } : draft);
         await saveIssueLink(projectRoot, draft.fingerprint, issue);
         return send(res, 201, { status: 'created', issue, reopenedFrom: old?.identifier ?? null, fingerprint: draft.fingerprint });
+      }
+      if (p === '/api/triage') {
+        const body = await readBody(req);
+        try {
+          return send(res, 200, await updateTriage(projectRoot, body.fp, { status: body.status, assignee: body.assignee, note: body.note }, body.row && typeof body.row === 'object' ? body.row : {}));
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+      }
+      if (p === '/api/timeline' || p === '/api/timeline/remove') {
+        const body = await readBody(req);
+        if (p === '/api/timeline/remove') return send(res, 200, { removed: await removeEvent(projectRoot, String(body.id ?? '')) });
+        try {
+          return send(res, 201, await addEvent(projectRoot, { kind: body.kind, label: body.label, at: body.at, url: body.url }));
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+      }
+      if (p === '/api/ci/sync') {
+        if (!tracking?.ci || !ciConfig(readConfig(projectRoot))) return send(res, 400, { error: 'Chưa cấu hình "ci": { "github": { "workflow": … } } trong .e2e-dashboard/config.json.' });
+        return send(res, 200, await tracking.ci.now());
+      }
+      if (p === '/api/reports/send') {
+        const { kind } = await readBody(req);
+        if (kind !== 'weekly' && kind !== 'monthly') return send(res, 400, { error: 'kind phải là weekly hoặc monthly' });
+        if (!tracking?.sendReport) return send(res, 503, { error: 'unavailable' });
+        return send(res, 200, await tracking.sendReport(kind));
+      }
+      if (p === '/api/publish') {
+        if (!tracking?.publish) return send(res, 503, { error: 'unavailable' });
+        try {
+          return send(res, 200, await tracking.publish());
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
       }
       if (p === '/api/storage/prune') {
         const { days } = await readBody(req);

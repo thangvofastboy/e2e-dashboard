@@ -123,7 +123,7 @@ async function runCli($: EngineInterface, argv: string[]) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command
-      .register({ name: BARE, description: 'Mở dashboard e2e (live, lịch sử, debug)', argumentHint: '[setup|export [runId]|stop|status|digest [ngày]|projects|statusline [install]|quarantine|import <path>|share push|pull|fix [runId] [resultId]|gate|update|version]' })
+      .register({ name: BARE, description: 'Mở dashboard e2e (live, lịch sử, debug)', argumentHint: '[setup|export [runId]|stop|status|digest [ngày]|projects|statusline [install]|quarantine|import <path>|share push|pull|fix [runId] [resultId]|gate|report [week|month] [--send]|publish [dir]|mark <loại> <mô tả>|triage|ci-sync|update|version]' })
       .catch(() => undefined)
     return next(e)
   })

@@ -146,6 +146,17 @@ function testsHeatmap(tests) {
   return heatmap({ rows, cols: 10 });
 }
 
+// Timeline events (M7) → the first run at or after each, for markers on the per-run charts.
+export function runMarkers(chron, events) {
+  const out = [];
+  for (const e of events) {
+    const t = Date.parse(e.at);
+    const i = chron.findIndex((m) => Date.parse(m.startedAt) >= t);
+    if (i > 0) out.push({ index: i, kind: e.kind, label: `${new Date(e.at).toLocaleString('vi-VN')} · ${e.label}` });
+  }
+  return out;
+}
+
 export async function renderOverview(main) {
   const [allMetas, info, tests, health] = await Promise.all([
     getJson('/api/runs'),
@@ -155,10 +166,13 @@ export async function renderOverview(main) {
   ]);
   // explore runs have no tests: they would read as "0/0 pass" in the KPIs and charts
   const metas = allMetas.filter((m) => m.kind !== 'explore');
-  const [anomalies, slo, gate] = isExport() ? [[], null, null] : await Promise.all([
+  const [anomalies, slo, gate, alerts, timeline, triage] = isExport() ? [[], null, null, null, null, null] : await Promise.all([
     getJson('/api/anomalies').then((r) => r.anomalies).catch(() => []),
     getJson('/api/slo').catch(() => null),
     getJson('/api/gate').catch(() => null),
+    getJson('/api/alerts').catch(() => null),
+    getJson('/api/timeline?days=60').catch(() => null),
+    getJson('/api/triage').catch(() => null),
   ]);
   if (!metas.length) {
     main.innerHTML = EMPTY_RUNS;
@@ -175,13 +189,15 @@ export async function renderOverview(main) {
   main.innerHTML = `
     <h1>Overview</h1>
     ${healthPanel(health)}
+    ${alerts?.active?.length ? `<a class="banner tone-bad" href="#/settings">${icon('bolt', { size: 15 })}<strong>${alerts.active.length} cảnh báo đang bật:</strong> ${escapeHtml(alerts.active.slice(0, 2).map((x) => x.title).join(' · '))}${alerts.active.length > 2 ? '…' : ''}</a>` : ''}
+    ${triage?.untriaged ? `<a class="banner tone-warn" href="#/triage">${icon('ticket', { size: 15 })}${escapeHtml(triage.untriaged)} test fail chưa ai nhận: mở Triage</a>` : ''}
     ${sloPanel(slo, gate)}
     ${anomalies.length ? `<section class="panel anomalies"><strong>${icon('zap', { size: 15 })} Run gần nhất có ${anomalies.length} bất thường</strong> <span class="muted small">chậm hoặc tốn hơn hẳn lịch sử của chính test (TB + 2σ)</span><ul>${anomalies.slice(0, 5).map((a) => `<li><a href="${runHref(a.runId, a.resultId)}">${escapeHtml(a.title)}</a>: ${escapeHtml(a.label)} ${escapeHtml(a.metric === 'durationMs' ? fmtDuration(a.value) : a.metric === 'tokens' ? fmtTokens(a.value) : a.value)} <span class="muted">(TB ${escapeHtml(a.metric === 'durationMs' ? fmtDuration(a.mean) : a.metric === 'tokens' ? fmtTokens(a.mean) : a.mean)})</span></li>`).join('')}</ul></section>` : ''}
     <section class="kpis">${cards.map(kpiCard).join('')}</section>
     ${thresholdsPanel(cards, t)}
     <section class="charts">
       <figure><figcaption>${icon('activity')}Pass rate theo run</figcaption>
-        ${lineChart({ points: chron.map((m) => ({ label: when(m), value: passRate(m) == null ? null : passRate(m) * 100 })), yMax: 100, yFormat: pct, ariaLabel: 'Pass rate theo run', area: true })}</figure>
+        ${lineChart({ points: chron.map((m) => ({ label: when(m), value: passRate(m) == null ? null : passRate(m) * 100 })), yMax: 100, yFormat: pct, ariaLabel: 'Pass rate theo run', area: true, markers: runMarkers(chron, timeline?.events ?? []) })}</figure>
       <figure><figcaption>${icon('gauge')}Run gần nhất</figcaption>
         <div class="donut-wrap">${donutChart({ segments: RUN_KEYS.map((k) => ({ key: k, value: latest.summary?.[k] ?? 0 })), center: rate == null ? '—' : pct(rate * 100), ariaLabel: 'Kết quả run gần nhất' })}
         <div>${statusBadge(latest.status)}<p class="muted small">${escapeHtml(fmtRelative(latest.startedAt))} · ${fmtDuration(latest.durationMs)}</p>${legend(RUN_KEYS.filter((k) => latest.summary?.[k]))}</div></div></figure>

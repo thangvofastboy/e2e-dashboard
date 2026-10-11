@@ -49,5 +49,16 @@ export function createNotifier({ mode = 'failures', project = '', platform = pro
       }
       return true;
     },
+    // a free-form message (alerts): shown unless notifications are off
+    message(title, body) {
+      if (mode === 'off') return false;
+      const [cmd, args, opts] = notifyCommand(String(title).slice(0, 120), String(body).slice(0, 300), platform);
+      try {
+        execImpl(cmd, args, { timeout: 15_000, windowsHide: true, ...opts }, () => {});
+      } catch {
+        // best-effort
+      }
+      return true;
+    },
   };
 }

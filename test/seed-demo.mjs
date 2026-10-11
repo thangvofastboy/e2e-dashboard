@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { archive } from '../reporter/e2e-dashboard.reporter.mjs';
+import { applyRun, emptyIndex } from '../server/longterm.mjs';
 
 const dir = process.argv[2] ?? mkdtempSync(join(tmpdir(), 'e2e-demo-'));
 mkdirSync(dir, { recursive: true });
@@ -19,7 +20,7 @@ for (const f of ['app/page.tsx', 'app/cart/page.tsx', 'app/products/[id]/page.ts
   writeFileSync(join(dir, f), 'export default function Page() { return null; }\n');
 }
 mkdirSync(join(dir, '.e2e-dashboard'), { recursive: true });
-writeFileSync(join(dir, '.e2e-dashboard/config.json'), JSON.stringify({ pricing: { inputPerMTok: 3, outputPerMTok: 15 }, budget: { tokensPerRun: 2000 } }, null, 2));
+writeFileSync(join(dir, '.e2e-dashboard/config.json'), JSON.stringify({ pricing: { inputPerMTok: 3, outputPerMTok: 15 }, budget: { tokensPerRun: 2000 }, reports: { weekly: 'mon 09:00', monthly: '1 09:00' }, traceability: { stories: ['LIN-101', { id: 'LIN-102', title: 'Xem đơn hàng' }, { id: 'LIN-103', title: 'Thanh toán bằng ví' }] } }, null, 2));
 const base = JSON.parse(readFileSync(new URL('./fixtures/report-v1.valid.json', import.meta.url), 'utf8'));
 const VIDEO = base.run.results[0].attempts[0].artifacts[0].path;
 const hex = (n, len = 64) => n.toString(16).padStart(len, '0').slice(-len);
@@ -97,6 +98,7 @@ for (let i = 0; i < 12; i++) {
     t.id = hex(i * 10 + k + 1);
     t.testId = `tests/example.e2e.ts::${encodeURIComponent(name)}`;
     t.titlePath = [name];
+    t.tags = [['@smoke'], ['@LIN-101', '@checkout'], ['@LIN-102']][k];
     t.source = { ...t.source, line: 3 + k * 12 };
     const a = t.attempts[0];
     a.durationMs = 900 + k * 400 + i * 30;
@@ -182,5 +184,38 @@ for (let i = 0; i < 12; i++) {
   };
   writeFileSync(join(dir, '.e2e', 'report.json'), JSON.stringify(r));
   await archive(dir, { source: 'hook' });
+}
+// Long-term rollups from the months before (their run folders long pruned by retention), so the
+// Trends, calendar, MTTR and lifecycle pages have history to show.
+{
+  const index = emptyIndex();
+  const days = {};
+  let n = 0;
+  const day0 = Date.parse('2026-05-20T08:00:00Z');
+  for (let d = 0; d < 134; d++) {
+    const date = new Date(day0 + d * 86_400_000);
+    if (date.getUTCDay() === 0 || (date.getUTCDay() === 6 && d % 3)) continue; // quiet weekends
+    for (let k = 0; k < (d % 4 === 0 ? 2 : 1); k++) {
+      n++;
+      const at = new Date(day0 + d * 86_400_000 + k * 5 * 3600_000).toISOString();
+      const names = ['opens app', 'checkout', 'account', ...(d < 90 ? ['search'] : []), ...(d > 60 ? ['wishlist'] : [])];
+      const results = names.map((name, j) => {
+        const failing = (name === 'checkout' && ((d > 30 && d < 34) || (d > 70 && d < 72) || (d > 100 && d < 109))) || (name === 'opens app' && (d * 7 + k) % 11 === 0) || (name === 'search' && d > 80 && d < 86);
+        const flaky = !failing && name === 'opens app' && (d * 5 + k) % 9 === 0;
+        return { id: hex(900000 + n * 10 + j), testId: `tests/example.e2e.ts::${encodeURIComponent(name)}`, titlePath: [name], targetId: 'web', status: failing ? 'failed' : flaky ? 'flaky' : 'passed', source: { file: 'tests/example.e2e.ts', line: 3 + j * 12 }, attempts: [{ durationMs: 900 + j * 300 + (d % 7) * 40 }] };
+      });
+      const failed = results.filter((r) => r.status === 'failed').length;
+      const meta = { runId: `018f0f5c-0000-7abc-8abc-${String(n).padStart(12, '0')}`, startedAt: at, status: failed ? 'failed' : 'passed', durationMs: 50_000 + (d % 9) * 2_000, tokens: { input: 300, output: 60 }, git: { branch: 'main', commit: 'f'.repeat(40) } };
+      applyRun(index, days, { meta, report: { run: { results } } });
+    }
+  }
+  mkdirSync(join(dir, '.e2e-dashboard/longterm'), { recursive: true });
+  writeFileSync(join(dir, '.e2e-dashboard/longterm/index.json'), JSON.stringify(index));
+  writeFileSync(join(dir, '.e2e-dashboard/longterm/days-2026.json'), JSON.stringify(days));
+  writeFileSync(join(dir, '.e2e-dashboard/events.json'), JSON.stringify([
+    { id: 'ev-000000000001', kind: 'deploy', label: 'Checkout v2 lên staging', at: '2026-06-21T10:00:00.000Z', url: null },
+    { id: 'ev-000000000002', kind: 'incident', label: 'Payment sandbox chập chờn', at: '2026-09-01T07:30:00.000Z', url: null },
+    { id: 'ev-000000000003', kind: 'release', label: 'v1.4', at: '2026-09-15T09:00:00.000Z', url: null },
+  ]));
 }
 console.log(dir);
