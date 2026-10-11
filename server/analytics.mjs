@@ -4,6 +4,12 @@ import { createHash } from 'node:crypto';
 import { resultAttempts } from '../reporter/e2e-dashboard.reporter.mjs';
 import { passRate } from '../ui/health.js';
 
+// Local calendar day, YYYY-MM-DD: every per-day bucket (trends, SLO, digest) uses this one.
+export function dayKey(t) {
+  const d = new Date(t);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 const FAIL = new Set(['failed', 'timed-out', 'interrupted']);
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0); // counts come from report.json
 const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
@@ -196,6 +202,7 @@ export function costStats(history, { pricing = null, budget = null } = {}) {
     const costUsd = meta.costUsd != null && Number.isFinite(Number(meta.costUsd)) ? Number(meta.costUsd) : estimateCost(tokens, pricing);
     runs.push({ runId: meta.runId, startedAt: meta.startedAt, branch: meta.git?.branch ?? null, tokens, total: tokens.input + tokens.output, modelCalls: num(meta.modelCalls), costUsd, estimated: meta.costUsd == null && costUsd != null, replay: meta.replay?.total ? num(meta.replay.replayed) / num(meta.replay.total) : null });
     for (const r of results(report)) {
+      if (r.status === 'skipped' || r.selected === false) continue; // would dilute the per-test average
       const t = resultTokens(report, r);
       if (!tests.has(testKey(r))) tests.set(testKey(r), { ...row(r), tokens: 0, modelCalls: 0, runs: 0 });
       const x = tests.get(testKey(r));
@@ -460,7 +467,7 @@ export function locatorCandidates(history, { minReplays = 3 } = {}) {
     }
   }
   return [...by.values()]
-    .filter((x) => x.replayed >= minReplays || (x.runs >= minReplays && x.replayed / x.runs >= 0.6))
+    .filter((x) => x.replayed >= minReplays && x.replayed / x.runs >= 0.6)
     .map(({ liveTokens, ...x }) => ({ ...x, stability: x.replayed / x.runs, tokensWhenLive: liveTokens.length ? Math.round(mean(liveTokens)) : null }))
     .sort((a, b) => b.stability - a.stability || b.runs - a.runs);
 }
@@ -495,7 +502,7 @@ export function digest(history, { days = 7, now = Date.now(), project = '', heal
   const cost = costStats(cur);
   const r1 = rate(cur);
   const r0 = rate(prev);
-  const date = (t) => new Date(t).toISOString().slice(0, 10);
+  const date = dayKey;
   const lines = [
     `# Digest e2e${project ? ` · ${esc(project)}` : ''}: ${date(from)} → ${date(now)}`,
     '',

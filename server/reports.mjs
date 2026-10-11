@@ -146,12 +146,13 @@ export function sendReport(root, kind, { env = process.env, fetchImpl, execImpl,
 export function createReportScheduler({ root, schedule, send = (kind) => sendReport(root, kind), intervalMs = 60_000, now = () => Date.now(), setIntervalImpl = setInterval, clearIntervalImpl = clearInterval }) {
   if (!schedule.weekly && !schedule.monthly) return { tick: async () => [], close: () => {} };
   let busy = false;
+  const failedAt = {}; // a failing send is retried every 30 min, not on every 1-min tick for 3 days
   const tick = async () => {
     if (busy) return [];
     busy = true;
     try {
-      const due = dueReports(schedule, await readReportState(root), now());
-      for (const k of due) await send(k).catch(() => null);
+      const due = dueReports(schedule, await readReportState(root), now()).filter((k) => !(now() - (failedAt[k] ?? -Infinity) < 30 * 60_000));
+      for (const k of due) await send(k).then(() => delete failedAt[k], () => (failedAt[k] = now()));
       return due;
     } finally {
       busy = false;

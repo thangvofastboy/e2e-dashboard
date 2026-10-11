@@ -17,7 +17,10 @@ export function parseCodeowners(text) {
 }
 
 export function patternToRegex(pattern) {
-  let p = pattern;
+  // ponytail: wildcards make a backtracking regex; a hostile repo's CODEOWNERS must not hang the server,
+  // so rules with more than 4 wildcard groups (real files use 1–3) are ignored
+  if (String(pattern).length > 200 || (String(pattern).match(/\*+/g) ?? []).length > 4) return /(?!)/;
+  let p = String(pattern).replace(/(?:\*\*\/){2,}/g, '**/');
   const anchored = p.startsWith('/') || p.slice(0, -1).includes('/');
   p = p.replace(/^\//, '');
   const dirOnly = p.endsWith('/');

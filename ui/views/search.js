@@ -51,7 +51,7 @@ export function openSearch() {
       draw();
       list.querySelector('.on')?.scrollIntoView({ block: 'nearest' });
     }
-    if (e.key === 'Enter') go(active);
+    if (e.key === 'Enter' && !e.isComposing) go(active); // Telex/IME confirms with Enter
   });
   list.addEventListener('click', (e) => {
     const a = e.target.closest('[data-hit]');

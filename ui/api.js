@@ -16,21 +16,56 @@ async function httpError(res) {
   return new Error(`${res.status}: ${text}`);
 }
 
+// Safari and macOS Firefox do not focus a clicked button, so remember the last click instead
+let lastClick = null;
+const busyCount = new WeakMap();
+globalThis.document?.addEventListener('click', (e) => {
+  const el = e.target.closest?.('button');
+  if (el) lastClick = { el, at: Date.now() };
+}, true);
+
+// <html data-busy> while any request is in flight: style.css draws the top activity bar from it
+let inflight = 0;
+async function tracked(work) {
+  const root = globalThis.document?.documentElement;
+  if (++inflight === 1) root?.setAttribute('data-busy', '');
+  try {
+    return await work();
+  } finally {
+    if (--inflight === 0) root?.removeAttribute('data-busy');
+  }
+}
+
 export async function getJson(path) {
   if (EXPORT) {
     if (!(path in EXPORT.api)) throw new Error('Không có trong bản export');
     return structuredClone(EXPORT.api[path]);
   }
-  const res = await fetch(path, { headers: { accept: 'application/json' } });
-  if (!res.ok) throw await httpError(res);
-  return res.json();
+  return tracked(async () => {
+    const res = await fetch(path, { headers: { accept: 'application/json' } });
+    if (!res.ok) throw await httpError(res);
+    return res.json();
+  });
 }
 
 export async function postJson(path, body) {
   if (EXPORT) throw new Error('Bản export chỉ đọc');
-  const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-  if (!res.ok) throw await httpError(res);
-  return res.json();
+  // the button clicked just before this request shows a spinner until the server answers
+  const btn = lastClick && Date.now() - lastClick.at < 1000 ? lastClick.el : null;
+  if (btn) busyCount.set(btn, (busyCount.get(btn) ?? 0) + 1);
+  btn?.setAttribute('aria-busy', 'true');
+  try {
+    return await tracked(async () => {
+      const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      if (!res.ok) throw await httpError(res);
+      return res.json();
+    });
+  } finally {
+    if (btn) {
+      busyCount.set(btn, busyCount.get(btn) - 1);
+      if (!busyCount.get(btn)) btn.removeAttribute('aria-busy'); // two overlapping posts: wait for both
+    }
+  }
 }
 
 export function encodePath(rel) {

@@ -26,8 +26,9 @@ export async function checkAlerts(root, { env = process.env, notifier = null, fe
     const hooks = await webhookConfig(env).catch(() => []);
     if (hooks.length) {
       const map = await mentionMap(env).catch(() => ({}));
-      const text = [`🚨 e2e (${project}): ${r.fresh.length} cảnh báo`, ...r.fresh.map((a) => `• ${a.title}${a.owners.length && mentionsFor(a.owners, map) ? ` ${mentionsFor(a.owners, map)}` : ''}`)].join('\n');
-      await sendWebhooks(hooks, 'alert', text, fetchImpl ? { fetchImpl } : {}).catch(() => {});
+      const text = [`🚨 e2e (${project}): ${r.fresh.length} cảnh báo`, ...r.fresh.map((a) => `• ${a.title}`)].join('\n');
+      const mentions = mentionsFor(r.fresh.flatMap((a) => a.owners), map);
+      await sendWebhooks(hooks, 'alert', text, { mentions, ...(fetchImpl ? { fetchImpl } : {}) }).catch(() => {});
     }
   }
   return r;

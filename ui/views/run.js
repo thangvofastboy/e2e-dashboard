@@ -1,4 +1,5 @@
 import { getJson, postJson, fileUrl, isExport } from '../api.js';
+import { translate } from '../i18n.js';
 import { flattenResults, facets, applyFilters, matrix, isFailure, stepVideoOffset, selectionToRun } from '../model.js';
 import { openRunDialog } from './run-dialog.js';
 import { openAiPanel } from './ai-panel.js';
@@ -185,6 +186,8 @@ function mediaTab(row, attempt, runId) {
   const shots = screenshots
     .map((s) => {
       const src = mediaSrc(runId, s);
+      // CSP img-src is 'self' data: — a remote (CI-hosted) screenshot can only be linked, not inlined
+      if (src && !s.path) return `<a class="button ext-shot" href="${escapeHtml(src)}" target="_blank" rel="noopener noreferrer">${icon('external', { size: 14 })}Mở screenshot${s.id === failShot ? ' lúc fail' : ''}</a>`;
       return src ? `<a href="${escapeHtml(src)}" target="_blank" rel="noopener"><img loading="lazy" src="${escapeHtml(src)}" alt="screenshot${s.id === failShot ? ' lúc fail' : ''}"${s.id === failShot ? ' class="fail-shot"' : ''}></a>` : '';
     })
     .join('');
@@ -241,14 +244,20 @@ export async function renderRun(main, route) {
   const { runId, resultId } = route;
   if (ui.runId !== runId || !ui.data) {
     Object.assign(ui, { runId, filters: Object.fromEntries(Object.entries(route.params ?? {}).filter(([k]) => FILTERS.some(([f]) => f === k)).map(([k, v]) => [k, [v]])), matrix: false, attempt: new Map(), tab: 'media', selected: new Set(), saved: [] });
-    ui.data = await getJson(`/api/runs/${encodeURIComponent(runId)}`);
-    ui.saved = (await getJson(`/api/runs/${encodeURIComponent(runId)}/ai`).catch(() => ({ entries: [] }))).entries ?? [];
+    // a newer renderRun (the viewer clicked another run) owns `ui` now: a slow response must not land in it
+    const stale = () => ui.runId !== runId || !main.isConnected;
+    const data = await getJson(`/api/runs/${encodeURIComponent(runId)}`);
+    const saved = (await getJson(`/api/runs/${encodeURIComponent(runId)}/ai`).catch(() => ({ entries: [] }))).entries ?? [];
+    if (stale()) return;
+    ui.data = data;
+    ui.saved = saved;
     ui.compareWith = null;
     ui.groups = [];
     ui.anomalies = [];
     ui.owners = {};
     if (!isExport()) {
       const [metas, errs] = await Promise.all([getJson('/api/runs').catch(() => []), getJson(`/api/errors?runId=${encodeURIComponent(runId)}`).catch(() => ({ groups: [] }))]);
+      if (stale()) return;
       const i = metas.findIndex((m) => m.runId === runId);
       const base = metas.find((m) => m.baseline && m.runId !== runId);
       ui.compareWith = base ?? (i >= 0 ? metas[i + 1] ?? null : null);
@@ -258,6 +267,7 @@ export async function renderRun(main, route) {
         getJson(`/api/anomalies?runId=${encodeURIComponent(runId)}`).catch(() => ({ anomalies: [] })),
         getJson(`/api/owners?files=${encodeURIComponent(files.join(','))}`).catch(() => ({ owners: {} })),
       ]);
+      if (stale()) return;
       ui.anomalies = an.anomalies ?? [];
       ui.owners = own.owners ?? {};
     }
@@ -307,7 +317,12 @@ export async function renderRun(main, route) {
     el.addEventListener('change', () => {
       if (el.checked) ui.selected.add(el.dataset.sel);
       else ui.selected.delete(el.dataset.sel);
-      rerender();
+      // update in place: a full re-render would reload the video and drop keyboard focus on every tick
+      const btn = main.querySelector('[data-rerun]');
+      if (btn) {
+        btn.disabled = !ui.selected.size;
+        btn.lastChild.textContent = translate(`Chạy lại (${ui.selected.size})`);
+      }
     }));
   main.querySelector('[data-select-failed]')?.addEventListener('click', () => {
     ui.selected = new Set(all.filter((r) => isFailure(r.status)).map((r) => r.id));

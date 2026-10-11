@@ -4,6 +4,7 @@ import { readFile, writeFile, rename } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { DATA_DIR, isLink, ensureDataDir } from '../reporter/e2e-dashboard.reporter.mjs';
+import { serial } from './jsonstate.mjs';
 
 const file = (root) => join(root, DATA_DIR, 'quarantine.json');
 const KEY = /^[^\n|]{1,600}\|[\w.-]{1,80}\|[\w.-]{1,80}$/;
@@ -28,19 +29,23 @@ async function save(root, list) {
 export async function addQuarantine(root, { key, title, file: testFile, line, reason = '', days = 14 }, now = Date.now()) {
   if (typeof key !== 'string' || !KEY.test(key)) throw new Error('invalid key');
   const d = Number.isInteger(days) && days > 0 && days <= 365 ? days : 14;
-  const list = (await readQuarantine(root)).filter((q) => q.key !== key);
-  const entry = { key, title: String(title ?? key).slice(0, 300), file: String(testFile ?? '').slice(0, 300), line: Number.isInteger(line) ? line : null, reason: String(reason).slice(0, 500), addedAt: new Date(now).toISOString(), until: new Date(now + d * 86_400_000).toISOString() };
-  list.push(entry);
-  await save(root, list);
-  return entry;
+  return serial(`${root}:quarantine`, async () => {
+    const list = (await readQuarantine(root)).filter((q) => q.key !== key);
+    const entry = { key, title: String(title ?? key).slice(0, 300), file: String(testFile ?? '').slice(0, 300), line: Number.isInteger(line) ? line : null, reason: String(reason).slice(0, 500), addedAt: new Date(now).toISOString(), until: new Date(now + d * 86_400_000).toISOString() };
+    list.push(entry);
+    await save(root, list);
+    return entry;
+  });
 }
 
 export async function removeQuarantine(root, key) {
-  const list = await readQuarantine(root);
-  const next = list.filter((q) => q.key !== key);
-  if (next.length === list.length) return false;
-  await save(root, next);
-  return true;
+  return serial(`${root}:quarantine`, async () => {
+    const list = await readQuarantine(root);
+    const next = list.filter((q) => q.key !== key);
+    if (next.length === list.length) return false;
+    await save(root, next);
+    return true;
+  });
 }
 
 export const expired = (q, now = Date.now()) => Date.parse(q.until) < now;

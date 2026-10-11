@@ -1,3 +1,4 @@
+import { toast } from '../toast.js';
 import { getJson, postJson } from '../api.js';
 import { pageHead, emptyBox, fmtPct, toneFor, copyToClipboard } from '../analysis.js';
 import { escapeHtml, fmtRelative, statusBadge, countChips } from '../format.js';
@@ -28,7 +29,8 @@ export async function renderProjects(main) {
   main.querySelectorAll('[data-copy-cmd]').forEach((b) => b.addEventListener('click', () => copyToClipboard(b.dataset.copyCmd, b)));
   main.querySelectorAll('[data-forget]').forEach((b) =>
     b.addEventListener('click', async () => {
-      await postJson('/api/projects/forget', { root: b.dataset.forget });
+      const ok = await postJson('/api/projects/forget', { root: b.dataset.forget }).then(() => true, (x) => toast(x.message, 'bad'));
+      if (!ok) return;
       renderProjects(main);
     }));
 }

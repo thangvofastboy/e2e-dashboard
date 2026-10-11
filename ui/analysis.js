@@ -68,6 +68,7 @@ export function openModal(id, title, ic, html = '<p class="muted">Đang tải…
 // A long span (MTTR, time red): minutes, hours or days.
 export function fmtSpan(ms) {
   if (ms == null || !Number.isFinite(ms)) return '—';
+  ms = Math.max(0, ms); // clock skew must not print "-72382 phút"
   const m = Math.round(ms / 60_000);
   if (m < 60) return `${m} phút`;
   const h = ms / 3_600_000;

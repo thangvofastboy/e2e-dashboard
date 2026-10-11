@@ -6,7 +6,9 @@
 // Incidents give MTTR and "time red"; days give trends over months and the calendar.
 import { listRuns, getRun } from './store.mjs';
 import { readState, writeState, serial } from './jsonstate.mjs';
-import { testKey } from './analytics.mjs';
+import { testKey, dayKey } from './analytics.mjs';
+
+export { dayKey };
 
 const FAIL = new Set(['failed', 'timed-out', 'interrupted']);
 const RED = new Set(['failed', 'timed-out', 'interrupted', 'error']);
@@ -15,12 +17,6 @@ const MAX_BRANCHES = 60;
 const DAY = 86_400_000;
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const title = (r) => (Array.isArray(r.titlePath) ? r.titlePath.join(' › ') : String(r.testId ?? r.id));
-
-// Local calendar day, YYYY-MM-DD.
-export function dayKey(t) {
-  const d = new Date(t);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 export const emptyIndex = () => ({ v: 1, seen: {}, tests: {}, branches: {} });
 
@@ -98,10 +94,19 @@ export function applyRun(index, days, { meta, report }) {
     }
   }
   // a test first seen in this run at the file:line of a test this run no longer has → renamed
+  // one pass over the index, not one per fresh test: a first sync of a big suite has every test fresh
+  const slot = (o) => `${o.file}|${o.line}|${o.target}|${o.agent}`;
+  const absent = new Map();
+  if (fresh.length)
+    for (const [ok, o] of Object.entries(index.tests)) {
+      if (present.has(ok) || !o.file || o.line == null) continue;
+      if (!absent.has(slot(o))) absent.set(slot(o), []);
+      absent.get(slot(o)).push([ok, o]);
+    }
   for (const k of fresh) {
     const x = index.tests[k];
     if (!x.file || x.line == null) continue;
-    const old = Object.entries(index.tests).find(([ok, o]) => ok !== k && !present.has(ok) && !o.renamedTo && o.file === x.file && o.line === x.line && o.target === x.target && o.agent === x.agent && Date.parse(o.lastSeen) < t);
+    const old = (absent.get(slot(x)) ?? []).find(([, o]) => !o.renamedTo && Date.parse(o.lastSeen) < t);
     if (old) {
       x.renamedFrom = old[0];
       x.renamedFromTitle = old[1].title;
@@ -192,6 +197,7 @@ export function daySeries(days) {
     return {
       date: d.date,
       runs: num(d.runs),
+      executed,
       passRate: executed ? (num(d.passed) + num(d.flaky)) / executed : null,
       runPassRate: d.runs ? num(d.passedRuns) / d.runs : null,
       failed: num(d.failed),
@@ -206,8 +212,10 @@ export function daySeries(days) {
 export function totals(series) {
   const t = series.reduce((a, d) => ({ runs: a.runs + d.runs, failed: a.failed + d.failed, flaky: a.flaky + d.flaky, tokens: a.tokens + d.tokens }), { runs: 0, failed: 0, flaky: 0, tokens: 0 });
   const rated = series.filter((d) => d.passRate != null);
-  const w = rated.reduce((a, d) => a + d.runs, 0);
-  return { ...t, passRate: w ? rated.reduce((a, d) => a + d.passRate * d.runs, 0) / w : null, activeDays: rated.length };
+  // weighted by executed results: one 100-test run outweighs nine 1-test reruns (old series: by runs)
+  const weight = (d) => d.executed ?? d.runs;
+  const w = rated.reduce((a, d) => a + weight(d), 0);
+  return { ...t, passRate: w ? rated.reduce((a, d) => a + d.passRate * weight(d), 0) / w : null, activeDays: rated.length };
 }
 
 export function mainBranch(index, cfg = {}) {

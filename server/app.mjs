@@ -1,5 +1,6 @@
 import { readFile, stat, lstat } from 'node:fs/promises';
 import { createReadStream, readFileSync } from 'node:fs';
+import { pipeline } from 'node:stream';
 import { join, extname, basename, relative } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
 import { safeJoin, realInside, readConfig, VERSION, RUN_ID, RESULT_ID, resultAttempts } from '../reporter/e2e-dashboard.reporter.mjs';
@@ -11,7 +12,7 @@ import { healthScore } from '../ui/health.js';
 import { search, anomalies, lintAgentSteps, LINT_RULES, modelStats, bisectPlan, flakyEvidence, testDetail, appErrors, setupTiming } from './insights.mjs';
 import { changedFiles, impactedTests } from './impact.mjs';
 import { appRoutes, coverageGaps } from './coverage.mjs';
-import { runGate, sloConfig } from './gate.mjs';
+import { runGate, sloConfig, sloHistory } from './gate.mjs';
 import { environmentBreakdown, sloStatus } from './insights.mjs';
 import { csvRuns, csvTests, csvFlaky } from './csv.mjs';
 import { readChangelog } from './changelog.mjs';
@@ -86,10 +87,10 @@ async function serveFile(req, res, path) {
     const end = m[1] !== '' && m[2] !== '' ? Math.min(Number(m[2]), st.size - 1) : st.size - 1;
     if (start > end) return send(res, 416, '', { 'content-range': `bytes */${st.size}` });
     res.writeHead(206, { ...headers, 'content-length': end - start + 1, 'content-range': `bytes ${start}-${end}/${st.size}` });
-    return createReadStream(path, { start, end }).pipe(res);
+    return pipeline(createReadStream(path, { start, end }), res, () => {}); // destroys the fd on abort, no crash if the file vanished
   }
   res.writeHead(200, { ...headers, 'content-length': st.size });
-  createReadStream(path).pipe(res);
+  pipeline(createReadStream(path), res, () => {});
 }
 
 function reporterStatus(projectRoot) {
@@ -113,12 +114,13 @@ async function commitsFor(projectRoot, run, action, resultId) {
   const to = run.meta.git?.commit;
   if (!to) return [];
   const metas = await listRuns(projectRoot);
-  const older = metas.slice(metas.findIndex((m) => m.runId === run.meta.runId) + 1, metas.findIndex((m) => m.runId === run.meta.runId) + 21);
+  const i = metas.findIndex((m) => m.runId === run.meta.runId);
+  const older = metas.slice(i + 1, i + 21);
   if (action === 'analyze-run') return commitsBetween(projectRoot, older[0]?.git?.commit, to);
   const r = (run.report.run.results ?? []).find((x) => x.id === resultId);
-  for (const m of older) {
-    const prev = await getRun(projectRoot, m.runId).catch(() => null);
-    const same = prev?.report.run.results?.find((x) => x.testId === r.testId && x.targetId === r.targetId && (x.agent ?? 'default') === (r.agent ?? 'default'));
+  const ids = new Set(older.map((m) => m.runId));
+  for (const { meta: m, report } of (await loadHistory(projectRoot, i + 21)).filter((h) => ids.has(h.meta.runId))) {
+    const same = report.run.results?.find((x) => x.testId === r.testId && x.targetId === r.targetId && (x.agent ?? 'default') === (r.agent ?? 'default'));
     if (same?.status === 'passed') return commitsBetween(projectRoot, m.git?.commit, to);
   }
   return [];
@@ -178,6 +180,13 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
   refreshAverages();
   const withEta = (s) => ({ ...s, etaMs: estimateEta(s, avgByKey) });
 
+  // one ETA + JSON.stringify per live snapshot, shared by every open tab
+  const frames = new WeakMap();
+  const sseFrame = (s) => {
+    if (!frames.has(s)) frames.set(s, `data: ${JSON.stringify(withEta(s))}\n\n`);
+    return frames.get(s);
+  };
+
   async function route(req, res) {
     const url = new URL(req.url, 'http://local');
     const port = req.socket.localPort;
@@ -205,7 +214,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       if (p === '/api/tests') return send(res, 200, await testHistory(projectRoot, 10));
       if (p === '/api/live') {
         res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
-        const write = (s) => res.write(`data: ${JSON.stringify(withEta(s))}\n\n`);
+        const write = (s) => res.write(sseFrame(s));
         write(live.snapshot());
         const off = live.subscribe(write);
         const beat = setInterval(() => res.write(': ping\n\n'), 15_000);
@@ -282,7 +291,10 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return send(res, 200, coverageGaps(routes, routeMap(await loadHistory(projectRoot, runCount(url))), { ignore: Array.isArray(cfg.coverage?.ignore) ? cfg.coverage.ignore : [] }));
       }
       if (p === '/api/environment') return send(res, 200, environmentBreakdown(await loadHistory(projectRoot, runCount(url))));
-      if (p === '/api/slo') return send(res, 200, sloStatus((await loadHistory(projectRoot, 200)).filter((h) => h.meta.kind !== 'explore'), sloConfig(readConfig(projectRoot))));
+      if (p === '/api/slo') {
+        const c = sloConfig(readConfig(projectRoot));
+        return send(res, 200, sloStatus(await sloHistory(projectRoot, c.days), c));
+      }
       if (p === '/api/gate') return send(res, 200, await runGate(projectRoot));
       if (p === '/api/changelog') return send(res, 200, { version: VERSION, entries: await readChangelog() });
       // ---- M7: tracking & reporting
@@ -435,7 +447,13 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       m = /^\/files\/runs\/([^/]+)\/(.+)$/.exec(p);
       if (m) {
         const dir = await findRunDir(projectRoot, m[1]);
-        const file = dir && safeJoin(dir, decodeURIComponent(m[2]));
+        let rel;
+        try {
+          rel = decodeURIComponent(m[2]);
+        } catch {
+          return send(res, 404, 'not found');
+        }
+        const file = dir && safeJoin(dir, rel);
         return file && realInside(dir, file) ? serveFile(req, res, file) : send(res, 404, 'not found');
       }
     }

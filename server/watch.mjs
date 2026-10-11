@@ -25,11 +25,16 @@ export function watchReport({ projectRoot, outputDir, artifactsRoot, debounceMs 
       poll = setTimeout(start, 1000);
       return;
     }
-    watcher = watch(outputDir, (_event, file) => {
-      if (file && file !== 'report.json') return;
-      clearTimeout(timer);
-      timer = setTimeout(run, debounceMs);
-    });
+    try {
+      watcher = watch(outputDir, (_event, file) => {
+        if (file && file !== 'report.json') return;
+        clearTimeout(timer);
+        timer = setTimeout(run, debounceMs);
+      });
+    } catch {
+      poll = setTimeout(start, 1000); // ENOENT race or inotify limit: retry instead of crashing the server
+      return;
+    }
     watcher.on('error', () => {
       watcher?.close();
       watcher = null;

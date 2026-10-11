@@ -8,6 +8,7 @@ const VIDEO = new Set(['.webm', '.mp4', '.mov']);
 const IMAGE = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
 
 async function walk(dir, visit) {
+  if (isLink(dir)) return; // a planted runs/<x>/artifacts -> ~/Videos must not be counted or pruned
   for (const e of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
     const p = join(dir, e.name);
     if (e.isDirectory()) await walk(p, visit);

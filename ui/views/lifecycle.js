@@ -2,7 +2,7 @@
 // tests, and the last commit that touched each test file.
 import { getJson } from '../api.js';
 import { pageHead, emptyBox, daysPicker } from '../analysis.js';
-import { lineChart, attachTooltips } from '../charts.js';
+import { lineChart } from '../charts.js';
 import { escapeHtml, statusBadge, fmtDuration } from '../format.js';
 import { testHref } from '../router.js';
 import { icon } from '../icons.js';
@@ -48,5 +48,4 @@ export async function renderLifecycle(main) {
     </div>
     <section class="panel"><h2>Tất cả test (lâu đời nhất trước)</h2><div class="table-wrap"><table class="table compact"><thead><tr><th>Test</th><th>Có từ</th><th>Tuổi</th><th>Run</th><th>Fail</th><th>TB</th><th>Gần nhất</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
   picker.bind(main);
-  attachTooltips(main);
 }

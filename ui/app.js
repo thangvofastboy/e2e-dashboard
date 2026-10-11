@@ -1,4 +1,5 @@
 import { renderOverview, renderRunsPage } from './views/overview.js';
+import { highlight, detectLang, highlightLog } from './highlight.js';
 import { renderRun } from './views/run.js';
 import { renderLive } from './views/live.js';
 import { renderTests } from './views/tests.js';
@@ -28,7 +29,7 @@ import { renderGroups } from './views/groups.js';
 import { renderRelease } from './views/release.js';
 import { renderTraceability } from './views/traceability.js';
 import { renderLifecycle } from './views/lifecycle.js';
-import { initI18n, setLang, currentLang } from './i18n.js';
+import { initI18n, setLang, currentLang, translate } from './i18n.js';
 import { openModal } from './analysis.js';
 import { renderMarkdown } from './markdown.js';
 import { getJson, isExport, liveStream } from './api.js';
@@ -238,10 +239,28 @@ async function route() {
 }
 
 // Nav badge while a run is live; refresh list pages when it finishes.
+// "Đang chạy 3/9", visible from every page but Live (the sidebar is folded away on mobile)
+let lastSnap = null;
+function syncPill() {
+  if (isExport()) return;
+  let pill = document.getElementById('run-pill');
+  if (!pill) {
+    pill = Object.assign(document.createElement('a'), { id: 'run-pill', href: '#/live', hidden: true });
+    document.body.append(pill);
+  }
+  const s = lastSnap;
+  pill.hidden = s?.status !== 'running' || parseRoute(location.hash).view === 'live';
+  document.documentElement.toggleAttribute('data-pill', !pill.hidden); // style.css leaves room under the page for it
+  if (s) pill.innerHTML = `<span class="pill-dot"></span>${translate('Đang chạy')}${Number(s.total) > 0 ? ` <b>${Number(s.done) || 0}/${Number(s.total)}</b>` : ''}`;
+}
+
 function watchLive() {
   liveStream((s) => {
+    const running = s.status === 'running';
     const liveLink = document.querySelector('[data-nav="live"]');
-    liveLink?.classList.toggle('is-running', s.status === 'running');
+    liveLink?.classList.toggle('is-running', running);
+    lastSnap = s;
+    syncPill();
     if (lastStatus === 'running' && s.status !== 'running') {
       const view = parseRoute(location.hash).view;
       if (['overview', 'runs', 'tests', 'flaky', 'errors', 'cost'].includes(view)) setTimeout(route, 1500); // give archive() time to finish
@@ -250,10 +269,96 @@ function watchLive() {
   });
 }
 
+// Views render HTML strings; this pass fixes up what CSS alone cannot:
+// - SVG charts scale with their card, so --k keeps axis text about 11px on screen at any width
+// - wide tables scroll inside a wrapper instead of stretching the page
+const chartSize = new ResizeObserver((entries) => {
+  for (const e of entries) {
+    if (!e.target.isConnected) chartSize.unobserve(e.target); // removed with its page: do not keep it alive
+    else if (e.contentRect.width) e.target.style.setProperty('--k', String(Math.min(2.2, Math.max(0.6, 600 / e.contentRect.width))));
+  }
+});
+// Report-style tables: numbers right-aligned in bold, and the columns that judge quality coloured —
+// pass rate by threshold (≥95% good, ≥80% warn, else bad), fail/flaky counts red/amber when above 0.
+const NUM_CELL = /^[+−-]?\d[\d.,]*\s*(?:%|ms|s|m\d+s|h\d+m|KB|MB|GB|B|k|M|tok)?$/;
+function scoreTable(t) {
+  t.dataset.scored = '';
+  const heads = [...t.querySelectorAll('thead th')].map((th) => th.textContent.trim().toLowerCase());
+  const judge = heads.map((h) => (/pass/.test(h) ? 'rate' : /fail|lỗi|error/.test(h) ? 'bad' : /flaky|bất thường/.test(h) ? 'warn' : null));
+  const numeric = heads.map(() => ({ num: 0, other: 0 }));
+  for (const tr of t.querySelectorAll('tbody tr')) {
+    [...tr.children].forEach((td, i) => {
+      const text = td.textContent.trim();
+      if (!text) return;
+      if (td.querySelector('a, button, select, input, .chip, .cnt') || !NUM_CELL.test(text)) return void (numeric[i] && numeric[i].other++);
+      const v = Number.parseFloat(text.replace(',', '.').replace('−', '-'));
+      if (!td.querySelector('.meter')) td.classList.add('num'); // meters stay left-aligned under their header
+      if (numeric[i]) numeric[i][td.querySelector('.meter') ? 'other' : 'num']++;
+      if (judge[i] === 'rate' && text.endsWith('%')) td.classList.add(v >= 95 ? 'v-good' : v >= 80 ? 'v-warn' : 'v-bad');
+      else if (judge[i] === 'bad' && text.endsWith('%')) td.classList.add(v >= 20 ? 'v-bad' : v > 0 ? 'v-warn' : 'v-zero'); // a fail rate, not a count
+      else if (judge[i] === 'bad' || judge[i] === 'warn') td.classList.add(v > 0 ? `v-${judge[i]}` : 'v-zero');
+    });
+  }
+  t.querySelectorAll('thead th').forEach((th, i) => numeric[i]?.num && !numeric[i].other && th.classList.add('num'));
+}
+// "2 test fail chưa ai nhận" → the 2 in bold: the number is what the eye looks for (text nodes only, no HTML)
+function boldNumbers(el) {
+  el.dataset.nums = '';
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) if (/\d/.test(walker.currentNode.nodeValue) && !walker.currentNode.parentElement.closest('b, strong, code, a')) nodes.push(walker.currentNode);
+  for (const n of nodes) {
+    const parts = n.nodeValue.split(/([+−-]?\s?\d[\d.,]*%?)/);
+    if (parts.length < 2) continue;
+    const span = document.createElement('span'); // one flex item, as the text node was
+    span.append(...parts.map((p, i) => (i % 2 ? Object.assign(document.createElement('b'), { textContent: p }) : p)));
+    n.replaceWith(span);
+  }
+}
+
+const FENCE_LANG = { json: 'json', js: 'js', javascript: 'js', ts: 'js', typescript: 'js', tsx: 'js', jsx: 'js', sh: 'shell', bash: 'shell', shell: 'shell', console: 'shell', zsh: 'shell' };
+function enhance(root) {
+  // colour code, JSON, commands and logs wherever a view put them (highlight.js escapes everything)
+  for (const pre of root.querySelectorAll('pre.log:not([data-hl])')) {
+    pre.dataset.hl = '';
+    pre.innerHTML = highlightLog(pre.textContent);
+  }
+  for (const code of root.querySelectorAll('pre > code:not([data-hl])')) {
+    code.dataset.hl = '';
+    const text = code.textContent;
+    code.innerHTML = highlight(text, FENCE_LANG[/language-([\w+-]+)/.exec(code.className)?.[1]] ?? detectLang(text), { pretty: true });
+  }
+  for (const code of root.querySelectorAll(':not(pre) > code:not([data-hl])')) {
+    code.dataset.hl = '';
+    const lang = detectLang(code.textContent);
+    if (lang !== 'text') code.innerHTML = highlight(code.textContent, lang);
+  }
+  for (const svg of root.querySelectorAll('svg.chart:not([data-fit])')) {
+    svg.dataset.fit = '';
+    chartSize.observe(svg);
+  }
+  for (const t of root.querySelectorAll('table.table:not([data-scored])')) scoreTable(t);
+  for (const b of root.querySelectorAll('.banner:not([data-nums]), .kpi-sub:not([data-nums])')) boldNumbers(b);
+  for (const t of root.querySelectorAll('table.table:not(.keys)')) {
+    if (t.parentElement?.classList.contains('table-wrap')) continue;
+    const w = document.createElement('div');
+    w.className = 'table-wrap auto-wrap';
+    t.replaceWith(w);
+    w.append(t);
+  }
+}
+
 if (isExport() && !location.hash) location.hash = `#/run/${encodeURIComponent(globalThis.__E2ED_EXPORT__.runId)}`;
+initI18n(); // before shell(): the VI/EN button label reads the stored language
+// created after initI18n's observer, so English translation sees whole strings before boldNumbers splits them;
+// the tooltip and the run pill change on every mouse move / snapshot and never hold anything to enhance
+new MutationObserver((ms) => {
+  if (ms.every((m) => m.target.closest?.('#chart-tip, #run-pill'))) return;
+  enhance(document.body);
+}).observe(document.body, { childList: true, subtree: true });
 shell();
-initI18n();
 footer();
 watchLive();
 window.addEventListener('hashchange', route);
+window.addEventListener('hashchange', syncPill);
 route();

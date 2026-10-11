@@ -70,11 +70,19 @@ export async function appRoutes(root, extra = []) {
   return found;
 }
 
+// "/blog/:id" matches a visited "/blog/hello-world": the route map only folds numeric/hex ids into :id
+const routeRx = (route) => new RegExp(`^${route.split('/').map((seg) => (/^[:[]/.test(seg) || seg === '*' ? '[^/]+' : seg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))).join('/')}$`);
+
 export function coverageGaps(routes, map, { ignore = [] } = {}) {
-  const tested = new Map(map.nodes.map((n) => [n.route, n]));
   const ign = ignore.filter((x) => typeof x === 'string').map((x) => normalizeRoute(x));
-  const rows = [...routes].map(([route, source]) => ({ route, source, tested: tested.has(route), visits: tested.get(route)?.visits ?? 0, tests: tested.get(route)?.tests ?? 0, failures: tested.get(route)?.failures ?? 0 }))
-    .filter((r) => !ign.includes(r.route));
+  const matched = new Set();
+  const rows = [...routes].map(([route, source]) => {
+    const rx = routeRx(route);
+    const hits = map.nodes.filter((n) => n.route === route || (!routes.has(n.route) && rx.test(n.route)));
+    hits.forEach((n) => matched.add(n.route));
+    const sum = (k) => hits.reduce((s, n) => s + (n[k] ?? 0), 0);
+    return { route, source, tested: hits.length > 0, visits: sum('visits'), tests: sum('tests'), failures: sum('failures') };
+  }).filter((r) => !ign.includes(r.route));
   const covered = rows.filter((r) => r.tested).length;
-  return { total: rows.length, covered, share: rows.length ? covered / rows.length : null, untested: rows.filter((r) => !r.tested), rows: rows.sort((a, b) => a.tested - b.tested || a.route.localeCompare(b.route)), extraTested: map.nodes.filter((n) => !routes.has(n.route)).map((n) => n.route) };
+  return { total: rows.length, covered, share: rows.length ? covered / rows.length : null, untested: rows.filter((r) => !r.tested), rows: rows.sort((a, b) => a.tested - b.tested || a.route.localeCompare(b.route)), extraTested: map.nodes.filter((n) => !matched.has(n.route)).map((n) => n.route) };
 }

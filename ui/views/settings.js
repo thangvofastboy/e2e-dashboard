@@ -41,9 +41,10 @@ export async function renderSettings(main) {
     } else toast(r.enabled ? 'Đã bật watch' : 'Đã tắt watch');
   });
   main.querySelector('[data-ci-sync]')?.addEventListener('click', async (e) => {
-    e.target.disabled = true;
+    const btn = e.currentTarget; // e.target may be the inner <svg>; currentTarget is null after await
+    btn.disabled = true;
     const r = await postJson('/api/ci/sync', {}).catch((x) => ({ error: x.message }));
-    e.target.disabled = false;
+    btn.disabled = false;
     if (r.error) toast(r.error, 'bad');
     else toast(r.imported ? `Đã nhập ${r.imported} run từ CI` : 'Không có run CI mới');
     renderSettings(main);
