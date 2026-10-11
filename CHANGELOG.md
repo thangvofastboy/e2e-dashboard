@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.8.0 — 2026-10-11
+
+- **Giao diện kiểu báo cáo**: status viết hoa, căn giữa, cùng độ rộng; tiêu đề bảng viết hoa; cột số căn phải in đậm; cột pass rate / fail / flaky tự tô màu đánh giá; số KPI và số quan trọng trong banner nổi bật.
+- **Tô màu code và dữ liệu**: JSON (dàn lại cho dễ đọc), code JS/TS, lệnh shell, đường dẫn `file:line`, log tô theo mức lỗi.
+- **Hoạt cảnh trạng thái**: thanh tiến trình khi đang tải, nút quay khi đang xử lý, nhãn *Đang chạy 3/9* nổi trên mọi trang, nhịp live và sọc chạy ở trang Live; tắt khi bật *giảm chuyển động*.
+- **Mobile và giao diện**: hết khoảng trống trên đầu trang, bảng tự cuộn trong khung, ô nhập đồng bộ, chữ biểu đồ luôn ~11px, dropdown và menu *Thêm* gọn gàng, chữ trên nút chính đủ tương phản ở chế độ tối, ngày cụ thể thay cho "vừa xong" với run cũ hoặc giờ lệch.
+- **Trang Live**: nút *Dừng run* xoá được run ngoài terminal bị kill giữa chừng; run dừng thì test dở hiện *interrupted* kèm nút chạy lại.
+- **Bảo mật**: chặn symlink `results/` và `artifacts/` (không copy / xoá file ngoài project), CODEOWNERS độc hại không làm treo server, webhook không ping cả kênh, ngữ cảnh lệnh `fix` không bị chèn dòng.
+- **Sửa lỗi**: server không sập khi file biến mất lúc tải hay khi `fs.watch` lỗi; đồng bộ CI thử lại khi lỗi mạng; `report/digest --send` trả mã 1 khi gửi lỗi hết; SLO xét đủ khoảng ngày; coverage nhận route dạng slug; triage tự đóng test đã xoá; nhiều chỗ ghi file không còn mất dữ liệu khi ghi đồng thời.
+- **Hiệu năng**: cache report và `git log`, `listRuns` song song, luồng live tính một lần cho mọi tab, tick checkbox không vẽ lại cả trang.
+
 ## v0.7.0 — 2026-10-11
 
 - **Số liệu dài hạn**: mỗi run được gom vào bản tóm tắt theo ngày và theo test, giữ mãi kể cả khi thư mục run cũ bị xoá theo retention. Trang **Xu hướng** xem 30–365 ngày.

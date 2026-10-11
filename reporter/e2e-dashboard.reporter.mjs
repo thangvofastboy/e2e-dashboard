@@ -6,7 +6,7 @@ import { join, dirname, basename, resolve, relative, sep, isAbsolute } from 'nod
 import { randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
-export const VERSION = '0.7.0';
+export const VERSION = '0.8.0';
 export const DATA_DIR = '.e2e-dashboard';
 
 function allSteps(report) {
