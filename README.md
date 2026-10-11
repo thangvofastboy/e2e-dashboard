@@ -9,7 +9,7 @@
 ![Node](https://img.shields.io/badge/Node-%E2%89%A5%2020-339933?style=for-the-badge&logo=node.js&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-16a34a?style=for-the-badge)
 ![Build](https://img.shields.io/badge/build-kh%C3%B4ng%20c%E1%BA%A7n-2563eb?style=for-the-badge)
-![Tests](https://img.shields.io/badge/tests-261%20passing-16a34a?style=for-the-badge&logo=checkmarx&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-275%20passing-16a34a?style=for-the-badge&logo=checkmarx&logoColor=white)
 ![AI](https://img.shields.io/badge/AI-claude%20--p-a855f7?style=for-the-badge&logo=anthropic&logoColor=white)
 ![Database](https://img.shields.io/badge/database-kh%C3%B4ng%20c%E1%BA%A7n-8b5cf6?style=for-the-badge)
 
@@ -83,6 +83,18 @@
 | 🎞️ | **Video cạnh nhau** | Video của 2 run phát đồng bộ ở trang So sánh |
 | 🖨️ | **Báo cáo & CSV** | Trang in / lưu PDF, xuất CSV run, test, flaky |
 | 🆕 | **Có gì mới** | Hiện thay đổi sau mỗi lần cập nhật |
+| 📈 | **Xu hướng dài hạn** | Số liệu gom theo ngày, giữ mãi (kể cả khi run cũ đã bị xoá), xem 30–365 ngày, lịch nhiệt 12 tháng |
+| 🎫 | **Triage lỗi** | Mỗi lỗi có trạng thái, người phụ trách, ghi chú, link Linear; tự mở lại khi fail lại, tự đóng khi pass |
+| ⏱️ | **MTTR & thời gian đỏ** | Thời gian từ lúc fail đến lúc sửa, branch chính đỏ bao lâu, test hỏng lâu nhất |
+| 📬 | **Báo cáo tự gửi** | Báo cáo tuần / tháng theo lịch, gửi Slack (webhook) và email |
+| 🧱 | **Theo module / team** | Bảng điểm A–F theo thư mục, tag hoặc CODEOWNERS |
+| 🚀 | **Báo cáo phát hành** | So run ở tag git với tag trước, kết luận sẵn sàng hay chưa |
+| 🔗 | **Truy vết yêu cầu** | Story ↔ test (`@LIN-123`), story nào chưa có test |
+| 🔄 | **Tự đồng bộ CI** | Kéo report từ GitHub Actions theo chu kỳ |
+| 🚨 | **Cảnh báo tuỳ chỉnh** | Fail N lần liên tiếp, pass rate dưới ngưỡng, flaky tăng, branch đỏ quá lâu → Slack + tag owner |
+| 📍 | **Sự kiện trên biểu đồ** | Deploy, release, sự cố đánh dấu trên biểu đồ xu hướng |
+| 🌱 | **Vòng đời test** | Test mới, bị bỏ, đổi tên, luôn fail, commit sửa gần nhất |
+| 🌐 | **Trang báo cáo tĩnh** | Xuất cả lịch sử thành thư mục HTML cho GitHub Pages / thư mục chung |
 
 > [!TIP]
 > **Không cài thêm gì.** Plugin chỉ cần Node (e2e vốn đã cần), không có dependency npm, không bước build, không tải CDN, nên chạy được cả khi không có mạng.
@@ -164,6 +176,11 @@ Lệnh này copy `e2e-dashboard.reporter.mjs` (kèm `.d.mts`) vào project và t
 | `/e2e-dashboard share push\|pull [dir]` | 🤝 | Đẩy run của bạn / kéo run của team qua thư mục chung |
 | `/e2e-dashboard gate [--max-new-failures N] [--min-health N] [--max-tokens N] [--slo 0.95]` | 🚧 | Cổng chất lượng cho CI / trước khi push; mã thoát 1 khi FAIL |
 | `/e2e-dashboard fix [runId] [resultId]` | 🛠️ | In ngữ cảnh test fail; dùng `/e2e-dashboard:e2e-dashboard fix …` để Claude sửa và chạy lại |
+| `/e2e-dashboard report [week\|month] [--send]` | 📬 | Báo cáo tuần / tháng (Markdown + HTML); `--send` gửi webhook và email |
+| `/e2e-dashboard publish [thư mục]` | 🌐 | Xuất trang báo cáo tĩnh (mặc định `.e2e-dashboard/site`) |
+| `/e2e-dashboard mark <deploy\|release\|incident\|env\|note> <mô tả>` | 📍 | Đánh dấu sự kiện lên biểu đồ (dùng được trong CI) |
+| `/e2e-dashboard triage` | 🎫 | Lỗi đang cần xử lý và trạng thái |
+| `/e2e-dashboard ci-sync` | 🔄 | Kéo report mới từ GitHub Actions ngay |
 | `/e2e-dashboard version` | 🏷️ | Version đang cài và có bản mới không (chạy local, không tốn token) |
 | `/e2e-dashboard update` | 🔄 | Cập nhật lên tag mới nhất rồi tự `/reload-plugins` |
 | `/e2e-dashboard stop` | ⏹️ | Tắt server |
@@ -271,6 +288,33 @@ Màu không bao giờ đứng một mình: mọi trạng thái đều có icon k
 **📣 Mention owner.** Trong `~/.e2e-dashboard/config.json` (không phải repo): `"mentions": { "@team-web": "<!subteam^S123>", "@ana": "<@U456>" }`. Webhook run fail sẽ tag owner của test fail.
 
 **🎞️ Video.** Để có video của cả test pass (so sánh cạnh nhau), đặt `"videos": "all"`.
+
+---
+
+## 📈 Theo dõi & báo cáo (M7)
+
+**📈 Số liệu dài hạn.** Retention chỉ giữ 50 run, nên mỗi run còn được gom vào `.e2e-dashboard/longterm/` (tổng theo ngày, mỗi test một dòng `[run, fail, flaky]`, các đợt fail → pass). File nhỏ và được giữ mãi; trang **Xu hướng** đọc từ đây: pass rate theo ngày, lịch 12 tháng, MTTR, thời gian đỏ, test fail lâu nhất.
+
+**🎫 Triage.** Trang *Triage lỗi* liệt kê mọi test đang fail. Chọn trạng thái, người phụ trách, ghi chú; link Linear tự gắn nếu đã gửi issue. Trạng thái gắn với đúng lỗi (tên test + dạng lỗi), nên run ngày mai fail như cũ thì không ai phải xem lại.
+
+**📬 Báo cáo tự gửi.** `"reports": { "weekly": "mon 09:00", "monthly": "1 09:00" }` trong `.e2e-dashboard/config.json`. Khi dashboard đang mở, đến giờ sẽ tạo báo cáo (lưu `.e2e-dashboard/reports/*.html`), gửi webhook có sự kiện `report` và email nếu `~/.e2e-dashboard/config.json` có `"email": { "to": ["qa@công-ty.com"] }` (gửi qua `sendmail` trên máy).
+
+**🚨 Cảnh báo.** Mặc định: test fail 3 run liên tiếp, branch chính đỏ quá 24 giờ. Tuỳ chỉnh:
+
+```jsonc
+"alerts": [
+  { "type": "consecutive-failures", "count": 3 },
+  { "type": "pass-rate-below", "value": 0.9, "runs": 10, "scope": "module:checkout" }, // hoặc "tag:@smoke", "owner:@team-qa"
+  { "type": "flaky-increase", "factor": 2, "days": 7 },
+  { "type": "red-for", "hours": 4, "branch": "main" }
+]
+```
+
+**🔄 Tự đồng bộ CI.** `"ci": { "github": { "workflow": "e2e.yml", "artifact": "e2e-report", "branch": "main", "intervalMinutes": 30 } }` (cần `gh auth login`).
+
+**🧱 Module, 🔗 truy vết, 📍 sự kiện.** `"modules": { "Checkout": ["tests/checkout/**"] }` (mặc định theo thư mục); `"traceability": { "stories": ["LIN-1", { "id": "LIN-2", "title": "…" }] }` + tag `@LIN-1` trên test; sự kiện thêm ở trang Xu hướng hoặc `/e2e-dashboard mark deploy "v1.5"`. Branch chính: `"mainBranch": "main"` (mặc định main/master).
+
+**🌐 Trang tĩnh.** `/e2e-dashboard publish [thư mục]` xuất `index.html` (90 ngày + lịch 12 tháng) và 10 run gần nhất. Thư mục mặc định `.e2e-dashboard/site`, hoặc `"publish": { "dir": … }` trong `~/.e2e-dashboard/config.json`.
 
 ---
 
@@ -413,6 +457,7 @@ node test/seed-demo.mjs    # project demo 12 run: flaky, 2 branch, route, cache,
 - [x] **M3 — Tích hợp:** gửi issue Linear (chống trùng), digest tuần, status line, thông báo desktop, đề xuất chuyển agent step thành locator
 - [x] **M5 — Trải nghiệm:** trang test, lỗi app, test bị ảnh hưởng, hỏi AI tự do, setup timing, watch, lịch chạy, webhook, trạng thái GitHub, explore → test, dung lượng; menu thu gọn, mobile, phím tắt, toast, bộ lọc trên URL
 - [x] **M6 — Mở rộng:** MCP server, sửa bằng Claude Code, coverage, cổng chất lượng, SLO, lỗi theo môi trường, mention owner, tiếng Anh, video đồng bộ, lịch sử lớn, báo cáo/CSV, có gì mới
+- [x] **M7 — Theo dõi & báo cáo:** số liệu dài hạn, triage, MTTR, báo cáo tự gửi, module/team, phát hành, truy vết, lịch nhiệt, đồng bộ CI, cảnh báo, sự kiện, vòng đời test, trang tĩnh
 - [x] **M4 — Vận hành:** tìm kiếm Ctrl K, cách ly flaky, AI vì sao flaky, bisect, so sánh model + ngân sách, bất thường, CODEOWNERS, lint agent, nhập CI, thư mục team, comment PR
 
 <div align="center">

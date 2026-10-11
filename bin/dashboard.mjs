@@ -6,18 +6,25 @@ import { existsSync, openSync, closeSync } from 'node:fs';
 import { join, basename, dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DATA_DIR, readServerInfo, ensureDataDir } from '../reporter/e2e-dashboard.reporter.mjs';
+import { DATA_DIR, readServerInfo, ensureDataDir, readConfig } from '../reporter/e2e-dashboard.reporter.mjs';
 import { findProjectRoot, findConfig } from './project.mjs';
 import { exportRun } from '../server/export.mjs';
 import { buildDigest } from '../server/digest.mjs';
 import { runGate } from '../server/gate.mjs';
-import { getRun, listRuns, getAi } from '../server/store.mjs';
+import { getRun, listRuns, getAi, loadHistory } from '../server/store.mjs';
 import { cacheKey, commitsBetween } from '../server/ai.mjs';
 import { resultAttempts, RESULT_ID } from '../reporter/e2e-dashboard.reporter.mjs';
 import { projectSummaries, homeDir } from '../server/projects.mjs';
 import { readQuarantine, quarantineFlags } from '../server/quarantine.mjs';
 import { importReport, importFromGithub, sharePush, sharePull } from '../server/share.mjs';
 import { webhookConfig, sendWebhooks } from '../server/webhook.mjs';
+import { buildReport, sendReport } from '../server/reports.mjs';
+import { reportMarkdown, reportHtml } from '../server/report-html.mjs';
+import { publishSite } from '../server/site.mjs';
+import { addEvent, EVENT_KINDS } from '../server/events.mjs';
+import { ciConfig, syncCi } from '../server/cisync.mjs';
+import { syncTriage, triageBoard } from '../server/triage.mjs';
+import { writeText } from '../server/jsonstate.mjs';
 
 const PLUGIN = fileURLToPath(new URL('..', import.meta.url));
 const MAIN = join(PLUGIN, 'server/main.mjs');
@@ -358,7 +365,46 @@ export async function main(argv, cwd) {
     }
     return { code: 0, out: `${r.markdown}\nĐã lưu: ${r.file}${sent}` };
   }
-  return { code: 1, out: 'Dùng: /e2e-dashboard [setup|export [runId]|stop|status|digest [ngày]|projects|statusline [install]|quarantine|import …|share push|pull [dir]|fix [runId] [resultId]|gate]' };
+  if (cmd === 'report') {
+    const kind = argv.includes('month') || argv.includes('monthly') ? 'monthly' : 'weekly';
+    if (argv.includes('--send')) {
+      const r = await sendReport(root, kind);
+      const hooks = r.webhooks.length ? `Webhook: ${r.webhooks.map((x) => `${x.host} ${x.ok ? '✓' : '✗'}`).join(', ')}` : 'Chưa có webhook nhận sự kiện "report".';
+      const mail = r.email ? `Email: ${r.email.ok ? '✓ đã gửi' : `✗ ${r.email.error}`}` : '';
+      return { code: 0, out: [r.markdown, '', `Đã lưu: ${r.file}`, hooks, mail].filter(Boolean).join('\n') };
+    }
+    const data = await buildReport(root, { kind: kind === 'monthly' ? 'month' : 'week' });
+    const file = await writeText(root, `reports/${kind}-preview.html`, reportHtml(data));
+    return { code: 0, out: `${reportMarkdown(data)}\n\nBản HTML: ${file}\nGửi đi: /e2e-dashboard report ${kind === 'monthly' ? 'month ' : ''}--send` };
+  }
+  if (cmd === 'publish') {
+    const r = await publishSite(root, { dir: argv[1] && !argv[1].startsWith('--') ? resolve(cwd, argv[1]) : null });
+    return { code: 0, out: `Đã xuất trang báo cáo tĩnh (${r.runs} run): ${r.index}\nĐẩy thư mục ${r.dir} lên GitHub Pages hoặc thư mục chung để cả team xem.` };
+  }
+  if (cmd === 'mark') {
+    const [, kind, ...rest] = argv;
+    const flag = (f) => (rest.indexOf(f) >= 0 ? rest.splice(rest.indexOf(f), 2)[1] : undefined);
+    const at = flag('--at');
+    const url = flag('--url');
+    if (!EVENT_KINDS.includes(kind) || !rest.length) return { code: 1, out: `Dùng: /e2e-dashboard mark <${EVENT_KINDS.join('|')}> <mô tả> [--at 2026-10-11T09:00] [--url https://…]` };
+    const e = await addEvent(root, { kind, label: rest.join(' '), at, url });
+    return { code: 0, out: `Đã đánh dấu ${e.kind} "${e.label}" lúc ${e.at}.` };
+  }
+  if (cmd === 'ci-sync') {
+    const c = ciConfig(readConfig(root));
+    if (!c) return { code: 1, out: 'Chưa cấu hình: thêm "ci": { "github": { "workflow": "e2e.yml", "artifact": "e2e-report" } } vào .e2e-dashboard/config.json.' };
+    const r = await syncCi(root, c);
+    if (r.error) return { code: 1, out: `Lỗi đồng bộ CI: ${r.error}` };
+    return { code: 0, out: r.results.length ? r.results.map((x) => `#${x.id} ${x.branch ?? ''} ${x.conclusion ?? ''}: ${x.archived} report${x.reason ? ` (${x.reason})` : ''}`).join('\n') + `\nĐã nhập ${r.imported} run.` : 'Không có run CI mới.' };
+  }
+  if (cmd === 'triage') {
+    const { entries, failing } = await syncTriage(root, await loadHistory(root, 60));
+    const b = triageBoard({ entries, failing });
+    if (!b.rows.length) return { code: 0, out: 'Không có test nào đang fail. 🎉' };
+    const label = { new: '🆕 Mới', investigating: '🔍 Đang xem', known: '📌 Đã biết', fixed: '✅ Đã sửa', ignored: '🙈 Bỏ qua' };
+    return { code: 0, out: b.rows.map((r) => `${label[r.status]} ${r.title} [${r.target ?? '?'}]${r.assignee ? ` · ${r.assignee}` : ''}${r.failingNow ? ` · fail ${r.streak} run` : ' · không còn fail'}`).join('\n') };
+  }
+  return { code: 1, out: 'Dùng: /e2e-dashboard [setup|export [runId]|stop|status|digest [ngày]|report [week|month] [--send]|publish [dir]|mark <loại> <mô tả>|triage|ci-sync|projects|statusline [install]|quarantine|import …|share push|pull [dir]|fix [runId] [resultId]|gate]' };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

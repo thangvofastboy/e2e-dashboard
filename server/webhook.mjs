@@ -18,7 +18,7 @@ export async function webhookConfig(env = process.env) {
   if (env.E2E_DASHBOARD_WEBHOOK) list = [...list, { url: env.E2E_DASHBOARD_WEBHOOK }];
   return list
     .filter((w) => w && typeof w.url === 'string' && OK_URL.test(w.url))
-    .map((w) => ({ url: w.url, events: Array.isArray(w.events) ? w.events.filter((e) => typeof e === 'string') : ['run-failed', 'digest'] }));
+    .map((w) => ({ url: w.url, events: Array.isArray(w.events) ? w.events.filter((e) => typeof e === 'string') : ['run-failed', 'digest', 'report', 'alert'] }));
 }
 
 // Owners (from CODEOWNERS) → chat handles, e.g. { "@team-qa": "<!subteam^S123>", "@ana": "<@U456>" },

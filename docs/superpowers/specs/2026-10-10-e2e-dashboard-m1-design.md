@@ -315,3 +315,18 @@ Phần còn lại đã làm ở M5.
 | Tiếng Anh | `ui/i18n.js` | Từ điển áp lên text node + thuộc tính; bỏ qua code, log, Markdown, câu trả lời AI |
 | Lịch sử lớn | `server/store.mjs` | Cache `meta.json` theo mtime + size; trang Runs tải dần 50 run |
 | Báo cáo / CSV / có gì mới | `ui/views/report.js`, `server/csv.mjs`, `server/changelog.mjs` | CSV có BOM, chặn formula injection; `CHANGELOG.md` mục đầu phải trùng version plugin |
+
+## 15. M7 — Theo dõi & báo cáo (v0.7.0)
+
+| Phần | File | Ghi chú |
+|---|---|---|
+| Số liệu dài hạn | `server/longterm.mjs` | `longterm/index.json` (test: first/last seen, chuỗi fail, incident; branch: đợt đỏ; run đã tính) + `longterm/days-YYYY.json`; gom theo thứ tự thời gian, run cũ nhập muộn chỉ cộng tổng |
+| Triage | `server/triage.mjs` | Khoá = fingerprint Linear; tự mở lại / tự đóng; `triage.json` |
+| Module / tag / owner | `server/groups.mjs` | Thư mục dưới gốc chung, hoặc glob trong `modules`; điểm A–F |
+| Phát hành | `server/release.mjs` | `git for-each-ref refs/tags`, `git rev-list from..to`; chỉ tag có thật, argv |
+| Truy vết | `server/traceability.mjs` | Tag `@ID`, `@story:ID`, `[ID]` trong tên |
+| Sự kiện | `server/events.mjs` | `events.json` + tag git; link chỉ https |
+| Cảnh báo | `server/alerts.mjs`, `server/tracking.mjs` | Chạy sau mỗi run; `alerts.json` để chỉ báo một lần đến khi hết |
+| Đồng bộ CI | `server/cisync.mjs` | `gh run list` + `importFromGithub`; opt-in |
+| Báo cáo | `server/reports.mjs`, `server/report-html.mjs` | HTML tự chứa, CSP `default-src 'none'`; webhook `report`; email qua `sendmail -t` chỉ từ home config |
+| Trang tĩnh | `server/site.mjs` | Thư mục từ CLI hoặc home config, không từ repo; không ghi qua symlink |
