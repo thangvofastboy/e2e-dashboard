@@ -33,11 +33,14 @@ export function runMessage(meta, project = '') {
 export function createNotifier({ mode = 'failures', project = '', platform = process.platform, execImpl = nodeExecFile } = {}) {
   const seen = new Set();
   return {
-    runFinished(meta) {
+    // `anomalies`: tests of this run far slower or costlier than their history (insights.anomalies)
+    runFinished(meta, { anomalies = 0 } = {}) {
       if (mode === 'off' || !meta?.runId || seen.has(meta.runId)) return false;
       seen.add(meta.runId);
-      if (mode === 'failures' && meta.status === 'passed' && !meta.summary?.flaky) return false;
-      const { title, body } = runMessage(meta, project);
+      if (mode === 'failures' && meta.status === 'passed' && !meta.summary?.flaky && !anomalies) return false;
+      const msg = runMessage(meta, project);
+      const title = meta.status === 'passed' && anomalies && !meta.summary?.flaky ? `e2e ⚠ ${anomalies} test bất thường` : msg.title;
+      const body = anomalies ? `${msg.body} · ${anomalies} bất thường (chậm/tốn hơn hẳn mọi khi)` : msg.body;
       const [cmd, args, opts] = notifyCommand(title, body, platform);
       try {
         execImpl(cmd, args, { timeout: 15_000, windowsHide: true, ...opts }, () => {}); // no notifier installed: nothing to do

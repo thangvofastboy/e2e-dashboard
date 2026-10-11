@@ -4,10 +4,19 @@ import { join, extname, basename, relative } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
 import { safeJoin, realInside, readConfig, VERSION, RUN_ID, RESULT_ID, resultAttempts } from '../reporter/e2e-dashboard.reporter.mjs';
 import { listRuns, getRun, findRunDir, setFlag, testHistory, getAi, writeAi, listAi, loadHistory } from './store.mjs';
-import { flakyTests, compareRuns, groupErrors, costStats, slowSteps, routeMap, branchStats, compareBranches, locatorCandidates, traceToCode, digest, testKey } from './analytics.mjs';
+import { flakyTests, compareRuns, groupErrors, costStats, slowSteps, routeMap, branchStats, compareBranches, locatorCandidates, traceToCode, testKey } from './analytics.mjs';
 import { projectSummaries, forgetProject } from './projects.mjs';
 import { issueDraft, claudePrompt, linearConfig, createLinear, readIssueLinks, saveIssueLink } from './linear.mjs';
 import { healthScore } from '../ui/health.js';
+import { search, anomalies, lintAgentSteps, LINT_RULES, modelStats, bisectPlan, flakyEvidence, testDetail, appErrors, setupTiming } from './insights.mjs';
+import { changedFiles, impactedTests } from './impact.mjs';
+import { storageUsage, pruneVideos, deleteRun } from './storage.mjs';
+import { webhookConfig, sendWebhooks } from './webhook.mjs';
+import { readCodeowners, ownersOf } from './owners.mjs';
+import { readQuarantine, addQuarantine, removeQuarantine, quarantineFlags } from './quarantine.mjs';
+import { buildDigest, flakyShare } from './digest.mjs';
+import { importFromGithub } from './share.mjs';
+import { createGithub, prCommentMarkdown } from './github.mjs';
 import { buildPrompt, cacheKey, commitsBetween } from './ai.mjs';
 import { estimateEta } from './live.mjs';
 import { bundleUi } from '../ui/bundle.mjs';
@@ -120,15 +129,29 @@ export async function readCacheEntry(projectRoot, entry, cfg = readConfig(projec
   }
 }
 
-// Share of the recent tests that are flaky, for the health score.
-function flakyShare(history, flaky) {
-  const keys = new Set(history.flatMap((h) => (h.report.run.results ?? []).filter((r) => r.kind !== 'setup' && r.status !== 'skipped').map(testKey)));
-  return keys.size ? flaky.filter((f) => f.score >= 0.1).length / keys.size : null;
+// A compact text picture of the suite for the free-form AI question.
+async function askContext(projectRoot) {
+  const history = await loadHistory(projectRoot, 30);
+  const fmt = (ms) => (ms == null ? '?' : `${Math.round(ms / 1000)}s`);
+  const lines = ['Các run gần nhất (mới → cũ):'];
+  for (const { meta } of history.slice(0, 20)) {
+    const s = meta.summary ?? {};
+    lines.push(`- ${meta.startedAt} ${meta.runId.slice(-8)} ${meta.git?.branch ?? '?'}@${String(meta.git?.commit ?? '').slice(0, 7)} ${meta.status} pass ${s.passed ?? 0} flaky ${s.flaky ?? 0} fail ${s.failed ?? 0} skip ${s.skipped ?? 0} · ${fmt(meta.durationMs)} · ${(meta.tokens?.input ?? 0) + (meta.tokens?.output ?? 0)} tok`);
+  }
+  lines.push('', 'Test flaky:', ...flakyTests(history).slice(0, 10).map((t) => `- ${t.title} [${t.target}] điểm ${t.score}, flaky ${t.flaky}, đổi kết quả ${t.flips}/${t.runs} run`));
+  lines.push('', 'Nhóm lỗi:', ...groupErrors(history).slice(0, 10).map((g) => `- ${g.code}: ${g.message.slice(0, 160)} (${g.tests.length} test, ${g.count} lần, gần nhất ${g.lastSeen})`));
+  lines.push('', 'Lỗi phía app:', ...appErrors(history).slice(0, 8).map((g) => `- [${g.source}/${g.level}] ${g.signature} (${g.runs} run)`));
+  lines.push('', 'Bất thường ở run mới nhất:', ...anomalies(history).slice(0, 5).map((a) => `- ${a.title}: ${a.label} ${a.value} (TB ${a.mean})`));
+  const c = costStats(history);
+  lines.push('', `Chi phí: TB ${c.totals.avgTokens} token/run, replay cache ${c.cache.replayed}/${c.cache.replayed + c.cache.handedOff + c.cache.missed} step agent.act`);
+  const q = quarantineFlags(await readQuarantine(projectRoot));
+  if (q.active.length) lines.push('', 'Test đang cách ly:', ...q.active.map((x) => `- ${x.title} đến ${x.until.slice(0, 10)}`));
+  return lines.join('\n');
 }
 
 const IDLE_RUNNER = { start: () => ({ ok: false, error: 'unavailable' }), stop: () => false, state: () => ({ running: false, pid: null }) };
 
-export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER, ai = NO_AI, env = process.env, linearFetch }) {
+export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER, ai = NO_AI, env = process.env, linearFetch, github = createGithub({ projectRoot }), ghImport = importFromGithub, automation = null }) {
   let avgByKey = new Map();
   const refreshAverages = () =>
     testHistory(projectRoot, 10)
@@ -177,7 +200,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return;
       }
       if (p === '/api/health') {
-        const history = await loadHistory(projectRoot, 20);
+        const history = (await loadHistory(projectRoot, 30)).filter((h) => h.meta.kind !== 'explore').slice(0, 20);
         const flaky = flakyTests(history);
         return send(res, 200, { health: healthScore(history.map((h) => h.meta), { flakyShare: flakyShare(history, flaky) }) });
       }
@@ -212,10 +235,54 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       if (p === '/api/projects') return send(res, 200, { projects: await projectSummaries(projectRoot, env) });
       if (p === '/api/digest') {
         const days = Math.max(1, Math.min(90, Number.parseInt(url.searchParams.get('days') ?? '7', 10) || 7));
-        const history = await loadHistory(projectRoot, 200);
-        const recent = history.slice(0, 20);
-        const health = healthScore(recent.map((h) => h.meta), { flakyShare: flakyShare(recent, flakyTests(recent)) });
-        return send(res, 200, digest(history, { days, project: basename(projectRoot), health }));
+        return send(res, 200, await buildDigest(projectRoot, { days }));
+      }
+      if (p === '/api/test') {
+        const key = String(url.searchParams.get('key') ?? '');
+        const d = testDetail(await loadHistory(projectRoot, 60), key);
+        if (!d) return send(res, 404, { error: 'test not found' });
+        const flaky = flakyTests(await loadHistory(projectRoot, 30)).find((f) => f.key === key) ?? null;
+        const q = (await readQuarantine(projectRoot)).find((x) => x.key === key) ?? null;
+        return send(res, 200, { ...d, owners: ownersOf(readCodeowners(projectRoot).rules, d.file), flaky: flaky && { score: flaky.score, flaky: flaky.flaky, flips: flaky.flips }, quarantine: q });
+      }
+      if (p === '/api/app-errors') return send(res, 200, { groups: appErrors(await loadHistory(projectRoot, runCount(url))) });
+      if (p === '/api/timing') return send(res, 200, setupTiming(await loadHistory(projectRoot, runCount(url))));
+      if (p === '/api/impact') {
+        const base = url.searchParams.get('base') || 'main';
+        let files;
+        try {
+          files = await changedFiles(projectRoot, base);
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+        if (!files) return send(res, 200, { base, files: [], tests: [], error: 'Không đọc được git diff (không phải repo git, hoặc không có nhánh này).' });
+        return send(res, 200, { base, files, tests: impactedTests(await loadHistory(projectRoot, 10), files) });
+      }
+      if (p === '/api/storage') return send(res, 200, await storageUsage(projectRoot));
+      if (p === '/api/automation') return send(res, 200, { ...(automation?.state() ?? { schedule: null, watch: { enabled: false, supported: false } }), webhooks: (await webhookConfig(env)).map((w) => ({ host: new URL(w.url).host, events: w.events })) });
+      if (p === '/api/search') {
+        const q = String(url.searchParams.get('q') ?? '').slice(0, 200);
+        return send(res, 200, { hits: q.trim() ? search(await loadHistory(projectRoot, 50), q) : [] });
+      }
+      if (p === '/api/anomalies') {
+        const runId = url.searchParams.get('runId');
+        return send(res, 200, { anomalies: anomalies(await loadHistory(projectRoot, 60), { runId: runId && RUN_ID.test(runId) ? runId : null }) });
+      }
+      if (p === '/api/lint') return send(res, 200, { findings: lintAgentSteps(await loadHistory(projectRoot, runCount(url))), rules: LINT_RULES });
+      if (p === '/api/models') return send(res, 200, modelStats(await loadHistory(projectRoot, runCount(url)), { budget: readConfig(projectRoot).budget }));
+      if (p === '/api/bisect') {
+        const plan = bisectPlan(await loadHistory(projectRoot, 100), url.searchParams.get('runId'), url.searchParams.get('resultId'));
+        return plan ? send(res, 200, plan) : send(res, 404, { error: 'result not found' });
+      }
+      if (p === '/api/owners') {
+        const { file, rules } = readCodeowners(projectRoot);
+        const files = String(url.searchParams.get('files') ?? '').split(',').filter(Boolean).slice(0, 200);
+        return send(res, 200, { file, owners: Object.fromEntries(files.map((f) => [f, ownersOf(rules, f)])) });
+      }
+      if (p === '/api/quarantine') {
+        const list = await readQuarantine(projectRoot);
+        const flags = quarantineFlags(list);
+        return send(res, 200, { list, active: flags.active.map((q) => q.key), expired: flags.expired.map((q) => q.key), command: flags.command, args: flags.args });
       }
       if (p === '/api/locators') {
         const cfg = readConfig(projectRoot);
@@ -266,23 +333,27 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return res.end();
       }
       if (p.startsWith('/api/ai/')) {
-        const action = /^\/api\/ai\/(analyze-failure|analyze-run|suggest-locator|followup)$/.exec(p)?.[1];
+        const action = /^\/api\/ai\/(analyze-failure|analyze-run|suggest-locator|why-flaky|explore-to-test|ask|followup)$/.exec(p)?.[1];
         if (!action) return send(res, 404, { error: 'unknown action' });
         const body = await readBody(req);
-        const run = await getRun(projectRoot, body.runId);
+        // a question about the whole suite, or a follow-up in an existing session, needs no run
+        const run = action === 'ask' || action === 'followup' ? { meta: { runId: null }, report: null, dir: projectRoot } : await getRun(projectRoot, body.runId);
         if (!run) return send(res, 404, { error: 'run not found' });
         const ac = new AbortController();
         res.on('close', () => !res.writableEnded && ac.abort()); // tab closed → never start or keep claude
         let prompt;
         let resume;
         let key = null;
-        if (action === 'followup') {
+        if (action === 'ask') {
+          if (typeof body.question !== 'string' || !body.question.trim() || body.question.length > 4000) return send(res, 400, { error: 'invalid question' });
+          prompt = buildPrompt('ask', { context: await askContext(projectRoot), question: body.question, language: readConfig(projectRoot).ai?.language });
+        } else if (action === 'followup') {
           const ok = typeof body.sessionId === 'string' && /^[\w-]{1,100}$/.test(body.sessionId) && typeof body.question === 'string' && body.question.trim() && body.question.length <= 4000;
           if (!ok) return send(res, 400, { error: 'invalid follow-up' });
           prompt = body.question;
           resume = body.sessionId;
         } else {
-          const perResult = action === 'analyze-failure' || action === 'suggest-locator';
+          const perResult = action === 'analyze-failure' || action === 'suggest-locator' || action === 'why-flaky';
           if (perResult && !RESULT_ID.test(String(body.resultId ?? ''))) return send(res, 400, { error: 'invalid resultId' });
           const result = perResult && (run.report.run.results ?? []).find((r) => r.id === body.resultId);
           if (perResult && !result) return send(res, 404, { error: 'result not found' });
@@ -294,7 +365,15 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
             const entry = await readCacheEntry(projectRoot, step.cache?.entry);
             draft = (entry && traceToCode(entry)?.code) || '';
           }
-          key = cacheKey(action, run.meta.runId, action === 'suggest-locator' ? `${body.resultId}:${body.stepIndex}` : perResult ? body.resultId : '');
+          let evidence = null;
+          let newest = '';
+          if (action === 'why-flaky') {
+            // the answer depends on the history, so the cache key follows the newest run too
+            const history = await loadHistory(projectRoot, 60);
+            evidence = flakyEvidence(history, testKey(result));
+            newest = history[0]?.meta.runId ?? '';
+          }
+          key = cacheKey(action, run.meta.runId, action === 'suggest-locator' ? `${body.resultId}:${body.stepIndex}` : action === 'why-flaky' ? `${body.resultId}:${newest}` : perResult ? body.resultId : '');
           const cached = body.refresh ? null : await getAi(projectRoot, run.meta.runId, key);
           if (cached) {
             const write = startSse(res);
@@ -302,8 +381,9 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
             write({ type: 'done', cached: true });
             return res.end();
           }
-          const commits = action === 'suggest-locator' ? [] : await commitsFor(projectRoot, run, action, body.resultId);
-          prompt = buildPrompt(action, { report: run.report, meta: run.meta, resultId: body.resultId, runDir: relative(projectRoot, run.dir), commits, language: readConfig(projectRoot).ai?.language, stepIndex: body.stepIndex, draft });
+          if (action === 'explore-to-test' && !run.report.run.explore) return send(res, 400, { error: 'not an explore run' });
+          const commits = action === 'suggest-locator' || action === 'why-flaky' || action === 'explore-to-test' ? [] : await commitsFor(projectRoot, run, action, body.resultId);
+          prompt = buildPrompt(action, { report: run.report, meta: run.meta, resultId: body.resultId, runDir: relative(projectRoot, run.dir), commits, language: readConfig(projectRoot).ai?.language, stepIndex: body.stepIndex, draft, evidence });
         }
         if (ac.signal.aborted) return res.end();
         const write = startSse(res);
@@ -329,7 +409,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         if (!RESULT_ID.test(String(body.resultId ?? '')) || !(run.report.run.results ?? []).some((r) => r.id === body.resultId)) return send(res, 404, { error: 'result not found' });
         const cfg = readConfig(projectRoot);
         const saved = await getAi(projectRoot, run.meta.runId, cacheKey('analyze-failure', run.meta.runId, body.resultId));
-        const draft = issueDraft({ meta: run.meta, report: run.report, resultId: body.resultId, commits: await commitsFor(projectRoot, run, 'analyze-failure', body.resultId), analysis: saved?.markdown ?? null, project: basename(projectRoot) });
+        const draft = issueDraft({ meta: run.meta, report: run.report, resultId: body.resultId, commits: await commitsFor(projectRoot, run, 'analyze-failure', body.resultId), analysis: saved?.markdown ?? null, project: basename(projectRoot), owners: ownersOf(readCodeowners(projectRoot).rules, (run.report.run.results ?? []).find((r) => r.id === body.resultId)?.source?.file) });
         const { apiKey, team } = await linearConfig(cfg, env);
         const links = await readIssueLinks(projectRoot);
         if (p === '/api/linear/draft') return send(res, 200, { draft, prompt: claudePrompt(draft, team), configured: Boolean(apiKey), team, link: links[draft.fingerprint] ?? null });
@@ -348,6 +428,78 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         await saveIssueLink(projectRoot, draft.fingerprint, issue);
         return send(res, 201, { status: 'created', issue, reopenedFrom: old?.identifier ?? null, fingerprint: draft.fingerprint });
       }
+      if (p === '/api/storage/prune') {
+        const { days } = await readBody(req);
+        try {
+          return send(res, 200, await pruneVideos(projectRoot, days));
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+      }
+      const del = /^\/api\/runs\/([^/]+)\/delete$/.exec(p);
+      if (del) {
+        if (!RUN_ID.test(del[1])) return send(res, 400, { error: 'invalid run id' });
+        const out = await deleteRun(projectRoot, del[1]);
+        return send(res, out.deleted ? 200 : out.reason === 'not-found' ? 404 : 409, out);
+      }
+      if (p === '/api/watch') {
+        const { enabled } = await readBody(req);
+        if (!automation) return send(res, 503, { error: 'unavailable' });
+        return send(res, 200, automation.setWatch(Boolean(enabled)));
+      }
+      if (p === '/api/webhook/test') {
+        const hooks = await webhookConfig(env);
+        if (!hooks.length) return send(res, 400, { error: 'Chưa có webhook: thêm "webhooks" vào ~/.e2e-dashboard/config.json hoặc đặt E2E_DASHBOARD_WEBHOOK.' });
+        return send(res, 200, { sent: await sendWebhooks(hooks.map((h) => ({ ...h, events: ['*'] })), 'test', `🧪 e2e-dashboard (${basename(projectRoot)}): webhook hoạt động.`) });
+      }
+      if (p === '/api/github/status') {
+        const { runId } = await readBody(req);
+        const run = await getRun(projectRoot, runId);
+        if (!run) return send(res, 404, { error: 'run not found' });
+        const s = run.meta.summary ?? {};
+        const state = run.meta.status === 'passed' ? 'success' : ['failed', 'interrupted', 'error', 'timed-out'].includes(run.meta.status) ? 'failure' : 'error';
+        const description = `${run.meta.status}: ${s.passed ?? 0} pass, ${s.flaky ?? 0} flaky, ${s.failed ?? 0} fail`;
+        try {
+          return send(res, 200, { state, description, url: await github.setStatus(run.meta.git?.commit, state, description) });
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+      }
+      if (p === '/api/quarantine' || p === '/api/quarantine/remove') {
+        const body = await readBody(req);
+        if (p === '/api/quarantine/remove') return send(res, 200, { removed: await removeQuarantine(projectRoot, body.key) });
+        try {
+          return send(res, 201, await addQuarantine(projectRoot, { key: body.key, title: body.title, file: body.file, line: body.line, reason: body.reason, days: body.days }));
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+      }
+      if (p === '/api/github/pr') {
+        const body = await readBody(req);
+        const [a, b] = await Promise.all([getRun(projectRoot, body.a), getRun(projectRoot, body.b)]);
+        if (!a || !b) return send(res, 404, { error: 'run not found' });
+        const markdown = prCommentMarkdown(compareRuns(a, b), { project: basename(projectRoot) });
+        let pr = null;
+        try {
+          pr = await github.findPr(b.meta.git?.branch);
+        } catch (e) {
+          return send(res, 200, { markdown, pr: null, error: e.message });
+        }
+        if (!body.post || !pr) return send(res, 200, { markdown, pr });
+        try {
+          return send(res, 200, { markdown, pr, posted: await github.comment(pr.number, markdown) });
+        } catch (e) {
+          return send(res, 502, { error: e.message });
+        }
+      }
+      if (p === '/api/import/github') {
+        const body = await readBody(req);
+        try {
+          return send(res, 200, { imported: await ghImport(projectRoot, body.runId, { artifact: body.artifact || null }) });
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+      }
       if (p === '/api/projects/forget') {
         const { root } = await readBody(req);
         if (typeof root !== 'string') return send(res, 400, { error: 'invalid root' });
@@ -359,7 +511,9 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         let out;
         try {
           const RUN_KEYS = ['tests', 'targets', 'agents', 'retries', 'repeatEach', 'noCache', 'rerunOf'];
-          out = runner.start(Object.fromEntries(RUN_KEYS.filter((k) => body[k] !== undefined).map((k) => [k, body[k]])));
+          const opts = Object.fromEntries(RUN_KEYS.filter((k) => body[k] !== undefined).map((k) => [k, body[k]]));
+          if (body.excludeQuarantined === true) opts.grepInvert = quarantineFlags(await readQuarantine(projectRoot)).args.filter((x) => x !== '--grep-invert');
+          out = runner.start(opts);
         } catch (e) {
           return send(res, 400, { error: e.message });
         }

@@ -473,7 +473,7 @@ const fmtTok = (n) => (n < 1000 ? String(n) : n < 1e6 ? `${Math.round(n / 1000)}
 const code = (s) => `\`${String(s ?? '').replace(/[`\n\r]/g, ' ').slice(0, 80)}\``; // no escapes inside a code span
 const esc = (s) => String(s ?? '').replace(/[\\`*_[\]<>|]/g, '\\$&').replace(/\s+/g, ' ').slice(0, 200);
 
-export function digest(history, { days = 7, now = Date.now(), project = '', health = null } = {}) {
+export function digest(history, { days = 7, now = Date.now(), project = '', health = null, anomalies = [], quarantine = null, ownersOf = null } = {}) {
   const from = now - days * 86_400_000;
   const prevFrom = from - days * 86_400_000;
   const inRange = (h, a, b) => {
@@ -506,11 +506,24 @@ export function digest(history, { days = 7, now = Date.now(), project = '', heal
   ];
   if (health) lines.push(`- **Health score:** ${health.score}/100`);
   lines.push('', '## Test mới fail');
-  lines.push(...(newFailures.length ? newFailures.map((r) => `- ${esc(r.title)} [${esc(r.target)}]${r.b?.error ? `: ${code(r.b.error.code)} ${esc(r.b.error.message)}` : ''}`) : ['- Không có.']));
+  const owners = (r) => {
+    const o = ownersOf ? ownersOf(r.file) : [];
+    return o.length ? ` → ${o.map(esc).join(', ')}` : '';
+  };
+  lines.push(...(newFailures.length ? newFailures.map((r) => `- ${esc(r.title)} [${esc(r.target)}]${r.b?.error ? `: ${code(r.b.error.code)} ${esc(r.b.error.message)}` : ''}${owners(r)}`) : ['- Không có.']));
   lines.push('', '## Flaky nhiều nhất');
   lines.push(...(flaky.length ? flaky.map((t) => `- ${esc(t.title)} [${esc(t.target)}]: ${t.flaky} lần flaky, ${t.flips} lần đổi kết quả / ${t.runs} run`) : ['- Không có.']));
   lines.push('', '## Nhóm lỗi');
   lines.push(...(groups.length ? groups.map((g) => `- ${code(g.code)} ${esc(g.message)}: ${g.tests.length} test, ${g.count} lần`) : ['- Không có.']));
+  if (anomalies.length) {
+    lines.push('', '## Bất thường ở run gần nhất');
+    lines.push(...anomalies.slice(0, 8).map((a) => `- ${esc(a.title)} [${esc(a.target)}]: ${esc(a.label)} ${a.metric === 'durationMs' ? fmtMs(a.value) : a.value} (TB ${a.metric === 'durationMs' ? fmtMs(a.mean) : a.mean})`));
+  }
+  if (quarantine?.active.length || quarantine?.expired.length) {
+    lines.push('', '## Test đang cách ly');
+    lines.push(...quarantine.active.map((q) => `- ${esc(q.title)}: đến ${q.until.slice(0, 10)}${q.reason ? ` (${esc(q.reason)})` : ''}`));
+    lines.push(...quarantine.expired.map((q) => `- ⚠️ ${esc(q.title)}: **quá hạn** từ ${q.until.slice(0, 10)}, sửa hoặc gỡ cách ly`));
+  }
   if (slow.length) {
     lines.push('', '## Step chậm nhất');
     lines.push(...slow.map((s) => `- ${esc(s.title)} › ${code(s.api)} ${esc(s.label)}: TB ${fmtMs(s.avgMs)}`));

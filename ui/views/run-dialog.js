@@ -1,4 +1,4 @@
-import { postJson } from '../api.js';
+import { postJson, getJson } from '../api.js';
 import { escapeHtml } from '../format.js';
 import { icon } from '../icons.js';
 
@@ -21,6 +21,7 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
       <label>Repeat each <input type="number" name="repeatEach" min="1" max="50" placeholder="1"${Number.isInteger(repeatEach) ? ` value="${repeatEach}"` : ''}></label>
       <label class="pill"><input type="checkbox" name="noCache"> --no-cache</label>
     </div>
+    <label class="pill" data-q-wrap hidden><input type="checkbox" name="excludeQuarantined" checked> Bỏ qua <span data-q-count></span> test đang cách ly</label>
     <p class="err" hidden></p>
     <footer><button type="button" data-close>Huỷ</button><button type="submit" class="primary">${icon('play', { size: 14 })}Chạy</button></footer>
   </form>`;
@@ -40,6 +41,7 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
       ...(fd.get('retries') !== '' ? { retries: Number(fd.get('retries')) } : {}),
       ...(fd.get('repeatEach') !== '' ? { repeatEach: Number(fd.get('repeatEach')) } : {}),
       noCache: fd.get('noCache') === 'on',
+      ...(fd.get('excludeQuarantined') === 'on' && !dlg.querySelector('[data-q-wrap]').hidden ? { excludeQuarantined: true } : {}),
       ...(rerunOf ? { rerunOf } : {}),
     };
     if (!body.targets.length) delete body.targets;
@@ -54,4 +56,10 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
     }
   });
   dlg.showModal();
+  getJson('/api/quarantine').then((q) => {
+    const n = q.list.length - q.expired.length;
+    if (!n) return;
+    dlg.querySelector('[data-q-count]').textContent = String(n);
+    dlg.querySelector('[data-q-wrap]').hidden = false;
+  }).catch(() => {});
 }

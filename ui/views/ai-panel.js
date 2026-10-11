@@ -68,7 +68,7 @@ export function openAiPanel({ action, runId, resultId = null, title, saved = nul
         err.textContent = x.message;
       }
     }
-    actions.innerHTML = `${action !== 'followup' ? `<button type="button" data-refresh>${icon('recycle', { size: 14 })}Phân tích lại</button>` : ''}
+    actions.innerHTML = `${action !== 'followup' && action !== 'ask' ? `<button type="button" data-refresh>${icon('recycle', { size: 14 })}Phân tích lại</button>` : ''}
       ${sessionId ? `<form class="followup"><input name="q" placeholder="Hỏi thêm về kết quả này…" aria-label="Câu hỏi thêm" maxlength="4000" required><button type="submit" aria-label="Gửi">${icon('send', { size: 14 })}</button></form>` : ''}`;
     actions.querySelector('[data-refresh]')?.addEventListener('click', () => run(`/api/ai/${action}`, { ...extra, runId, resultId, refresh: true }));
     actions.querySelector('.followup')?.addEventListener('submit', (e) => {
@@ -78,4 +78,27 @@ export function openAiPanel({ action, runId, resultId = null, title, saved = nul
     });
   };
   run(`/api/ai/${action}`, { ...extra, runId, resultId });
+}
+
+// Free-form question about the whole suite: a small form first, then the usual streaming panel.
+export function openAskPanel() {
+  aiAbort?.abort();
+  document.getElementById('ai-panel')?.remove();
+  const panel = document.createElement('aside');
+  panel.id = 'ai-panel';
+  panel.setAttribute('aria-label', 'Hỏi AI');
+  const ideas = ['Tuần này test nào tệ đi và vì sao?', 'Test nào nên chuyển agent.act thành locator trước?', 'Lỗi nào ảnh hưởng nhiều test nhất, nên sửa gì trước?'];
+  panel.innerHTML = `<header><h2>${icon('sparkles', { size: 16 })}Hỏi AI về bộ test</h2><button type="button" class="icon-btn" data-close aria-label="Đóng">${icon('close')}</button></header>
+    <div class="ai-body"><p class="muted small">Claude nhận tóm tắt 30 run gần nhất (pass/fail, flaky, nhóm lỗi, lỗi app, chi phí) và có thể đọc code (chỉ đọc).</p>
+      <ul class="ask-ideas">${ideas.map((q) => `<li><button type="button" data-idea>${escapeHtml(q)}</button></li>`).join('')}</ul></div>
+    <footer class="ai-actions"><form class="followup"><input name="q" placeholder="Câu hỏi của bạn…" aria-label="Câu hỏi" maxlength="4000" required><button type="submit" aria-label="Gửi">${icon('send', { size: 14 })}</button></form></footer>`;
+  document.body.append(panel);
+  panel.querySelector('[data-close]').addEventListener('click', () => panel.remove());
+  const ask = (q) => openAiPanel({ action: 'ask', runId: null, extra: { question: q }, title: q.length > 60 ? `${q.slice(0, 59)}…` : q });
+  panel.querySelectorAll('[data-idea]').forEach((b) => b.addEventListener('click', () => ask(b.textContent)));
+  panel.querySelector('form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    ask(String(new FormData(e.target).get('q')));
+  });
+  panel.querySelector('input').focus();
 }

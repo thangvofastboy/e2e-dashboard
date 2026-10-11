@@ -1,9 +1,10 @@
 import { getJson } from '../api.js';
-import { lineChart, donutChart, hbarChart } from '../charts.js';
+import { lineChart, donutChart, hbarChart, stackedBarChart } from '../charts.js';
 import { runCountPicker, analysisCount, pageHead, emptyBox, fmtPct, fmtUsd } from '../analysis.js';
 import { escapeHtml, fmtDuration, fmtTokens } from '../format.js';
 import { icon } from '../icons.js';
 
+const PHASES = [['setup', 'setup'], ['beforeEach', 'beforeEach'], ['afterEach', 'afterEach'], ['body', 'thân test']];
 const CACHE_SEGMENTS = [['replayed', 'chạy lại từ cache', 'good'], ['handedOff', 'agent tiếp quản', 'warn'], ['missed', 'không có cache', 'bad'], ['off', 'tắt cache', 'muted']];
 
 function costKpi(ic, label, value, sub = '', tone = 'info') {
@@ -12,7 +13,7 @@ function costKpi(ic, label, value, sub = '', tone = 'info') {
 
 export async function renderCost(main) {
   const picker = runCountPicker(() => renderCost(main));
-  const c = await getJson(`/api/cost?n=${analysisCount()}`);
+  const [c, timing] = await Promise.all([getJson(`/api/cost?n=${analysisCount()}`), getJson(`/api/timing?n=${analysisCount()}`).catch(() => null)]);
   const head = pageHead('Chi phí & cache', 'coins', 'Token, chi phí ước tính và hiệu quả replay cache của các step agent.', picker.html);
   if (!c.runs.length) {
     main.innerHTML = `${head}${emptyBox('Chưa có run nào')}`;
@@ -43,6 +44,10 @@ export async function renderCost(main) {
       <figure><figcaption>${icon('alert')}Vì sao không replay được</figcaption>${hbarChart({ items: c.missReasons.slice(0, 8).map((r) => ({ label: r.reason, value: r.count, tone: 'warn' })), format: String })}</figure>
       <figure><figcaption>${icon('flask')}Test tốn token nhất (TB / run)</figcaption>${hbarChart({ items: c.tests.filter((t) => t.avgTokens).slice(0, 8).map((t) => ({ label: t.title, value: t.avgTokens, tone: 'info' })), format: fmtTokens })}</figure>
       <figure><figcaption>${icon('bulb')}Token theo vai trò model</figcaption>${hbarChart({ items: c.roles.slice(0, 6).map((r) => ({ label: r.role, value: r.tokens, tone: 'info' })), format: fmtTokens })}</figure>
+      ${timing?.share ? `<figure><figcaption>${icon('clock')}Thời gian theo giai đoạn</figcaption><div class="donut-wrap">${donutChart({ segments: PHASES.map(([k, label]) => ({ key: k, label, value: Math.round(timing.share[k] * 1000) })), center: '', ariaLabel: 'Thời gian theo giai đoạn' })}
+        <div class="legend">${PHASES.map(([k, label]) => `<span><i class="swatch s-${k}"></i>${escapeHtml(label)}: ${escapeHtml(fmtPct(timing.share[k]))}</span>`).join('')}</div></div>
+        ${timing.setups.length ? `<p class="muted small">Setup chậm nhất: ${timing.setups.slice(0, 3).map((x) => `${escapeHtml(x.name)} (${escapeHtml(fmtDuration(x.avgMs))})`).join(', ')}</p>` : ''}</figure>
+      <figure><figcaption>${icon('clock')}Setup + hook theo run</figcaption>${stackedBarChart({ bars: [...timing.runs].reverse().map((r) => ({ label: when(r), segments: { setup: r.setup, beforeEach: r.beforeEach, afterEach: r.afterEach }, tip: `${when(r)}: setup ${fmtDuration(r.setup)}, beforeEach ${fmtDuration(r.beforeEach)}, afterEach ${fmtDuration(r.afterEach)}, thân test ${fmtDuration(r.body)}` })), keys: ['setup', 'beforeEach', 'afterEach'], ariaLabel: 'Setup và hook theo run' })}</figure>` : ''}
       <figure class="wide"><figcaption>${icon('timer')}Step chậm nhất (trung bình)</figcaption>${hbarChart({ items: c.slowSteps.slice(0, 10).map((s) => ({ label: `${s.title} › ${s.api} ${s.label}`, value: s.avgMs, tone: 'info', tip: `${s.title} › ${s.api} ${s.label}: TB ${fmtDuration(s.avgMs)}, tối đa ${fmtDuration(s.maxMs)} (${s.samples} lần)` })), format: fmtDuration })}</figure>
     </section>
     <p class="muted small">Ngân sách và đơn giá: <code>"budget": { "tokensPerRun": 200000, "costPerRun": 0.5 }</code>, <code>"pricing": { "inputPerMTok": 3, "outputPerMTok": 15 }</code> trong <code>.e2e-dashboard/config.json</code>. Report có <code>usage.estimatedCostUsd</code> thì dùng số đó.</p>`;

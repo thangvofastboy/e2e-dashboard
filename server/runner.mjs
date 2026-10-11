@@ -20,7 +20,10 @@ function int(v, min, max, what) {
   return v;
 }
 
-export function buildRunArgs({ tests, targets, agents, retries, repeatEach, noCache } = {}) {
+// --grep-invert patterns (quarantined tests): one regex each, bounded, never mistaken for a flag
+const PATTERN = /^(?!-)[^\n\r\0]{1,400}$/;
+
+export function buildRunArgs({ tests, targets, agents, retries, repeatEach, noCache, grepInvert } = {}) {
   const args = ['e2e', 'run', ...list(tests, TEST, 'tests')];
   const t = list(targets, NAME, 'targets');
   const a = list(agents, NAME, 'agents');
@@ -32,6 +35,7 @@ export function buildRunArgs({ tests, targets, agents, retries, repeatEach, noCa
   if (n !== undefined) args.push('--repeat-each', String(n));
   if (noCache !== undefined && typeof noCache !== 'boolean') throw new Error('invalid noCache');
   if (noCache) args.push('--no-cache');
+  for (const p of list(grepInvert, PATTERN, 'grepInvert').slice(0, 100)) args.push('--grep-invert', p);
   return args;
 }
 

@@ -3,17 +3,20 @@ import { flattenResults, facets, applyFilters, matrix, isFailure, stepVideoOffse
 import { openRunDialog } from './run-dialog.js';
 import { openAiPanel } from './ai-panel.js';
 import { openLinearDialog } from './linear.js';
+import { openBisectDialog } from './actions.js';
 import { errorGroupHtml } from './errors.js';
 import { visualCompareHtml, attachVisualCompare, screenshotTriplets } from '../visual.js';
 import { fmtDuration, fmtTokens, statusBadge, countChips, escapeHtml } from '../format.js';
 import { renderMarkdown } from '../markdown.js';
-import { runHref, compareHref } from '../router.js';
+import { runHref, compareHref, testHref, replaceParams } from '../router.js';
+import { setPageKeys } from '../shortcuts.js';
+import { toast } from '../toast.js';
 import { icon } from '../icons.js';
 import { donutChart, legend } from '../charts.js';
 import { passRate } from '../health.js';
 
 // View state survives re-renders of the same run (filters, matrix toggle, chosen attempt, tab).
-const ui = { runId: null, data: null, filters: {}, matrix: false, attempt: new Map(), tab: 'media', selected: new Set(), saved: [], compareWith: null, groups: [] };
+const ui = { runId: null, data: null, filters: {}, matrix: false, attempt: new Map(), tab: 'media', selected: new Set(), saved: [], compareWith: null, groups: [], anomalies: [], owners: {} };
 const TABS = [['media', 'Video & ảnh', 'video'], ['log', 'Log', 'terminal'], ['trace', 'Trace', 'route'], ['source', 'Source', 'code']];
 const FILTERS = [['statuses', 'Status'], ['targets', 'Target'], ['agents', 'Agent'], ['tags', 'Tag'], ['files', 'File']];
 
@@ -68,20 +71,48 @@ function header(meta, report) {
   const actions = isExport()
     ? savedRun ? `<button class="btn-ai" data-ai="analyze-run">${icon('sparkles', { size: 15 })}Xem phân tích AI</button>` : ''
     : `<button class="btn-ai" data-ai="analyze-run">${icon('sparkles', { size: 15 })}Phân tích run</button>
-       <button class="btn-pin" data-flag="pin">${icon('pin', { size: 15 })}${meta.pinned ? 'Bỏ ghim' : 'Ghim'}</button>
-       <button class="btn-star" data-flag="baseline">${icon('star', { size: 15 })}${meta.baseline ? 'Bỏ baseline' : 'Baseline'}</button>
        ${ui.compareWith ? `<a class="button" href="${compareHref(ui.compareWith.runId, meta.runId)}" title="So với ${ui.compareWith.baseline ? 'baseline' : 'run trước'}">${icon('columns', { size: 15 })}So với ${ui.compareWith.baseline ? 'baseline' : 'run trước'}</a>` : ''}
-       <a class="button btn-export" href="/api/runs/${encodeURIComponent(meta.runId)}/export" download>${icon('download', { size: 15 })}Export HTML</a>`;
+       <button class="btn-pin${meta.pinned ? ' on' : ''}" data-flag="pin" aria-pressed="${Boolean(meta.pinned)}" title="${meta.pinned ? 'Bỏ ghim' : 'Ghim: không bao giờ bị xoá'}">${icon('pin', { size: 15 })}${meta.pinned ? 'Đã ghim' : 'Ghim'}</button>
+       <details class="more"><summary class="button" aria-label="Thêm thao tác">${icon('list', { size: 15 })}Thêm</summary><div class="more-menu">
+         <button class="btn-star" data-flag="baseline">${icon('star', { size: 15 })}${meta.baseline ? 'Bỏ baseline' : 'Đặt làm baseline'}</button>
+         ${meta.git?.commit ? `<button type="button" data-gh-status title="Gắn ✓/✗ của run này lên commit trên GitHub (gh)">${icon('commit', { size: 15 })}Trạng thái lên GitHub</button>` : ''}
+         <a class="button btn-export" href="/api/runs/${encodeURIComponent(meta.runId)}/export" download>${icon('download', { size: 15 })}Export HTML</a>
+       </div></details>`;
   const runErrors = (report.run.errors ?? []).map(errorBox).join('');
   const rate = passRate(meta);
   const keys = ['passed', 'flaky', 'failed', 'interrupted', 'skipped'];
-  return `<div class="run-head">
+  return `<nav class="crumbs" aria-label="Vị trí"><a href="#/runs">Runs</a> › <span>${escapeHtml(meta.runId.slice(-8))}</span></nav><div class="run-head">
       <div><h1>Run ${escapeHtml(meta.runId.slice(-8))} ${statusBadge(meta.status)}</h1>
         <div class="run-meta"><span class="m-time">${icon('clock', { size: 14 })}${new Date(meta.startedAt).toLocaleString('vi-VN')} · ${fmtDuration(meta.durationMs)}</span><span class="m-tok">${icon('coins', { size: 14 })}${fmtTokens(tokens)} tok</span>${replay}${git}</div></div>
       <div class="actions">${actions}</div>
     </div>
-    <section class="panel run-summary">${donutChart({ segments: keys.map((k) => ({ key: k, value: s[k] ?? 0 })), center: rate == null ? '—' : `${Math.round(rate * 100)}%`, ariaLabel: 'Kết quả run' })}
-      <div><div>${countChips(s)}</div>${legend(keys.filter((k) => s[k]))}</div></section>${runErrors}${groupsPanel()}`;
+    ${report.run.explore && !(report.run.results ?? []).length ? '' : `<section class="panel run-summary">${donutChart({ segments: keys.map((k) => ({ key: k, value: s[k] ?? 0 })), center: rate == null ? '—' : `${Math.round(rate * 100)}%`, ariaLabel: 'Kết quả run' })}
+      <div><div>${countChips(s)}</div>${legend(keys.filter((k) => s[k]))}</div></section>`}${runErrors}${explorePanel(report)}${anomaliesPanel()}${groupsPanel()}`;
+}
+
+// An `e2e explore` run: its goal, steps and findings (most severe first), and an AI draft of a test.
+function explorePanel(report) {
+  const e = report.run.explore;
+  if (!e) return '';
+  const findings = [...(e.findings ?? [])].sort((a, b) => (b.severity ?? 0) - (a.severity ?? 0));
+  const sev = (n) => (n >= 4 ? 'bad' : n >= 3 ? 'warn' : 'info');
+  return `<section class="panel explore"><div class="section-head"><h2>${icon('route', { size: 15 })} Explore: ${escapeHtml(e.goal)}</h2>
+      ${isExport() ? '' : `<button type="button" class="btn-ai" data-explore-test>${icon('sparkles', { size: 14 })}Viết test từ explore</button>`}</div>
+    <p class="muted small">Kết thúc: ${escapeHtml(e.ended)} · ${escapeHtml((e.steps ?? []).length)} bước · ${escapeHtml(findings.length)} finding</p>
+    ${e.summary ? `<div class="md">${renderMarkdown(e.summary)}</div>` : ''}
+    ${findings.length ? `<ul class="findings">${findings.map((f) => `<li><span class="chip tone-${sev(f.severity)}">${escapeHtml(f.kind)} · ${escapeHtml(f.severity)}</span> <strong>${escapeHtml(f.title)}</strong>${f.path ? ` <code>${escapeHtml(f.path)}</code>` : ''}
+      <div class="small"><span class="muted">Mong đợi:</span> ${escapeHtml(f.expected)}<br><span class="muted">Thực tế:</span> ${escapeHtml(f.actual)}</div>
+      ${(f.reproduction ?? []).length ? `<ol class="small">${f.reproduction.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ol>` : ''}</li>`).join('')}</ul>` : ''}
+    <details><summary>Các bước</summary><ol class="small">${(e.steps ?? []).map((x) => `<li>${statusBadge(x.status === 'exhausted' ? 'interrupted' : x.status)} <strong>${escapeHtml(x.title)}</strong> <span class="muted">${escapeHtml(x.instruction)}</span></li>`).join('')}</ol></details></section>`;
+}
+
+// Tests far slower or costlier than their own history.
+function anomaliesPanel() {
+  const a = ui.anomalies;
+  if (!a.length) return '';
+  const val = (x, v) => (x.metric === 'durationMs' ? fmtDuration(v) : x.metric === 'tokens' ? fmtTokens(v) : String(v));
+  return `<section class="panel anomalies"><strong>${icon('zap', { size: 15 })} ${a.length} bất thường</strong> <span class="muted small">so với lịch sử của chính test đó (TB + 2σ)</span>
+    <ul>${a.map((x) => `<li><a href="${runHref(x.runId, x.resultId)}">${escapeHtml(x.title)}</a> <span class="muted small">${escapeHtml(x.target)}</span>: ${escapeHtml(x.label)} ${escapeHtml(val(x, x.value))} <span class="muted">(TB ${escapeHtml(val(x, x.mean))}, ${escapeHtml(x.samples)} run)</span></li>`).join('')}</ul></section>`;
 }
 
 // Failures of this run grouped by error shape: one fix, several tests.
@@ -183,8 +214,8 @@ function detail(row, meta, runId) {
       .map((a, i) => `<button data-attempt="${i}" aria-pressed="${i === idx}">Attempt ${i + 1} ${statusBadge(a.status)}</button>`)
       .join('')}</div>`
     : '';
-  const head = `<h2>${escapeHtml(row.title)} ${statusBadge(row.status)}</h2>
-    <div class="muted"><code>${escapeHtml(row.file)}:${escapeHtml(row.line)}</code> · ${escapeHtml(row.target)} · ${escapeHtml(row.agent)}${row.tags.map((t) => ` <span class="tag">${escapeHtml(t)}</span>`).join('')}</div>`;
+  const head = `<h2>${isExport() ? escapeHtml(row.title) : `<a href="${testHref(`${row.testId}|${row.target}|${row.agent}`)}" title="Lịch sử của test này">${escapeHtml(row.title)}</a>`} ${statusBadge(row.status)}</h2>
+    <div class="muted"><code>${escapeHtml(row.file)}:${escapeHtml(row.line)}</code> · ${escapeHtml(row.target)} · ${escapeHtml(row.agent)}${row.tags.map((t) => ` <span class="tag">${escapeHtml(t)}</span>`).join('')}${ui.owners[row.file]?.length ? ` · <span class="owners" title="CODEOWNERS">${icon('users', { size: 13 })}${escapeHtml(ui.owners[row.file].join(', '))}</span>` : ''}</div>`;
   if (!attempt) return `${head}<p class="muted">Test không có attempt nào${row.status === 'skipped' ? ' (bị skip)' : ''}.</p>`;
   const { video } = artifactsOf(attempt);
   const skip = attempt.skip?.reason ? `<p class="muted">Skip: ${escapeHtml(attempt.skip.reason)}</p>` : '';
@@ -198,7 +229,7 @@ function detail(row, meta, runId) {
     ? `<button type="button" class="btn-ai" data-ai="analyze-failure" data-result="${escapeHtml(row.id)}">${icon('sparkles', { size: 14 })}${isExport() ? 'Xem phân tích lỗi' : 'Phân tích lỗi'}</button>`
     : '';
   const linearBtn = isFailure(row.status) && !isExport()
-    ? `<button type="button" data-linear="${escapeHtml(row.id)}">${icon('ticket', { size: 14 })}Gửi Linear</button>`
+    ? `<button type="button" data-linear="${escapeHtml(row.id)}">${icon('ticket', { size: 14 })}Gửi Linear</button><button type="button" data-bisect="${escapeHtml(row.id)}">${icon('commit', { size: 14 })}Tìm commit gây lỗi</button>`
     : '';
   return `${head}${pills}${skip}${errorBox(attempt.error)}${aiBtn}${linearBtn}
     <ol class="timeline">${steps || '<li class="muted">Không có step.</li>'}</ol>
@@ -208,17 +239,26 @@ function detail(row, meta, runId) {
 export async function renderRun(main, route) {
   const { runId, resultId } = route;
   if (ui.runId !== runId || !ui.data) {
-    Object.assign(ui, { runId, filters: {}, matrix: false, attempt: new Map(), tab: 'media', selected: new Set(), saved: [] });
+    Object.assign(ui, { runId, filters: Object.fromEntries(Object.entries(route.params ?? {}).filter(([k]) => FILTERS.some(([f]) => f === k)).map(([k, v]) => [k, [v]])), matrix: false, attempt: new Map(), tab: 'media', selected: new Set(), saved: [] });
     ui.data = await getJson(`/api/runs/${encodeURIComponent(runId)}`);
     ui.saved = (await getJson(`/api/runs/${encodeURIComponent(runId)}/ai`).catch(() => ({ entries: [] }))).entries ?? [];
     ui.compareWith = null;
     ui.groups = [];
+    ui.anomalies = [];
+    ui.owners = {};
     if (!isExport()) {
       const [metas, errs] = await Promise.all([getJson('/api/runs').catch(() => []), getJson(`/api/errors?runId=${encodeURIComponent(runId)}`).catch(() => ({ groups: [] }))]);
       const i = metas.findIndex((m) => m.runId === runId);
       const base = metas.find((m) => m.baseline && m.runId !== runId);
       ui.compareWith = base ?? (i >= 0 ? metas[i + 1] ?? null : null);
       ui.groups = errs.groups ?? [];
+      const files = [...new Set(flattenResults(ui.data.report).map((r) => r.file).filter(Boolean))].slice(0, 200);
+      const [an, own] = await Promise.all([
+        getJson(`/api/anomalies?runId=${encodeURIComponent(runId)}`).catch(() => ({ anomalies: [] })),
+        getJson(`/api/owners?files=${encodeURIComponent(files.join(','))}`).catch(() => ({ owners: {} })),
+      ]);
+      ui.anomalies = an.anomalies ?? [];
+      ui.owners = own.owners ?? {};
     }
   }
   const { meta, report } = ui.data;
@@ -226,16 +266,18 @@ export async function renderRun(main, route) {
   const rows = applyFilters(all, ui.filters);
   const selected = all.find((r) => r.id === resultId) ?? rows.find((r) => isFailure(r.status)) ?? rows[0];
   if (ui.tab === 'trace' && !meta.traces?.[selected?.id]) ui.tab = 'media';
-  main.innerHTML = `${header(meta, report)}${filterBar(all)}
+  const exploreOnly = report.run.explore && !all.length;
+  main.innerHTML = `${header(meta, report)}${exploreOnly ? '' : `${filterBar(all)}
     <div class="run-body">
       <div class="run-list">${isExport() || ui.matrix ? '' : `<div class="sel-bar"><button type="button" data-select-failed>${icon('x', { size: 14 })}Chọn tất cả fail</button><button type="button" class="primary" data-rerun ${ui.selected.size ? '' : 'disabled'}>${icon('rerun', { size: 14 })}Chạy lại (${ui.selected.size})</button></div>`}${ui.matrix ? matrixTable(rows, runId) : testList(rows, runId, selected?.id)}</div>
       <div class="run-detail panel">${selected ? detail(selected, meta, runId) : '<p class="muted">Không có test.</p>'}</div>
-    </div>`;
+    </div>`}`;
 
   const rerender = () => renderRun(main, route);
   main.querySelectorAll('[data-filter]').forEach((el) =>
     el.addEventListener('change', () => {
       ui.filters[el.dataset.filter] = el.value ? [el.value] : [];
+      replaceParams(Object.fromEntries(Object.entries(ui.filters).map(([k, v]) => [k, v[0]])));
       rerender();
     }));
   main.querySelector('[data-toggle="matrix"]')?.addEventListener('click', () => {
@@ -247,6 +289,7 @@ export async function renderRun(main, route) {
       const flag = el.dataset.flag;
       const meta2 = await postJson(`/api/runs/${encodeURIComponent(runId)}/${flag}`, { value: !(flag === 'pin' ? meta.pinned : meta.baseline) });
       ui.data = { ...ui.data, meta: meta2 };
+      toast(flag === 'pin' ? (meta2.pinned ? 'Đã ghim run (không bị xoá)' : 'Đã bỏ ghim') : meta2.baseline ? 'Đã đặt làm baseline' : 'Đã bỏ baseline');
       rerender();
     }));
   main.querySelectorAll('[data-attempt]').forEach((el) =>
@@ -282,6 +325,7 @@ export async function renderRun(main, route) {
       const row = all.find((r) => r.id === resultId);
       openAiPanel({ action, runId, resultId, saved, title: action === 'analyze-run' ? 'Phân tích run' : `Phân tích lỗi · ${row?.title ?? ''}` });
     }));
+  main.querySelectorAll('[data-bisect]').forEach((el) => el.addEventListener('click', () => openBisectDialog({ runId, resultId: el.dataset.bisect })));
   main.querySelectorAll('[data-linear]').forEach((el) => el.addEventListener('click', () => openLinearDialog({ runId, resultId: el.dataset.linear })));
   main.querySelectorAll('[data-locator]').forEach((el) =>
     el.addEventListener('click', () => {
@@ -289,6 +333,25 @@ export async function renderRun(main, route) {
       openAiPanel({ action: 'suggest-locator', runId, resultId: selected.id, extra: { stepIndex: Number(el.dataset.locator) }, title: `Locator · ${step?.label ?? ''}` });
     }));
   attachVisualCompare(main);
+  main.querySelector('[data-gh-status]')?.addEventListener('click', async () => {
+    try {
+      const r = await postJson('/api/github/status', { runId });
+      toast(`Đã gắn trạng thái ${r.state} lên commit`);
+    } catch (e) {
+      toast(e.message.replace(/^\d+: /, ''), 'bad', 6000);
+    }
+  });
+  main.querySelector('[data-explore-test]')?.addEventListener('click', () => openAiPanel({ action: 'explore-to-test', runId, title: 'Viết test từ explore' }));
+  // j/k: next/previous test in the list; r: rerun it; a: AI analysis; l: Linear
+  const idx = rows.findIndex((r) => r.id === selected?.id);
+  const goTo = (i) => rows[i] && (location.hash = runHref(runId, rows[i].id));
+  setPageKeys(isExport() ? {} : {
+    j: { label: 'Test kế tiếp', run: () => goTo(idx + 1) },
+    k: { label: 'Test trước', run: () => goTo(idx - 1) },
+    r: { label: 'Chạy lại test đang xem', run: () => selected && openRunDialog({ ...selectionToRun(all, new Set([selected.id])), allTargets: facets(all).targets, allAgents: facets(all).agents, rerunOf: runId, title: `Chạy lại ${selected.title}` }) },
+    a: { label: 'Phân tích lỗi bằng AI', run: () => main.querySelector('[data-ai="analyze-failure"]')?.click() },
+    l: { label: 'Gửi Linear', run: () => main.querySelector('[data-linear]')?.click() },
+  });
   main.querySelectorAll('summary[data-offset]').forEach((el) =>
     el.addEventListener('click', () => {
       const v = main.querySelector('#run-video');

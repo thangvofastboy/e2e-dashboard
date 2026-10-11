@@ -4,7 +4,7 @@ import { icon } from './icons.js';
 
 export const fmtPct = (v) => (v == null || Number.isNaN(v) ? '—' : `${Math.round(v * 100)}%`);
 export const fmtPoints = (d) => (d == null ? '—' : `${d > 0 ? '+' : ''}${Math.round(d * 100)} điểm`);
-export const fmtUsd = (v) => (v == null ? '—' : v < 0.01 && v > 0 ? '<$0.01' : `$${v.toFixed(2)}`);
+export const fmtUsd = (v) => (v == null ? '—' : v < 0.0001 && v > 0 ? '<$0.0001' : v < 0.01 && v > 0 ? `$${v.toFixed(4)}` : `$${v.toFixed(2)}`);
 export const fmtSignedMs = (ms, fmt) => (ms == null ? '—' : `${ms > 0 ? '+' : ms < 0 ? '−' : ''}${fmt(Math.abs(ms))}`);
 
 // "last N runs" picker; the page re-renders on change. The choice lives in the hash-free view state.
@@ -50,3 +50,17 @@ export function meter(v, tone = 'info', text = fmtPct(v)) {
 }
 
 export const toneFor = (v, good = 0.95, warn = 0.8) => (v == null ? 'muted' : v >= good ? 'good' : v >= warn ? 'warn' : 'bad');
+
+// A modal dialog with a header and a body to fill; returns both. Closing removes it.
+export function openModal(id, title, ic, html = '<p class="muted">Đang tải…</p>') {
+  document.getElementById(id)?.remove();
+  const dlg = document.createElement('dialog');
+  dlg.id = id;
+  dlg.className = 'modal';
+  dlg.innerHTML = `<div class="run-form"><header><h2>${icon(ic, { size: 16 })}${escapeHtml(title)}</h2><button type="button" class="icon-btn" data-close aria-label="Đóng">${icon('close')}</button></header><div data-body>${html}</div></div>`;
+  document.body.append(dlg);
+  dlg.querySelector('[data-close]').addEventListener('click', () => dlg.close());
+  dlg.addEventListener('close', () => dlg.remove());
+  dlg.showModal();
+  return { dlg, body: dlg.querySelector('[data-body]') };
+}
