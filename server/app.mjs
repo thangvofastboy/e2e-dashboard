@@ -10,6 +10,11 @@ import { issueDraft, claudePrompt, linearConfig, createLinear, readIssueLinks, s
 import { healthScore } from '../ui/health.js';
 import { search, anomalies, lintAgentSteps, LINT_RULES, modelStats, bisectPlan, flakyEvidence, testDetail, appErrors, setupTiming } from './insights.mjs';
 import { changedFiles, impactedTests } from './impact.mjs';
+import { appRoutes, coverageGaps } from './coverage.mjs';
+import { runGate, sloConfig } from './gate.mjs';
+import { environmentBreakdown, sloStatus } from './insights.mjs';
+import { csvRuns, csvTests, csvFlaky } from './csv.mjs';
+import { readChangelog } from './changelog.mjs';
 import { storageUsage, pruneVideos, deleteRun } from './storage.mjs';
 import { webhookConfig, sendWebhooks } from './webhook.mjs';
 import { readCodeowners, ownersOf } from './owners.mjs';
@@ -260,6 +265,21 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       }
       if (p === '/api/storage') return send(res, 200, await storageUsage(projectRoot));
       if (p === '/api/automation') return send(res, 200, { ...(automation?.state() ?? { schedule: null, watch: { enabled: false, supported: false } }), webhooks: (await webhookConfig(env)).map((w) => ({ host: new URL(w.url).host, events: w.events })) });
+      if (p === '/api/coverage') {
+        const cfg = readConfig(projectRoot);
+        const routes = await appRoutes(projectRoot, Array.isArray(cfg.coverage?.routes) ? cfg.coverage.routes : []);
+        return send(res, 200, coverageGaps(routes, routeMap(await loadHistory(projectRoot, runCount(url))), { ignore: Array.isArray(cfg.coverage?.ignore) ? cfg.coverage.ignore : [] }));
+      }
+      if (p === '/api/environment') return send(res, 200, environmentBreakdown(await loadHistory(projectRoot, runCount(url))));
+      if (p === '/api/slo') return send(res, 200, sloStatus((await loadHistory(projectRoot, 200)).filter((h) => h.meta.kind !== 'explore'), sloConfig(readConfig(projectRoot))));
+      if (p === '/api/gate') return send(res, 200, await runGate(projectRoot));
+      if (p === '/api/changelog') return send(res, 200, { version: VERSION, entries: await readChangelog() });
+      const csv = /^\/api\/export\/(runs|tests|flaky)\.csv$/.exec(p);
+      if (csv) {
+        const n = runCount(url, 100);
+        const body = csv[1] === 'runs' ? csvRuns(await listRuns(projectRoot)) : csv[1] === 'tests' ? csvTests(await testHistory(projectRoot, Math.min(n, 30))) : csvFlaky(flakyTests(await loadHistory(projectRoot, n)));
+        return send(res, 200, body, { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="e2e-${csv[1]}.csv"` });
+      }
       if (p === '/api/search') {
         const q = String(url.searchParams.get('q') ?? '').slice(0, 200);
         return send(res, 200, { hits: q.trim() ? search(await loadHistory(projectRoot, 50), q) : [] });
@@ -333,18 +353,23 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return res.end();
       }
       if (p.startsWith('/api/ai/')) {
-        const action = /^\/api\/ai\/(analyze-failure|analyze-run|suggest-locator|why-flaky|explore-to-test|ask|followup)$/.exec(p)?.[1];
+        const action = /^\/api\/ai\/(analyze-failure|analyze-run|suggest-locator|why-flaky|explore-to-test|route-test|ask|followup)$/.exec(p)?.[1];
         if (!action) return send(res, 404, { error: 'unknown action' });
         const body = await readBody(req);
         // a question about the whole suite, or a follow-up in an existing session, needs no run
-        const run = action === 'ask' || action === 'followup' ? { meta: { runId: null }, report: null, dir: projectRoot } : await getRun(projectRoot, body.runId);
+        const run = action === 'ask' || action === 'followup' || action === 'route-test' ? { meta: { runId: null }, report: null, dir: projectRoot } : await getRun(projectRoot, body.runId);
         if (!run) return send(res, 404, { error: 'run not found' });
         const ac = new AbortController();
         res.on('close', () => !res.writableEnded && ac.abort()); // tab closed → never start or keep claude
         let prompt;
         let resume;
         let key = null;
-        if (action === 'ask') {
+        if (action === 'route-test') {
+          if (typeof body.route !== 'string' || !/^\/[\w\-./:]{0,300}$/.test(body.route)) return send(res, 400, { error: 'invalid route' });
+          const routes = await appRoutes(projectRoot);
+          if (!routes.has(body.route)) return send(res, 404, { error: 'route not found' });
+          prompt = buildPrompt('route-test', { route: body.route, source: routes.get(body.route), language: readConfig(projectRoot).ai?.language });
+        } else if (action === 'ask') {
           if (typeof body.question !== 'string' || !body.question.trim() || body.question.length > 4000) return send(res, 400, { error: 'invalid question' });
           prompt = buildPrompt('ask', { context: await askContext(projectRoot), question: body.question, language: readConfig(projectRoot).ai?.language });
         } else if (action === 'followup') {

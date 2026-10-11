@@ -1,5 +1,6 @@
 import { getJson, isExport } from '../api.js';
 import { openImportDialog } from './actions.js';
+import { sloPanel } from './quality.js';
 import { lineChart, stackedBarChart, legend, donutChart, sparkline, heatmap, hbarChart } from '../charts.js';
 import { fmtDuration, fmtTokens, fmtRelative, statusBadge, countChips, escapeHtml, STATUS } from '../format.js';
 import { runHref, compareHref } from '../router.js';
@@ -154,7 +155,11 @@ export async function renderOverview(main) {
   ]);
   // explore runs have no tests: they would read as "0/0 pass" in the KPIs and charts
   const metas = allMetas.filter((m) => m.kind !== 'explore');
-  const anomalies = isExport() ? [] : (await getJson('/api/anomalies').catch(() => ({ anomalies: [] }))).anomalies;
+  const [anomalies, slo, gate] = isExport() ? [[], null, null] : await Promise.all([
+    getJson('/api/anomalies').then((r) => r.anomalies).catch(() => []),
+    getJson('/api/slo').catch(() => null),
+    getJson('/api/gate').catch(() => null),
+  ]);
   if (!metas.length) {
     main.innerHTML = EMPTY_RUNS;
     return;
@@ -170,6 +175,7 @@ export async function renderOverview(main) {
   main.innerHTML = `
     <h1>Overview</h1>
     ${healthPanel(health)}
+    ${sloPanel(slo, gate)}
     ${anomalies.length ? `<section class="panel anomalies"><strong>${icon('zap', { size: 15 })} Run gần nhất có ${anomalies.length} bất thường</strong> <span class="muted small">chậm hoặc tốn hơn hẳn lịch sử của chính test (TB + 2σ)</span><ul>${anomalies.slice(0, 5).map((a) => `<li><a href="${runHref(a.runId, a.resultId)}">${escapeHtml(a.title)}</a>: ${escapeHtml(a.label)} ${escapeHtml(a.metric === 'durationMs' ? fmtDuration(a.value) : a.metric === 'tokens' ? fmtTokens(a.value) : a.value)} <span class="muted">(TB ${escapeHtml(a.metric === 'durationMs' ? fmtDuration(a.mean) : a.metric === 'tokens' ? fmtTokens(a.mean) : a.mean)})</span></li>`).join('')}</ul></section>` : ''}
     <section class="kpis">${cards.map(kpiCard).join('')}</section>
     ${thresholdsPanel(cards, t)}
@@ -202,6 +208,7 @@ export async function renderOverview(main) {
 
 const compareSel = new Set();
 let runSource = '';
+let runLimit = 50;
 
 export async function renderRunsPage(main) {
   const metas = await getJson('/api/runs');
@@ -209,10 +216,15 @@ export async function renderRunsPage(main) {
   const selectable = !isExport() && metas.length > 1;
   const sources = [...new Set(metas.map((m) => m.source).filter(Boolean))].sort();
   const draw = () => {
-    const shown = metas.filter((m) => !runSource || m.source === runSource);
+    const filtered = metas.filter((m) => !runSource || m.source === runSource);
+    const shown = filtered.slice(0, runLimit);
     const srcSel = sources.length > 1 ? `<label>Nguồn <select data-src><option value="">Tất cả</option>${sources.map((x) => `<option ${x === runSource ? 'selected' : ''}>${escapeHtml(x)}</option>`).join('')}</select></label>` : '';
-    const tools = isExport() ? '' : `<div class="filters">${selectable ? `<button type="button" class="primary" data-compare ${compareSel.size === 2 ? '' : 'disabled'}>${icon('columns', { size: 14 })}So sánh 2 run</button><span class="muted small">${compareSel.size === 2 ? 'Run cũ hơn là A.' : 'Chọn đúng 2 run để so sánh.'}</span>` : ''}${srcSel}<button type="button" data-import>${icon('upload', { size: 14 })}Nhập từ GitHub Actions</button></div>`;
-    main.innerHTML = `<h1>Runs</h1><p class="muted">Bảng này cũng là dạng bảng số liệu của các biểu đồ ở Overview.</p>${tools}${runTable(shown, { selectable, selected: compareSel })}`;
+    const tools = isExport() ? '' : `<div class="filters">${selectable ? `<button type="button" class="primary" data-compare ${compareSel.size === 2 ? '' : 'disabled'}>${icon('columns', { size: 14 })}So sánh 2 run</button><span class="muted small">${compareSel.size === 2 ? 'Run cũ hơn là A.' : 'Chọn đúng 2 run để so sánh.'}</span>` : ''}${srcSel}<button type="button" data-import>${icon('upload', { size: 14 })}Nhập từ GitHub Actions</button><a class="button" href="/api/export/runs.csv" download>${icon('download', { size: 14 })}CSV</a></div>`;
+    main.innerHTML = `<h1>Runs</h1><p class="muted">Bảng này cũng là dạng bảng số liệu của các biểu đồ ở Overview.</p>${tools}${runTable(shown, { selectable, selected: compareSel })}${filtered.length > shown.length ? `<p class="load-more"><button type="button" data-more>Xem thêm ${Math.min(50, filtered.length - shown.length)} run (còn ${filtered.length - shown.length})</button></p>` : ''}`;
+    main.querySelector('[data-more]')?.addEventListener('click', () => {
+      runLimit += 50;
+      draw();
+    });
     main.querySelector('[data-src]')?.addEventListener('change', (e) => {
       runSource = e.target.value;
       draw();

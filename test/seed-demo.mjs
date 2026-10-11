@@ -13,6 +13,11 @@ mkdirSync(dir, { recursive: true });
 writeFileSync(join(dir, 'e2e.config.ts'), 'export default {\n  targets: [],\n};\n');
 mkdirSync(join(dir, '.github'), { recursive: true });
 writeFileSync(join(dir, '.github/CODEOWNERS'), '* @team-web\ntests/ @team-qa @ana\n');
+// A few Next.js-style pages so the Coverage page has app routes to compare with the tested ones.
+for (const f of ['app/page.tsx', 'app/cart/page.tsx', 'app/products/[id]/page.tsx', 'app/login/page.tsx', 'app/account/[id]/orders/page.tsx', 'app/settings/page.tsx', 'app/checkout/page.tsx', 'app/layout.tsx']) {
+  mkdirSync(dirname(join(dir, f)), { recursive: true });
+  writeFileSync(join(dir, f), 'export default function Page() { return null; }\n');
+}
 mkdirSync(join(dir, '.e2e-dashboard'), { recursive: true });
 writeFileSync(join(dir, '.e2e-dashboard/config.json'), JSON.stringify({ pricing: { inputPerMTok: 3, outputPerMTok: 15 }, budget: { tokensPerRun: 2000 } }, null, 2));
 const base = JSON.parse(readFileSync(new URL('./fixtures/report-v1.valid.json', import.meta.url), 'utf8'));

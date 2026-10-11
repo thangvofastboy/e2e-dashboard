@@ -11,6 +11,7 @@ import { renderMarkdown } from '../markdown.js';
 import { runHref, compareHref, testHref, replaceParams } from '../router.js';
 import { setPageKeys } from '../shortcuts.js';
 import { toast } from '../toast.js';
+import { copyToClipboard } from '../analysis.js';
 import { icon } from '../icons.js';
 import { donutChart, legend } from '../charts.js';
 import { passRate } from '../health.js';
@@ -229,7 +230,7 @@ function detail(row, meta, runId) {
     ? `<button type="button" class="btn-ai" data-ai="analyze-failure" data-result="${escapeHtml(row.id)}">${icon('sparkles', { size: 14 })}${isExport() ? 'Xem phân tích lỗi' : 'Phân tích lỗi'}</button>`
     : '';
   const linearBtn = isFailure(row.status) && !isExport()
-    ? `<button type="button" data-linear="${escapeHtml(row.id)}">${icon('ticket', { size: 14 })}Gửi Linear</button><button type="button" data-bisect="${escapeHtml(row.id)}">${icon('commit', { size: 14 })}Tìm commit gây lỗi</button>`
+    ? `<button type="button" data-linear="${escapeHtml(row.id)}">${icon('ticket', { size: 14 })}Gửi Linear</button><button type="button" data-bisect="${escapeHtml(row.id)}">${icon('commit', { size: 14 })}Tìm commit gây lỗi</button><button type="button" data-fix="${escapeHtml(row.id)}" title="Copy lệnh để Claude Code đọc lỗi, sửa và chạy lại test">${icon('bolt', { size: 14 })}Sửa bằng Claude Code</button>`
     : '';
   return `${head}${pills}${skip}${errorBox(attempt.error)}${aiBtn}${linearBtn}
     <ol class="timeline">${steps || '<li class="muted">Không có step.</li>'}</ol>
@@ -324,6 +325,12 @@ export async function renderRun(main, route) {
       const saved = ui.saved.find((e) => e.action === action && (action === 'analyze-run' || e.resultId === resultId));
       const row = all.find((r) => r.id === resultId);
       openAiPanel({ action, runId, resultId, saved, title: action === 'analyze-run' ? 'Phân tích run' : `Phân tích lỗi · ${row?.title ?? ''}` });
+    }));
+  main.querySelectorAll('[data-fix]').forEach((el) =>
+    el.addEventListener('click', async () => {
+      const cmd = `/e2e-dashboard:e2e-dashboard fix ${runId} ${el.dataset.fix}`;
+      const ok = await copyToClipboard(cmd);
+      toast(ok ? 'Đã copy lệnh: dán vào Claude Code để Claude sửa và chạy lại test' : cmd, ok ? 'good' : 'info', 6000);
     }));
   main.querySelectorAll('[data-bisect]').forEach((el) => el.addEventListener('click', () => openBisectDialog({ runId, resultId: el.dataset.bisect })));
   main.querySelectorAll('[data-linear]').forEach((el) => el.addEventListener('click', () => openLinearDialog({ runId, resultId: el.dataset.linear })));

@@ -9,7 +9,7 @@
 ![Node](https://img.shields.io/badge/Node-%E2%89%A5%2020-339933?style=for-the-badge&logo=node.js&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-16a34a?style=for-the-badge)
 ![Build](https://img.shields.io/badge/build-kh%C3%B4ng%20c%E1%BA%A7n-2563eb?style=for-the-badge)
-![Tests](https://img.shields.io/badge/tests-249%20passing-16a34a?style=for-the-badge&logo=checkmarx&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-261%20passing-16a34a?style=for-the-badge&logo=checkmarx&logoColor=white)
 ![AI](https://img.shields.io/badge/AI-claude%20--p-a855f7?style=for-the-badge&logo=anthropic&logoColor=white)
 ![Database](https://img.shields.io/badge/database-kh%C3%B4ng%20c%E1%BA%A7n-8b5cf6?style=for-the-badge)
 
@@ -72,6 +72,17 @@
 | 💾 | **Dung lượng** | Xem dung lượng theo loại, xoá video cũ, xoá run, giữ run fail lâu hơn |
 | ⌨️ | **Phím tắt & bộ lọc trên URL** | `?`, `g`+phím, `/`, `j`/`k`/`r`/`a`/`l` ở trang run; link chia sẻ mở đúng bộ lọc |
 | 🎯 | **Agent step → locator** | Step `agent.act` replay ổn định được dựng thành code `screen.getByRole(...)` từ cache của e2e |
+| 🔌 | **MCP server** | Claude Code hỏi thẳng lịch sử test: `e2e_runs`, `e2e_run`, `e2e_test`, `e2e_flaky`, `e2e_errors`, `e2e_search`, `e2e_health`, `e2e_gate`, `e2e_coverage`, `e2e_digest` |
+| 🛠️ | **Sửa bằng Claude Code** | Nút ở test fail copy lệnh `/e2e-dashboard:e2e-dashboard fix <run> <test>`: Claude đọc lỗi, sửa app hoặc test, chạy lại đúng test đó |
+| 🕳️ | **Khoảng trống coverage** | Trang của app (`app/`, `pages/`, `src/routes`, `sitemap.xml`, router) chưa test nào đi qua, nút nhờ AI viết test |
+| 🚧 | **Cổng chất lượng** | `/e2e-dashboard gate`: trả mã lỗi khi có test mới fail, health/SLO dưới ngưỡng, vượt token |
+| 🌐 | **Lỗi theo môi trường** | Tỉ lệ fail theo target, OS, trình duyệt, phiên bản e2e, giờ chạy, branch; chỉ ra nơi fail tập trung |
+| 🎯 | **SLO** | Pass rate mục tiêu trong N ngày, budget lỗi còn lại, tốc độ đốt |
+| 📣 | **Mention owner** | Webhook run fail tag owner (theo CODEOWNERS) của test fail |
+| 🇬🇧 | **Giao diện tiếng Anh (beta)** | Nút VI/EN ở cuối sidebar |
+| 🎞️ | **Video cạnh nhau** | Video của 2 run phát đồng bộ ở trang So sánh |
+| 🖨️ | **Báo cáo & CSV** | Trang in / lưu PDF, xuất CSV run, test, flaky |
+| 🆕 | **Có gì mới** | Hiện thay đổi sau mỗi lần cập nhật |
 
 > [!TIP]
 > **Không cài thêm gì.** Plugin chỉ cần Node (e2e vốn đã cần), không có dependency npm, không bước build, không tải CDN, nên chạy được cả khi không có mạng.
@@ -151,6 +162,8 @@ Lệnh này copy `e2e-dashboard.reporter.mjs` (kèm `.d.mts`) vào project và t
 | `/e2e-dashboard quarantine` | 🔒 | Test đang cách ly và lệnh `npx e2e run --grep-invert …` cho CI |
 | `/e2e-dashboard import <report.json\|thư mục>` | ☁️ | Nhập report (vd. tải từ CI) vào lịch sử; `import --gh <run id> [--name <artifact>]` tải qua `gh` |
 | `/e2e-dashboard share push\|pull [dir]` | 🤝 | Đẩy run của bạn / kéo run của team qua thư mục chung |
+| `/e2e-dashboard gate [--max-new-failures N] [--min-health N] [--max-tokens N] [--slo 0.95]` | 🚧 | Cổng chất lượng cho CI / trước khi push; mã thoát 1 khi FAIL |
+| `/e2e-dashboard fix [runId] [resultId]` | 🛠️ | In ngữ cảnh test fail; dùng `/e2e-dashboard:e2e-dashboard fix …` để Claude sửa và chạy lại |
 | `/e2e-dashboard version` | 🏷️ | Version đang cài và có bản mới không (chạy local, không tốn token) |
 | `/e2e-dashboard update` | 🔄 | Cập nhật lên tag mới nhất rồi tự `/reload-plugins` |
 | `/e2e-dashboard stop` | ⏹️ | Tắt server |
@@ -242,6 +255,22 @@ Mỗi thẻ KPI tự đổi màu theo ngưỡng. Bấm vào chip trạng thái �
 | ♻️ Replay cache | ≥ 80% | 50–80% | < 50% |
 
 Màu không bao giờ đứng một mình: mọi trạng thái đều có icon kèm chữ, để người mù màu và bản in vẫn đọc được.
+
+---
+
+## 🧰 M6
+
+**🔌 MCP server.** Plugin tự khai báo server MCP `e2e-dashboard` (`.mcp.json`), nên trong Claude Code có thể hỏi *"test nào flaky tuần này?"*, *"vì sao run vừa rồi fail?"* mà không cần mở dashboard. Server chỉ đọc lịch sử trong `.e2e-dashboard/`, không chạy test.
+
+**🛠️ Sửa bằng Claude Code.** Ở test fail bấm *Sửa bằng Claude Code* → lệnh được copy; dán vào Claude Code. Claude nhận lỗi, step fail, trace, phân tích AI đã lưu, commit kể từ lần pass, quyết định lỗi ở app hay ở test, sửa tối thiểu (không bao giờ xoá hay skip test) rồi chạy lại `npx e2e run <spec> --retries 0`.
+
+**🕳️ Coverage.** Dashboard đọc route của app rồi so với các trang test đã đi qua. Thêm/bỏ route bằng `"coverage": { "routes": ["/help"], "ignore": ["/admin/*"] }`.
+
+**🚧 Cổng chất lượng & 🎯 SLO.** Panel ở Overview và lệnh `gate`. Ngưỡng mặc định: 0 test mới fail; đổi bằng `"gate": { "maxNewFailures": 0, "minHealth": 70, "maxTokens": 200000, "requireSlo": true }` và `"slo": { "passRate": 0.95, "days": 7 }`. So với baseline nếu đã đặt, không thì với run trước.
+
+**📣 Mention owner.** Trong `~/.e2e-dashboard/config.json` (không phải repo): `"mentions": { "@team-web": "<!subteam^S123>", "@ana": "<@U456>" }`. Webhook run fail sẽ tag owner của test fail.
+
+**🎞️ Video.** Để có video của cả test pass (so sánh cạnh nhau), đặt `"videos": "all"`.
 
 ---
 
@@ -383,6 +412,7 @@ node test/seed-demo.mjs    # project demo 12 run: flaky, 2 branch, route, cache,
 - [x] **M2 — Phân tích:** flaky, so sánh 2 run, nhóm lỗi, chi phí & cache, visual diff, bản đồ route, so sánh branch, nhiều project, health score
 - [x] **M3 — Tích hợp:** gửi issue Linear (chống trùng), digest tuần, status line, thông báo desktop, đề xuất chuyển agent step thành locator
 - [x] **M5 — Trải nghiệm:** trang test, lỗi app, test bị ảnh hưởng, hỏi AI tự do, setup timing, watch, lịch chạy, webhook, trạng thái GitHub, explore → test, dung lượng; menu thu gọn, mobile, phím tắt, toast, bộ lọc trên URL
+- [x] **M6 — Mở rộng:** MCP server, sửa bằng Claude Code, coverage, cổng chất lượng, SLO, lỗi theo môi trường, mention owner, tiếng Anh, video đồng bộ, lịch sử lớn, báo cáo/CSV, có gì mới
 - [x] **M4 — Vận hành:** tìm kiếm Ctrl K, cách ly flaky, AI vì sao flaky, bisect, so sánh model + ngân sách, bất thường, CODEOWNERS, lint agent, nhập CI, thư mục team, comment PR
 
 <div align="center">

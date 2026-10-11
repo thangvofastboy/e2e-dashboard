@@ -7,12 +7,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DATA_DIR, VERSION, RUN_ID, readConfig, archive, isLink } from '../reporter/e2e-dashboard.reporter.mjs';
 import { createNotifier, notifyMode, runMessage } from './notify.mjs';
 import { createScheduler, scheduleTimes, createTestWatcher } from './automation.mjs';
-import { webhookConfig, sendWebhooks } from './webhook.mjs';
+import { webhookConfig, sendWebhooks, mentionMap, mentionsFor } from './webhook.mjs';
+import { readCodeowners, ownersOf } from './owners.mjs';
 import { readQuarantine, quarantineFlags } from './quarantine.mjs';
 import { registerProject } from './projects.mjs';
 import { createRunner } from './runner.mjs';
 import { createAi } from './ai.mjs';
-import { annotateRun, loadHistory } from './store.mjs';
+import { annotateRun, loadHistory, getRun } from './store.mjs';
 import { anomalies } from './insights.mjs';
 import { createApp } from './app.mjs';
 import { createLive } from './live.mjs';
@@ -111,7 +112,14 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
         if (meta.status !== 'passed' || meta.summary?.flaky || found.length) {
           const m = runMessage(meta, basename(projectRoot));
           const hooks = await webhookConfig().catch(() => []);
-          if (hooks.length) sendWebhooks(hooks, 'run-failed', `${m.title} · ${m.body}${found.length ? ` · ${found.length} bất thường` : ''}`).catch(() => {});
+          if (hooks.length) {
+            // mention the owners (CODEOWNERS) of the failing tests, when mapped to chat handles
+            const run = await getRun(projectRoot, meta.runId).catch(() => null);
+            const { rules } = readCodeowners(projectRoot);
+            const owners = (run?.report.run.results ?? []).filter((r) => ['failed', 'timed-out', 'interrupted'].includes(r.status)).flatMap((r) => ownersOf(rules, r.source?.file ?? r.file));
+            const who = mentionsFor(owners, await mentionMap().catch(() => ({})));
+            sendWebhooks(hooks, 'run-failed', `${m.title} · ${m.body}${found.length ? ` · ${found.length} bất thường` : ''}${who ? `\n${who}` : ''}`).catch(() => {});
+          }
         }
       }
     }

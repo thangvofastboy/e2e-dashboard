@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "e2e-dashboard": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/bin/mcp.mjs"]
+    }
+  }
+}

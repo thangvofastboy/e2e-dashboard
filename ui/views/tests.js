@@ -56,7 +56,7 @@ export async function renderTests(main, route = {}) {
       .join('');
     main.innerHTML = `<h1>Tests</h1>${impactPanel()}
       <div class="filters">${isExport() ? '' : `<button type="button" class="primary" data-run-picked ${picked.size ? '' : 'disabled'}>${icon('play', { size: 14 })}Chạy ${picked.size} test</button>
-        <span class="impact-form"><label>Test bị ảnh hưởng so với <input type="text" data-base value="${escapeHtml(impact?.base ?? 'main')}" size="10" aria-label="Nhánh gốc"></label><button type="button" data-impact>${icon('crosshair', { size: 14 })}Tìm</button></span>`}${sel('file', distinct(all.map((r) => r.file)), 'File')}${sel('tag', distinct(all.flatMap((r) => r.tags)), 'Tag')}${sel('target', distinct(all.map((r) => r.target)), 'Target')}</div>
+        <a class="button" href="/api/export/tests.csv" download>${icon('download', { size: 14 })}CSV</a><span class="impact-form"><label>Test bị ảnh hưởng so với <input type="text" data-base value="${escapeHtml(impact?.base ?? 'main')}" size="10" aria-label="Nhánh gốc"></label><button type="button" data-impact>${icon('crosshair', { size: 14 })}Tìm</button></span>`}${sel('file', distinct(all.map((r) => r.file)), 'File')}${sel('tag', distinct(all.flatMap((r) => r.tags)), 'Tag')}${sel('target', distinct(all.map((r) => r.target)), 'Target')}</div>
       ${rows.length
         ? `<table class="table"><thead><tr><th>Test</th><th>Target</th><th>10 run gần nhất (cũ → mới)</th><th class="num">TB</th></tr></thead><tbody>${body}</tbody></table>`
         : '<div class="empty-state"><p>Chưa có test nào trong lịch sử.</p></div>'}`;

@@ -1,10 +1,14 @@
-import { readdir, readFile, writeFile, mkdir, rename, rm, lstat } from 'node:fs/promises';
+import { readdir, readFile, writeFile, mkdir, rename, rm, lstat, stat } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { DATA_DIR, RUN_ID, RESULT_ID, resultAttempts, realInside, isLink } from '../reporter/e2e-dashboard.reporter.mjs';
 
 const runsDir = (root) => join(root, DATA_DIR, 'runs');
 const readJson = async (p) => JSON.parse(await readFile(p, 'utf8'));
+
+// Parsed meta.json by path, reused while the file's mtime and size are unchanged: with thousands of
+// runs a stat is far cheaper than reading and parsing every file on each request.
+const metaCache = new Map();
 
 export async function listRuns(root) {
   let names;
@@ -14,13 +18,25 @@ export async function listRuns(root) {
     return [];
   }
   const metas = [];
+  const live = new Set();
   for (const dir of names.filter((n) => !n.startsWith('.')).sort().reverse()) {
+    const p = join(runsDir(root), dir, 'meta.json');
+    live.add(p);
     try {
-      metas.push({ ...(await readJson(join(runsDir(root), dir, 'meta.json'))), dir });
+      const st = await stat(p);
+      const hit = metaCache.get(p);
+      if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) {
+        metas.push({ ...hit.meta, dir });
+        continue;
+      }
+      const meta = await readJson(p);
+      metaCache.set(p, { mtimeMs: st.mtimeMs, size: st.size, meta });
+      metas.push({ ...meta, dir });
     } catch {
       // half-written or removed concurrently
     }
   }
+  for (const k of metaCache.keys()) if (k.startsWith(runsDir(root)) && !live.has(k)) metaCache.delete(k); // removed by retention
   return metas;
 }
 

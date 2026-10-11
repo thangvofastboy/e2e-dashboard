@@ -1,4 +1,4 @@
-const PAGES = ['runs', 'live', 'tests', 'flaky', 'errors', 'cost', 'routes', 'projects', 'digest', 'locators', 'models', 'lint', 'app-errors', 'settings'];
+const PAGES = ['runs', 'live', 'tests', 'flaky', 'errors', 'cost', 'routes', 'projects', 'digest', 'locators', 'models', 'lint', 'app-errors', 'settings', 'coverage', 'environment', 'report'];
 
 // "#/run/<id>?status=failed" → view + params; params (filters) only appear when the hash has them.
 export function parseRoute(hash) {

@@ -128,16 +128,19 @@ function gitInfo(cwd) {
 // Attempts (normal + serial group) whose result did not pass, with their attempt- and step-level artifacts.
 // With `screenshots: "all"` in the config, screenshots of passed results are kept too (a baseline for
 // the visual diff); videos and other files of passed results never are.
-function keptArtifacts(report, { allScreenshots = false } = {}) {
+// With `videos: "all"`, videos of passed results are kept too (side-by-side pass/fail playback).
+function keptArtifacts(report, { allScreenshots = false, allVideos = false } = {}) {
   const out = [];
+  const keepPassed = (x) => (allScreenshots && x?.kind === 'screenshot') || (allVideos && x?.kind === 'video');
   const take = (passed) => (a) => {
-    const add = (list) => out.push(...(list ?? []).filter((x) => !passed || x?.kind === 'screenshot'));
+    const add = (list) => out.push(...(list ?? []).filter((x) => !passed || keepPassed(x)));
     add(a.artifacts);
     for (const s of a.steps ?? []) add(s.artifacts);
     for (const m of a.members ?? []) for (const s of m.steps ?? []) add(s.artifacts);
   };
-  for (const r of report.run.results ?? []) if (r.status !== 'passed' || allScreenshots) (r.attempts ?? []).forEach(take(r.status === 'passed'));
-  for (const g of report.run.serialGroups ?? []) if (g.status !== 'passed' || allScreenshots) (g.attempts ?? []).forEach(take(g.status === 'passed'));
+  const any = allScreenshots || allVideos;
+  for (const r of report.run.results ?? []) if (r.status !== 'passed' || any) (r.attempts ?? []).forEach(take(r.status === 'passed'));
+  for (const g of report.run.serialGroups ?? []) if (g.status !== 'passed' || any) (g.attempts ?? []).forEach(take(g.status === 'passed'));
   return out;
 }
 
@@ -234,7 +237,7 @@ export async function archive(projectRoot, { source, rerunOf = null, report, rep
       await copyFile(abs, join(tmp, 'traces', `${id}.md`));
       traceMeta[id] = `traces/${id}.md`;
     }
-    for (const a of keptArtifacts(report, { allScreenshots: cfg.screenshots === 'all' })) {
+    for (const a of keptArtifacts(report, { allScreenshots: cfg.screenshots === 'all', allVideos: cfg.videos === 'all' })) {
       aborted();
       if (a.path) await copyInto(artRoot, join(tmp, 'artifacts'), a.path);
     }
