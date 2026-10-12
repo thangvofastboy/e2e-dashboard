@@ -91,3 +91,23 @@ test('settings: default workers is saved, validated and applied to dashboard run
     server.close();
   }
 });
+
+test('POST /api/run/stop: own run, terminal run (external) and nothing running', async () => {
+  let child = false;
+  let liveRunning = false;
+  const runner = {
+    start() { child = true; liveRunning = true; return { ok: true, pid: 1 }; },
+    stop() { if (child) { child = false; return true; } if (liveRunning) { liveRunning = false; return true; } return false; },
+    state: () => ({ running: child, pid: child ? 1 : null }),
+  };
+  const { server, post } = await serve(runner);
+  try {
+    await post('/api/run', {});
+    assert.deepEqual(await (await post('/api/run/stop', {})).json(), { stopped: true });
+    liveRunning = true; // a run started with `npx e2e run` in a terminal
+    assert.deepEqual(await (await post('/api/run/stop', {})).json(), { stopped: true, external: true });
+    assert.deepEqual(await (await post('/api/run/stop', {})).json(), { stopped: false });
+  } finally {
+    server.close();
+  }
+});

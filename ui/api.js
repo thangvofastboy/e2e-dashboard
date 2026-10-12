@@ -94,6 +94,13 @@ export function liveStream(onSnapshot) {
       liveLast = JSON.parse(e.data);
       for (const fn of liveSubs) fn(liveLast);
     };
+    // CLOSED = trình duyệt bỏ kết nối hẳn (vd. dashboard khởi động lại với token mới → 401): báo cho trang
+    // thay vì giữ nguyên snapshot cũ (nút Dừng của một run không còn tồn tại)
+    liveSource.onerror = () => {
+      if (liveSource?.readyState !== EventSource.CLOSED) return; // đang tự kết nối lại
+      const snap = { ...(liveLast ?? { status: 'idle', tests: [], output: [] }), disconnected: true };
+      for (const fn of liveSubs) fn(snap);
+    };
   } else if (liveLast) {
     onSnapshot(liveLast);
   }

@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.8.5 — 2026-10-12
+
+- **Nút Dừng run**: bấm Dừng khi dashboard đã khởi động lại (token đổi) không còn báo sai "run không do dashboard khởi động". Trang Live hiện banner *mất kết nối* và ẩn nút Dừng; mở lại link từ `/e2e-dashboard`.
+- **Run từ terminal**: Dừng chỉ đánh dấu được, process vẫn chạy — thông báo nhắc nhấn Ctrl-C ở terminal đó. Run đã kết thúc thì báo rõ là không còn run.
+
 ## v0.8.4 — 2026-10-12
 
 - **Trang Live, số worker**: dòng tiến độ hiện `N worker đang chạy (tối đa M)` — M là số làn đã dùng cao nhất trong run.

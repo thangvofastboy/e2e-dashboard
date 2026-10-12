@@ -706,7 +706,11 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         if (out.error === 'busy') return send(res, 409, { error: 'busy' });
         return send(res, 503, { error: out.error === 'e2e-missing' ? 'Project chưa cài e2e (node_modules/e2e) — chạy npm install rồi thử lại.' : out.error });
       }
-      if (p === '/api/run/stop') return send(res, 200, { stopped: runner.stop() });
+      if (p === '/api/run/stop') {
+        const external = !runner.state().running; // run từ terminal: chỉ đánh dấu interrupted, không giết được process
+        const stopped = runner.stop();
+        return send(res, 200, { stopped, ...(stopped && external ? { external: true } : {}) });
+      }
       const m = /^\/api\/runs\/([^/]+)\/(pin|baseline)$/.exec(p);
       if (m) {
         const { value } = await readBody(req);
