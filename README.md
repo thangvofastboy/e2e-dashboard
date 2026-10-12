@@ -6,10 +6,10 @@
 **Chạy ngay trong Claude Code bằng một lệnh `/e2e-dashboard`.**
 
 ![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge&logo=anthropic&logoColor=white)
-![Node](https://img.shields.io/badge/Node-%E2%89%A5%2020-339933?style=for-the-badge&logo=node.js&logoColor=white)
+![Node](https://img.shields.io/badge/Node-%E2%89%A5%2022-339933?style=for-the-badge&logo=node.js&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-16a34a?style=for-the-badge)
 ![Build](https://img.shields.io/badge/build-kh%C3%B4ng%20c%E1%BA%A7n-2563eb?style=for-the-badge)
-![Tests](https://img.shields.io/badge/tests-295%20passing-16a34a?style=for-the-badge&logo=checkmarx&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-359%20passing-16a34a?style=for-the-badge&logo=checkmarx&logoColor=white)
 ![AI](https://img.shields.io/badge/AI-claude%20--p-a855f7?style=for-the-badge&logo=anthropic&logoColor=white)
 ![Database](https://img.shields.io/badge/database-kh%C3%B4ng%20c%E1%BA%A7n-8b5cf6?style=for-the-badge)
 
@@ -98,6 +98,14 @@
 | 📍 | **Sự kiện trên biểu đồ** | Deploy, release, sự cố đánh dấu trên biểu đồ xu hướng |
 | 🌱 | **Vòng đời test** | Test mới, bị bỏ, đổi tên, luôn fail, commit sửa gần nhất |
 | 🌐 | **Trang báo cáo tĩnh** | Xuất cả lịch sử thành thư mục HTML cho GitHub Pages / thư mục chung |
+| ⚙️ | **Cài đặt hệ thống** | Theme, cỡ chữ, ngôn ngữ; xem và sửa trực tiếp `.env` / `.env.local` (lưu thẳng vào file, file có secret tự vào `.gitignore`); Linear key, webhook, setup và doctor |
+| 🌐 | **Chọn trình duyệt** | Chromium mặc định, đổi trong Cài đặt: chạy test bằng Firefox hoặc WebKit, kể cả lịch chạy |
+| 🛠️ | **Tự sửa lỗi dashboard (có duyệt)** | Lỗi của chính dashboard được AI phân tích và sửa trên branch riêng. **Dừng chờ bạn duyệt diff**; chỉ khi bấm *Chạy test & tạo PR* mới chạy `npm test`, push và mở PR draft |
+| ✨ | **AI mở rộng** | Tóm tắt run, giải thích nhóm lỗi, triage, vì sao chậm, viết test từ ticket, chọn test bị ảnh hưởng, gom locator, tìm test trùng, nháp release notes, giải thích visual diff |
+| 📦 | **Dữ liệu theo ngày + SQLite tuỳ chọn** | Run lưu theo `runs/YYYY/MM/DD/`, trạng thái ở `state/`, file tạm ở `runtime/`. Chỉ mục SQLite (tắt mặc định) cho lịch sử lớn |
+| 🧹 | **Dọn run theo khoảng ngày** | Lọc theo trạng thái và khoảng thời gian rồi xoá run cũ trong một lần |
+| 🗂️ | **Thu gọn menu & phóng to** | Menu trái gập thành thanh icon; mỗi chart, bảng, danh sách phóng to toàn màn hình (Esc để thoát) |
+| 🧾 | **Linear có xem trước** | Sửa tiêu đề và nội dung, xem trước, nhờ AI viết lại theo giọng tự nhiên, đính kèm ảnh minh hoạ trước khi gửi |
 
 > [!TIP]
 > **Không cài thêm gì.** Plugin chỉ cần Node (e2e vốn đã cần), không có dependency npm, không bước build, không tải CDN, nên chạy được cả khi không có mạng.
@@ -125,7 +133,7 @@
   </tr>
   <tr>
     <td width="50%"><b>📄 Trang riêng từng test</b><br><img src="docs/images/test-page.jpeg" alt="Lịch sử một test: pass rate, biểu đồ thời gian và token, các lần fail, ảnh fail"></td>
-    <td width="50%"></td>
+    <td width="50%"><b>⚙️ Cài đặt hệ thống</b><br><img src="docs/images/system.jpeg" alt="Trang Cài đặt hệ thống: giao diện, tình trạng setup và các mục hệ thống"></td>
   </tr>
 </table>
 
@@ -134,7 +142,7 @@
 ## 🚀 Cài đặt
 
 > [!IMPORTANT]
-> Cần một project đã dùng **e2e** (có `e2e.config.ts`). e2e bản mới yêu cầu **Node ≥ 22.22.3** (hoặc ≥ 24.8).
+> Cần một project đã dùng **e2e** (có `e2e.config.ts`). e2e bản mới yêu cầu **Node ≥ 22.22.3** (hoặc ≥ 24.8). Dashboard cần **Node ≥ 22**; chỉ mục SQLite tuỳ chọn cần Node ≥ 22.13.
 
 **1️⃣ Thêm marketplace và cài plugin** (trong Claude Code):
 
@@ -250,7 +258,8 @@ Lệnh này copy `e2e-dashboard.reporter.mjs` (kèm `.d.mts`) vào project và t
 | Lệnh | | Việc |
 |---|:-:|---|
 | `/e2e-dashboard` | 🖥️ | Bật server nền nếu chưa chạy, mở trình duyệt, in URL |
-| `/e2e-dashboard setup` | 🔌 | Gắn reporter vào `e2e.config.ts` để xem live |
+| `/e2e-dashboard setup` | 🔌 | Gắn reporter vào `e2e.config.ts` để xem live; chọn trình duyệt mặc định (`E2E_BROWSER`) |
+| `/e2e-dashboard doctor [--dry-run]` | 🩺 | Chuyển dữ liệu theo bố cục cũ sang bố cục mới (runs theo ngày, `state/`, `runtime/`), dựng lại chỉ mục SQLite nếu đã bật. `--dry-run` chỉ liệt kê, không ghi |
 | `/e2e-dashboard export [runId]` | 📤 | Xuất một run (mặc định là run mới nhất) thành HTML tự chứa |
 | `/e2e-dashboard status` | ℹ️ | Xem server có đang chạy không |
 | `/e2e-dashboard digest [ngày]` | 📰 | In digest Markdown (mặc định 7 ngày), lưu vào `.e2e-dashboard/digests/` |
@@ -434,20 +443,17 @@ Mọi thứ đều tuỳ chọn. Tạo `.e2e-dashboard/config.json` trong projec
 <project>/.e2e-dashboard/
 ├── .gitignore              ← "*": cả thư mục tự bị git bỏ qua
 ├── config.json             ← (tuỳ chọn) cấu hình ở trên
+├── config.json             ← (tuỳ chọn) cấu hình ở trên
 ├── server.json             ← port + token khi server đang chạy (quyền 0600)
-├── server.log
-├── live.json               ← tiến độ run hiện tại (cho status line)
-├── issues.json             ← fingerprint → issue Linear đã gửi
-├── quarantine.json         ← test đang cách ly
-├── triage.json             ← trạng thái, người phụ trách, ghi chú của từng lỗi
-├── events.json             ← deploy / release / sự cố đánh dấu trên biểu đồ
-├── alerts.json, ci-sync.json ← trạng thái cảnh báo và đồng bộ CI
+├── state/                  ← cài đặt, triage, cách ly, Linear đã gửi, sự kiện, cảnh báo, CI sync…
+├── runtime/                ← server.log, live.json (tiến độ run hiện tại, cho status line)
+├── cache/index.sqlite      ← chỉ mục SQLite (chỉ khi bật trong Cài đặt; xoá đi là dựng lại)
 ├── longterm/               ← số liệu gom theo ngày, giữ mãi (trang Xu hướng)
 ├── reports/                ← báo cáo tuần / tháng (.html + .md)
 ├── digests/<ngày>.md       ← digest đã in
 ├── exports/run-<id>.html   ← file export
 ├── site/                   ← trang tĩnh (`publish`)
-└── runs/<thời-điểm>_<runId>/
+└── runs/YYYY/MM/DD/<giờ>_<runId>/
     ├── report.json         ← bản copy nguyên văn report của e2e
     ├── meta.json           ← tóm tắt: status, số test, token, git, ghim/baseline
     ├── traces/<resultId>.md
@@ -510,6 +516,7 @@ Script kiểm tra (`npm test`, `claude plugin validate`, `claude plugin test`), 
 | 📣 | URL webhook chỉ lấy từ `~/.e2e-dashboard/config.json` hoặc biến môi trường, chỉ `https`: repo clone về không thể gửi dữ liệu test tới địa chỉ nó chọn |
 | 🎯 | `git diff` chỉ nhận tên nhánh hợp lệ (không bắt đầu bằng `-`); lịch chạy/watch dùng chung runner đã kiểm tra tham số |
 | 🤝 | Run kéo từ thư mục team chỉ là dữ liệu: kiểm tra id khớp tên thư mục, schema `report-1`, bỏ symlink, bỏ kết quả AI của người khác |
+| 🛠️ | Tự sửa lỗi: AI chỉ sửa trong worktree tạm từ `origin/main`, chỉ đổi file trong `server/ ui/ reporter/ bin/ test/ support/`, không có shell. Commit và push chạy không hook. Trạng thái nằm ngoài repo (`~/.e2e-dashboard/selfheal/`). Người duyệt xem đủ diff văn bản trước khi `npm test` và push; diff quá 12 KB thì bỏ |
 | 🔔 | Thông báo desktop truyền tiêu đề/nội dung qua argv hoặc biến môi trường, không qua shell |
 | 🎯 | Bản ghi replay cache chỉ đọc khi tên là hash 64 hex, nằm trong project, không qua symlink, ≤ 1 MiB |
 
@@ -518,7 +525,7 @@ Script kiểm tra (`npm test`, `claude plugin validate`, `claude plugin test`), 
 ## 🛠️ Phát triển
 
 ```bash
-npm test                   # node --test — 295 test, không dependency
+npm test                   # node --test — 359 test, không dependency
 claude plugin test .       # test của mod (update / version)
 node test/seed-demo.mjs    # project demo 12 run: flaky, 2 branch, route, cache, ảnh visual diff
 ```
