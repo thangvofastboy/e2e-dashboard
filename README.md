@@ -598,21 +598,7 @@ node test/seed-demo.mjs    # project demo 12 run: flaky, 2 branch, route, cache,
 
 ---
 
-## 🗺️ Roadmap
-
-- [x] **M1a — Thu thập & xem:** lịch sử, live, Overview / Runs / Run detail / Live / Tests, export HTML, giao diện mới
-- [x] **M1b — Điều khiển & AI:** chạy và rerun test (chọn test fail) từ dashboard, nút ✨ *Phân tích lỗi* / *Phân tích run* qua `claude -p`, tự cập nhật theo tag
-- [x] **M2 — Phân tích:** flaky, so sánh 2 run, nhóm lỗi, chi phí & cache, visual diff, bản đồ route, so sánh branch, nhiều project, health score
-- [x] **M3 — Tích hợp:** gửi issue Linear (chống trùng), digest tuần, status line, thông báo desktop, đề xuất chuyển agent step thành locator
-- [x] **M4 — Vận hành:** tìm kiếm Ctrl K, cách ly flaky, AI vì sao flaky, bisect, so sánh model + ngân sách, bất thường, CODEOWNERS, lint agent, nhập CI, thư mục team, comment PR
-- [x] **M5 — Trải nghiệm:** trang test, lỗi app, test bị ảnh hưởng, hỏi AI tự do, setup timing, watch, lịch chạy, webhook, trạng thái GitHub, explore → test, dung lượng; menu thu gọn, mobile, phím tắt, toast, bộ lọc trên URL
-- [x] **M6 — Mở rộng:** MCP server, sửa bằng Claude Code, coverage, cổng chất lượng, SLO, lỗi theo môi trường, mention owner, tiếng Anh, video đồng bộ, lịch sử lớn, báo cáo/CSV, có gì mới
-- [x] **M7 — Theo dõi & báo cáo:** số liệu dài hạn, triage, MTTR, báo cáo tự gửi, module/team, phát hành, truy vết, lịch nhiệt, đồng bộ CI, cảnh báo, sự kiện, vòng đời test, trang tĩnh
-- [x] **v0.8 — Chất lượng & giao diện:** rà soát bảo mật / lỗi / hiệu năng, giao diện kiểu báo cáo, tô màu code và dữ liệu, hoạt cảnh trạng thái, sửa mobile
-
 <div align="center">
-
----
 
 Làm cho [e2e](https://github.com/tester-army/e2e) bởi **thangvofastboy** · Xây dựng cùng [Claude Code](https://claude.com/claude-code) 🤖
 
