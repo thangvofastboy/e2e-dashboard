@@ -15,7 +15,7 @@
 
 [✨ Tính năng](#-tính-năng) · [📸 Ảnh chụp](#-ảnh-chụp) · [🚀 Cài đặt](#-cài-đặt) · [📖 Hướng dẫn](#-hướng-dẫn-sử-dụng) · [⌨️ Lệnh](#️-lệnh) · [✨ AI](#-phân-tích-bằng-ai) · [📊 Phân tích](#-phân-tích-m2) · [🔗 Tích hợp](#-tích-hợp-m3) · [🧰 Mở rộng](#-mở-rộng-m6) · [📈 Theo dõi](#-theo-dõi--báo-cáo-m7) · [🚦 Trạng thái](#-trạng-thái--ngưỡng) · [⚙️ Cấu hình](#️-cấu-hình) · [🔄 Cập nhật](#-cập-nhật--phát-hành) · [🔒 Bảo mật](#-bảo-mật) · [🛠️ Phát triển](#️-phát-triển) · [🗺️ Roadmap](#️-roadmap)
 
-<img src="docs/images/overview-light.jpeg" alt="Trang Overview ở chế độ sáng: 5 thẻ KPI có màu trạng thái, biểu đồ pass rate, donut, kết quả theo run, heatmap test × run" width="100%">
+<img src="docs/images/dark-overview.jpeg" alt="Trang Overview ở chế độ tối: 5 thẻ KPI có màu trạng thái, biểu đồ pass rate, thanh tỉ lệ, kết quả theo run" width="100%">
 
 </div>
 
@@ -114,26 +114,76 @@
 
 ## 📸 Ảnh chụp
 
+Tất cả ảnh chụp ở giao diện tối (đổi sáng / tối ở Cài đặt hệ thống).
+
 <table>
   <tr>
-    <td width="50%"><b>🌙 Overview — chế độ tối + panel "Cách tính trạng thái"</b><br><img src="docs/images/overview-dark.jpeg" alt="Overview chế độ tối với panel ngưỡng trạng thái"></td>
-    <td width="50%"><b>🔍 Run detail — timeline agent, lỗi, log</b><br><img src="docs/images/run-detail.jpeg" alt="Trang chi tiết run với donut tóm tắt, danh sách test và timeline"></td>
+    <td width="50%"><b>📊 Overview — health score, KPI, pass rate theo run</b><br><img src="docs/images/dark-overview.jpeg" alt="Trang Overview chế độ tối: health score, 5 thẻ KPI có màu trạng thái, biểu đồ pass rate và kết quả theo run"></td>
+    <td width="50%"><b>📡 Live — Gantt theo làn, ETA, lọc test fail</b><br><img src="docs/images/dark-live.jpeg" alt="Trang Live đang chạy: thanh tiến độ, ETA, Gantt theo làn"></td>
   </tr>
   <tr>
-    <td width="50%"><b>📡 Live — Gantt theo làn, ETA</b><br><img src="docs/images/live.jpeg" alt="Trang Live đang chạy với thanh tiến độ, ETA và Gantt"></td>
-    <td width="50%"><b>✨ Phân tích lỗi bằng AI (claude -p)</b><br><img src="docs/images/ai-panel.jpeg" alt="Panel AI phân tích một test fail: phân loại, nguyên nhân, bằng chứng, gợi ý sửa"></td>
+    <td width="50%"><b>🔍 Run detail — nhóm lỗi, timeline agent, log</b><br><img src="docs/images/dark-run-detail.jpeg" alt="Chi tiết một run: pass rate, nhóm lỗi, danh sách test và chi tiết lỗi"></td>
+    <td width="50%"><b>🗂️ Runs — lịch sử các run</b><br><img src="docs/images/dark-runs.jpeg" alt="Danh sách run"></td>
   </tr>
   <tr>
-    <td width="50%"><b>⚖️ So sánh 2 run + visual diff</b><br><img src="docs/images/compare-visual.jpeg" alt="So sánh hai run: test mới fail, chênh thời gian, và ảnh khác biệt từng pixel"></td>
-    <td width="50%"><b>🔀 Flaky</b><br><img src="docs/images/flaky.jpeg" alt="Bảng test flaky với điểm, số lần đổi kết quả và lịch sử"></td>
+    <td width="50%"><b>🧪 Tests — chọn test, chạy, AI viết test từ ticket</b><br><img src="docs/images/dark-tests.jpeg" alt="Danh sách test với lịch sử và các nút AI"></td>
+    <td width="50%"><b>▶️ Hộp thoại chạy — target, retries, trình duyệt, workers</b><br><img src="docs/images/dark-run-dialog.jpeg" alt="Hộp thoại chạy test với chọn trình duyệt và toggle --no-cache"></td>
   </tr>
   <tr>
-    <td width="50%"><b>🗺️ Bản đồ route</b><br><img src="docs/images/route-map.jpeg" alt="Bản đồ các trang test đi qua, nơi hay fail được tô cam/đỏ"></td>
-    <td width="50%"><b>🎯 Gợi ý locator từ replay cache</b><br><img src="docs/images/locators.jpeg" alt="Step agent.act ổn định được dựng thành code screen.getByRole"></td>
+    <td width="50%"><b>⚖️ So sánh 2 run + visual diff</b><br><img src="docs/images/dark-compare-visual.jpeg" alt="So sánh hai run"></td>
+    <td width="50%"><b>🔀 Flaky — điểm, số lần đổi kết quả</b><br><img src="docs/images/dark-flaky.jpeg" alt="Bảng test flaky"></td>
   </tr>
   <tr>
-    <td width="50%"><b>📄 Trang riêng từng test</b><br><img src="docs/images/test-page.jpeg" alt="Lịch sử một test: pass rate, biểu đồ thời gian và token, các lần fail, ảnh fail"></td>
-    <td width="50%"><b>⚙️ Cài đặt hệ thống</b><br><img src="docs/images/system.jpeg" alt="Trang Cài đặt hệ thống: giao diện, tình trạng setup và các mục hệ thống"></td>
+    <td width="50%"><b>🧩 Nhóm lỗi</b><br><img src="docs/images/dark-groups.jpeg" alt="Nhóm lỗi cùng mã"></td>
+    <td width="50%"><b>📈 Xu hướng dài hạn</b><br><img src="docs/images/dark-trends.jpeg" alt="Xu hướng theo ngày"></td>
+  </tr>
+  <tr>
+    <td width="50%"><b>🎫 Triage lỗi</b><br><img src="docs/images/dark-triage.jpeg" alt="Trạng thái và người phụ trách của từng lỗi"></td>
+    <td width="50%"><b>🪙 Chi phí & cache</b><br><img src="docs/images/dark-cost.jpeg" alt="Token, chi phí, replay cache"></td>
+  </tr>
+  <tr>
+    <td width="50%"><b>🗺️ Bản đồ route</b><br><img src="docs/images/dark-routes.jpeg" alt="Các trang test đi qua"></td>
+    <td width="50%"><b>🌿 So sánh branch</b><br><img src="docs/images/dark-branches.jpeg" alt="Test hỏng ở một branch"></td>
+  </tr>
+  <tr>
+    <td width="50%"><b>🧠 Model & ngân sách</b><br><img src="docs/images/dark-models.jpeg" alt="So sánh model"></td>
+    <td width="50%"><b>🎯 Gợi ý locator từ replay cache</b><br><img src="docs/images/dark-locators.jpeg" alt="Step agent.act thành locator"></td>
+  </tr>
+  <tr>
+    <td width="50%"><b>✅ Lint câu lệnh agent</b><br><img src="docs/images/dark-lint.jpeg" alt="Cảnh báo câu lệnh agent"></td>
+    <td width="50%"><b>🕳️ Khoảng trống coverage</b><br><img src="docs/images/dark-coverage.jpeg" alt="Trang chưa test nào đi qua"></td>
+  </tr>
+  <tr>
+    <td width="50%"><b>🌐 Lỗi theo môi trường</b><br><img src="docs/images/dark-environment.jpeg" alt="Tỉ lệ fail theo target, OS, trình duyệt"></td>
+    <td width="50%"><b>🐞 Lỗi phía app</b><br><img src="docs/images/dark-app-errors.jpeg" alt="Console và request lỗi"></td>
+  </tr>
+  <tr>
+    <td width="50%"><b>🚀 Báo cáo phát hành</b><br><img src="docs/images/dark-release.jpeg" alt="So run ở tag git"></td>
+    <td width="50%"><b>🔗 Truy vết yêu cầu</b><br><img src="docs/images/dark-traceability.jpeg" alt="Story và test"></td>
+  </tr>
+  <tr>
+    <td width="50%"><b>🌱 Vòng đời test</b><br><img src="docs/images/dark-lifecycle.jpeg" alt="Test mới, bị bỏ, đổi tên"></td>
+    <td width="50%"><b>📄 Trang riêng từng test</b><br><img src="docs/images/dark-test-page.jpeg" alt="Lịch sử một test"></td>
+  </tr>
+  <tr>
+    <td width="50%"><b>📁 Nhiều project</b><br><img src="docs/images/dark-projects.jpeg" alt="Các project đã mở dashboard"></td>
+    <td width="50%"><b>📰 Digest tuần</b><br><img src="docs/images/dark-digest.jpeg" alt="Tóm tắt Markdown"></td>
+  </tr>
+  <tr>
+    <td width="50%"><b>🖨️ Báo cáo & CSV</b><br><img src="docs/images/dark-report.jpeg" alt="Trang in và xuất CSV"></td>
+    <td width="50%"><b>⏱️ Tự động & lưu trữ — worker, watch, lịch chạy, dọn run</b><br><img src="docs/images/dark-settings.jpeg" alt="Worker, watch, lịch chạy, dung lượng"></td>
+  </tr>
+  <tr>
+    <td width="50%"><b>⚙️ Cài đặt hệ thống — theme, setup, doctor</b><br><img src="docs/images/dark-system.jpeg" alt="Cài đặt hệ thống"></td>
+    <td width="50%"><b>🛠️ Tự sửa lỗi — chờ bạn duyệt diff trước khi chạy test và tạo PR</b><br><img src="docs/images/dark-system-selfheal.jpeg" alt="Bản sửa của AI đang chờ duyệt với diff và hai nút"></td>
+  </tr>
+  <tr>
+    <td width="50%"><b>🔑 Key & tích hợp — Linear, webhook (toggle sự kiện)</b><br><img src="docs/images/dark-system-keys.jpeg" alt="Linear key, team và webhook"></td>
+    <td width="50%"><b>✨ Hỏi AI về bộ test</b><br><img src="docs/images/dark-ask-ai.jpeg" alt="Panel Hỏi AI"></td>
+  </tr>
+  <tr>
+    <td width="50%"><b>◧ Menu trái thu gọn thành thanh icon</b><br><img src="docs/images/dark-nav-collapsed.jpeg" alt="Menu thu gọn"></td>
+    <td width="50%"></td>
   </tr>
 </table>
 
