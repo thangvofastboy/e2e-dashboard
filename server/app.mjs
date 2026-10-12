@@ -825,6 +825,8 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return send(res, 204, '');
       }
       if (p === '/api/selfheal/retry') return send(res, 200, { ok: Boolean(await selfHeal?.retry(String((await readBody(req)).fingerprint ?? ''))) });
+      if (p === '/api/selfheal/approve') return send(res, 200, { ok: Boolean(await selfHeal?.approve(String((await readBody(req)).fingerprint ?? ''))) });
+      if (p === '/api/selfheal/reject') return send(res, 200, { ok: Boolean(await selfHeal?.reject(String((await readBody(req)).fingerprint ?? ''))) });
       if (p === '/api/system/doctor') {
         const { doctor } = await import('./doctor.mjs');
         return send(res, 200, await doctor(projectRoot, { dryRun: Boolean((await readBody(req)).dryRun), reporter: reporterStatus(projectRoot) }));

@@ -70,6 +70,7 @@ function setupHtml(items) {
 
 const HEAL = {
   new: ['muted', 'Mới'], analyzing: ['info', 'AI đang phân tích'], 'not-dashboard': ['muted', 'Không phải lỗi dashboard'], fixing: ['info', 'AI đang sửa'],
+  'awaiting-review': ['warn', 'Chờ bạn duyệt'], testing: ['info', 'Đang chạy test & tạo PR'], rejected: ['muted', 'Đã bỏ bản sửa'],
   'pr-open': ['good', 'Đã mở PR'], 'fix-failed': ['bad', 'Sửa không thành'], limit: ['warn', 'Chạm giới hạn PR/ngày'], error: ['bad', 'Lỗi khi xử lý'],
 };
 function healHtml(h, cfg, aiCfg) {
@@ -77,9 +78,13 @@ function healHtml(h, cfg, aiCfg) {
     const [tone, label] = HEAL[x.status] ?? ['muted', x.status];
     return `<li class="heal-item"><div><span class="chip tone-${tone}">${escapeHtml(label)}</span> <span class="muted small">${escapeHtml(x.sample?.source === 'ui' ? 'UI' : cap(x.sample?.source ?? ''))} · ${escapeHtml(x.count)} lần · ${escapeHtml(String(x.lastSeen ?? '').slice(0, 16).replace('T', ' '))}</span>
       ${x.prUrl ? ` <a class="button" href="${escapeHtml(x.prUrl)}" target="_blank" rel="noreferrer">${icon('external', { size: 13 })}Xem PR</a>` : ''}
-      <button type="button" class="small-btn" data-heal-retry="${escapeHtml(x.fingerprint)}">${icon('recycle', { size: 13 })}Phân tích lại</button></div>
+      ${['awaiting-review', 'testing'].includes(x.status) ? '' : `<button type="button" class="small-btn" data-heal-retry="${escapeHtml(x.fingerprint)}">${icon('recycle', { size: 13 })}Phân tích lại</button>`}</div>
       <code class="heal-msg">${escapeHtml(x.sample?.message ?? '')}</code>
       ${x.verdict ? `<p class="small">${icon('sparkles', { size: 13 })} ${escapeHtml(x.verdict.summary)} <span class="muted">(${escapeHtml(x.verdict.verdict)}, ${Math.round(x.verdict.confidence * 100)}%)</span></p>` : ''}
+      ${x.status === 'awaiting-review' ? `<details class="heal-diff" open><summary class="small">Diff AI đề xuất (branch <code>${escapeHtml(x.branch)}</code>)${x.diffClipped ? ' · đã cắt bớt' : ''}</summary>
+        <pre class="small">${escapeHtml(x.diff ?? x.diffStat ?? '')}</pre>
+        <div class="form-row"><button type="button" class="primary" data-heal-approve="${escapeHtml(x.fingerprint)}">${icon('check', { size: 14 })}Chạy test & tạo PR</button>
+        <button type="button" class="btn-stop" data-heal-reject="${escapeHtml(x.fingerprint)}">${icon('x', { size: 14 })}Bỏ bản sửa</button></div></details>` : ''}
       ${x.note ? `<p class="small tone-bad">${escapeHtml(x.note)}</p>` : ''}</li>`;
   }).join('');
   return `<section class="panel"><h2>${icon('sparkles', { size: 15 })} AI</h2>
@@ -92,7 +97,7 @@ function healHtml(h, cfg, aiCfg) {
     <p class="muted small">Effort cao hơn: suy luận kỹ hơn nhưng chậm và tốn token hơn. Gợi ý: <code>medium</code> cho tóm tắt / triage, <code>high</code> trở lên cho tự sửa lỗi.</p>
     <form data-ai-form class="form-row"><label class="small"><input type="checkbox" name="autoSummary"${aiCfg.autoSummary ? ' checked' : ''}> Tự tóm tắt run có test fail bằng AI (hiện ở trang Live và Run)</label></form>
     <h3 class="small">Tự sửa lỗi dashboard</h3>
-    <p class="muted small">Lỗi server (API 500, crash) và lỗi giao diện được ghi lại. Khi bật: AI local (<code>claude</code>) đọc code để xem có phải lỗi của e2e-dashboard không; nếu phải, AI sửa trên branch riêng (git worktree tạm, không đụng thư mục làm việc của bạn, AI không chạy được lệnh), dashboard chạy <code>npm test</code>, push và mở <strong>PR draft</strong>. Mỗi lỗi một PR.</p>
+    <p class="muted small">Lỗi server (API 500, crash) và lỗi giao diện được ghi lại. Khi bật: AI local (<code>claude</code>) đọc code để xem có phải lỗi của e2e-dashboard không; nếu phải, AI sửa trên branch riêng (git worktree tạm, không đụng thư mục làm việc của bạn, AI không chạy được lệnh) rồi <strong>dừng chờ bạn duyệt diff</strong>. Chỉ khi bạn bấm "Chạy test & tạo PR" dashboard mới chạy <code>npm test</code>, push và mở <strong>PR draft</strong>. Mỗi lỗi một PR.</p>
     <form data-heal-form>
       <div class="form-row"><label class="small"><input type="checkbox" name="enabled"${cfg.enabled ? ' checked' : ''}> Bật tự phân tích, sửa và tạo PR</label></div>
       <div class="form-row"><span class="form-label">Repo e2e-dashboard</span><input name="repo" value="${escapeHtml(cfg.repo)}" placeholder="/home/…/e2e-dashboard" aria-label="Đường dẫn repo e2e-dashboard" style="flex:1"></div>
@@ -220,6 +225,18 @@ export async function renderSystem(main) {
       } else if (b.dataset.healRetry) {
         await postJson('/api/selfheal/retry', { fingerprint: b.dataset.healRetry });
         toast('Đã đưa vào hàng chờ phân tích');
+        await reload();
+      } else if (b.dataset.healApprove) {
+        if (!confirm('Chạy npm test với bản sửa này trong repo e2e-dashboard, rồi push branch và mở PR draft. Bạn đã đọc diff?')) return;
+        b.disabled = true;
+        const r = await postJson('/api/selfheal/approve', { fingerprint: b.dataset.healApprove });
+        toast(r.ok ? 'Đang chạy test, xong sẽ mở PR draft' : 'Bản sửa không còn chờ duyệt');
+        await reload();
+      } else if (b.dataset.healReject) {
+        if (!confirm('Bỏ bản sửa này và xoá branch local?')) return;
+        b.disabled = true;
+        await postJson('/api/selfheal/reject', { fingerprint: b.dataset.healReject });
+        toast('Đã bỏ bản sửa');
         await reload();
       } else if ('doctor' in b.dataset) {
         if (!confirm('Chạy doctor: chuyển dữ liệu .e2e-dashboard sang bố cục mới (runs theo ngày, state/, runtime/) và dựng lại chỉ mục. Không xoá run nào. Tiếp tục?')) return;

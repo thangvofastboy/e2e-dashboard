@@ -1,23 +1,53 @@
 // Tự sửa lỗi của chính dashboard. Lỗi server (API 500, crash) và lỗi giao diện (JS) được ghi theo dấu vân tay ở
-// .e2e-dashboard/selfheal.json. Khi bật (trang Cài đặt hệ thống, cần đường dẫn repo e2e-dashboard):
+// ~/.e2e-dashboard/selfheal/ (ngoài repo). Khi bật (trang Cài đặt hệ thống, cần đường dẫn repo e2e-dashboard):
 //   1. AI local phân tích, chỉ đọc code (Read/Grep/Glob) → có phải lỗi code của e2e-dashboard không;
 //   2. nếu phải: AI sửa trong git worktree tạm từ origin/main (Read/Grep/Glob/Edit/Write, không Bash);
-//   3. dashboard tự chạy npm test, commit, push branch và mở PR draft bằng gh.
+//   3. dashboard commit bản sửa vào branch local (không chạy gì) rồi dừng ở "Chờ duyệt" kèm diff;
+//   4. chỉ khi người dùng duyệt diff trên trang Cài đặt hệ thống mới chạy npm test, push và mở PR draft bằng gh.
 // Nội dung lỗi có thể đến từ dữ liệu người khác kiểm soát (report của repo lạ): gửi cho AI như bằng chứng, AI không
 // chạy được lệnh, PR luôn là draft, mỗi lỗi một PR, tối đa maxPerDay PR mỗi ngày.
 import { execFile } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { createAi, AI_ARGS, AI_FIX_ARGS } from './ai.mjs';
-import { readState, writeState, serial } from './jsonstate.mjs';
+import { serial } from './jsonstate.mjs';
+import { homeDir } from './projects.mjs';
 import { readUserConfig, aiPrefs } from './system.mjs';
-import { VERSION, DATA_DIR, isLink, dataPath, legacyDataPath } from '../reporter/e2e-dashboard.reporter.mjs';
+import { VERSION, isLink } from '../reporter/e2e-dashboard.reporter.mjs';
 
-const FILE = 'selfheal.json';
-export const CRASH_FILE = 'selfheal-crash.jsonl'; // main.mjs ghi đồng bộ lúc process sắp chết, lần chạy sau đọc vào
+
+// Trạng thái tự sửa lỗi và file crash nằm ở ~/.e2e-dashboard/selfheal/<project>, KHÔNG trong .e2e-dashboard của project:
+// một repo lạ có thể commit sẵn file trong thư mục đó, và nội dung ở đây được đưa cho AI (rồi tới bước sửa code).
+const projectKey = (root) => createHash('sha256').update(root).digest('hex').slice(0, 16);
+export const healDir = (env = process.env) => join(homeDir(env), 'selfheal');
+export const statePathFor = (root, env = process.env) => join(healDir(env), `${projectKey(root)}.json`);
+export const crashPathFor = (root, env = process.env) => join(healDir(env), `${projectKey(root)}-crash.jsonl`);
+const FP_RE = /^[0-9a-f]{16}$/;
+// chỉ giữ mục đúng định dạng dashboard tự ghi (file nằm ngoài repo, nhưng vẫn kiểm tra cho chắc)
+function cleanState(s) {
+  const out = { errors: {} };
+  for (const [fp, e] of Object.entries(s?.errors ?? {})) {
+    if (!FP_RE.test(fp) || !e || typeof e !== 'object' || typeof e.sample?.message !== 'string') continue;
+    out.errors[fp] = { ...e, fingerprint: fp, sample: { source: e.sample.source === 'ui' ? 'ui' : 'server', message: clip(e.sample.message, 1000), stack: clip(e.sample.stack, 3000), route: clip(e.sample.route, 200), file: clip(e.sample.file, 200) } };
+  }
+  return out;
+}
+async function readHealState(path) {
+  try {
+    return cleanState(JSON.parse(await readFile(path, 'utf8')));
+  } catch {
+    return { errors: {} };
+  }
+}
+async function writeHealState(path, s) {
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  const tmp = `${path}.tmp-${randomBytes(4).toString('hex')}`;
+  await writeFile(tmp, JSON.stringify(s), { mode: 0o600 });
+  await rename(tmp, path);
+}
 const MAX_TEXT = 4000;
 const DAY = 86_400_000;
 
@@ -28,6 +58,11 @@ const MAX_QUEUE = 5; // lỗi đang chờ phân tích
 const MAX_ANALYSES_PER_DAY = 20; // giới hạn lượt claude dù lỗi có khác nhau (một nguồn spam lỗi không đốt được token)
 const MAX_ENTRIES = 200; // selfheal.json chỉ giữ các lỗi gần nhất
 // AI chỉ được sửa code; package.json, workflow, script, hook… thì không (npm test và push chạy ngay sau đó)
+const MAX_DIFF = 12_000; // diff lưu để duyệt
+const BRANCH_RE = /^fix\/auto-[0-9a-f]{8}-[0-9a-z]+$/;
+const SHA_RE = /^[0-9a-f]{40}$/;
+const NO_HOOKS = ['-c', 'core.hooksPath=/dev/null']; // AI có thể đã ghi hook: commit / push không chạy hook nào
+const oneLine = (x) => String(x).replace(/[\r\n]+/g, ' ');
 const ALLOWED_PATH = /^(server|ui|reporter|bin|test|support)\/[\w./-]+$/;
 
 // cùng một lỗi ở các lần khác nhau: bỏ số, id, chuỗi trong nháy và số dòng / cột
@@ -107,13 +142,14 @@ export function createSelfHeal({ projectRoot, env = process.env, aiFactory = cre
     const c = readUserConfig(env).selfHeal ?? {};
     return { enabled: c.enabled === true, repo: typeof c.repo === 'string' ? c.repo : '', maxPerDay: Number.isInteger(c.maxPerDay) && c.maxPerDay > 0 ? c.maxPerDay : 3 };
   };
-  const load = () => readState(projectRoot, FILE, { errors: {} }).then((s) => (s?.errors ? s : { errors: {} }));
+  const STATE = statePathFor(projectRoot, env);
+  const load = () => readHealState(STATE);
   const update = (fp, patch) =>
-    serial(`${projectRoot}:${FILE}`, async () => {
+    serial(STATE, async () => {
       const s = await load();
       s.errors[fp] = { ...s.errors[fp], ...patch, updatedAt: new Date(now()).toISOString() };
       prune(s, fp);
-      await writeState(projectRoot, FILE, s);
+      await writeHealState(STATE, s);
       return s.errors[fp];
     });
 
@@ -122,7 +158,7 @@ export function createSelfHeal({ projectRoot, env = process.env, aiFactory = cre
     const keys = Object.keys(s.errors);
     if (keys.length <= MAX_ENTRIES) return;
     const old = keys.sort((a, b) => String(s.errors[a].lastSeen).localeCompare(String(s.errors[b].lastSeen))).slice(0, keys.length - MAX_ENTRIES);
-    for (const k of old) if (k !== keep && !s.errors[k].prUrl) delete s.errors[k];
+    for (const k of old) if (k !== keep && !s.errors[k].prUrl && s.errors[k].status !== 'awaiting-review') delete s.errors[k];
   }
 
   async function pump() {
@@ -159,10 +195,7 @@ export function createSelfHeal({ projectRoot, env = process.env, aiFactory = cre
     await update(fp, { status: 'fixing', fixAt: new Date(now()).toISOString() });
     const branch = `fix/auto-${fp.slice(0, 8)}-${Date.now().toString(36)}`;
     const wt = await mkdtemp(join(tmpdir(), 'e2ed-heal-'));
-    const NO_HOOKS = ['-c', 'core.hooksPath=/dev/null']; // AI có thể đã ghi hook: commit / push không chạy hook nào
-    const oneLine = (x) => String(x).replace(/[\r\n]+/g, ' ');
-    let pushed = false;
-    let opened = false;
+    let kept = false;
     try {
       await run('git', ['fetch', 'origin', 'main'], cfg.repo);
       await run('git', ['worktree', 'add', '-b', branch, wt, 'origin/main'], cfg.repo);
@@ -171,42 +204,75 @@ export function createSelfHeal({ projectRoot, env = process.env, aiFactory = cre
       const changed = (await run('git', ['status', '--porcelain', '--untracked-files=all'], wt)).split('\n').filter(Boolean).map((l) => l.slice(3).replace(/^"|"$/g, '').split(' -> ').pop());
       if (!changed.length) return void (await update(fp, { status: 'fix-failed', note: f.error ?? 'AI không thay đổi file nào' }));
       const outside = changed.filter((x) => !ALLOWED_PATH.test(x) || x.includes('..'));
-      if (outside.length) return void (await update(fp, { status: 'fix-failed', note: `AI sửa ngoài phạm vi cho phép (${clip(outside.join(', '), 300)}): bỏ, không chạy test` }));
+      if (outside.length) return void (await update(fp, { status: 'fix-failed', note: `AI sửa ngoài phạm vi cho phép (${clip(outside.join(', '), 300)}): bỏ` }));
+      // 4. commit vào branch local rồi dừng: chưa chạy npm test / push, chờ người dùng xem diff
+      await run('git', ['add', '-A', '--', ...changed], wt);
+      const stat = await run('git', ['diff', '--cached', '--stat'], wt).catch(() => '');
+      const diff = await run('git', ['diff', '--cached'], wt).catch(() => '');
+      await run('git', [...NO_HOOKS, 'commit', '--no-verify', '-m', `fix(auto): ${oneLine(v.summary)}`.slice(0, 120), '-m', `Lỗi ${fp} (${entry.sample.source}), sửa tự động bởi e2e-dashboard self-heal.`], wt);
+      const commit = await run('git', ['rev-parse', 'HEAD'], wt);
+      kept = true;
+      await update(fp, { status: 'awaiting-review', branch, commit, diffStat: clip(stat, 1500), diff: clip(diff, MAX_DIFF), diffClipped: diff.length > MAX_DIFF, note: null });
+    } finally {
+      await run('git', ['worktree', 'remove', '--force', wt], cfg.repo).catch(() => {});
+      await rm(wt, { recursive: true, force: true });
+      if (!kept) await run('git', ['branch', '-D', branch], cfg.repo).catch(() => {});
+    }
+  }
+
+  // đổi trạng thái có điều kiện trong một bước serial: hai cú bấm cùng lúc chỉ một cú thắng
+  const claim = (fp, from, patch) =>
+    serial(STATE, async () => {
+      const s = await load();
+      const e = s.errors[fp];
+      if (!e || e.status !== from) return null;
+      s.errors[fp] = { ...e, ...patch, updatedAt: new Date(now()).toISOString() };
+      await writeHealState(STATE, s);
+      return e;
+    });
+
+  // người dùng đã duyệt diff: chạy npm test trên đúng commit đã xem, push, mở PR draft
+  async function publish(fp, e) {
+    const cfg = config();
+    const wt = await mkdtemp(join(tmpdir(), 'e2ed-heal-'));
+    let pushed = false;
+    let opened = false;
+    try {
+      if (!cfg.repo || !existsSync(join(cfg.repo, '.git'))) throw new Error('Chưa cấu hình repo e2e-dashboard');
+      await run('git', ['worktree', 'add', '--detach', wt, e.commit], cfg.repo);
       let tests;
       try {
         tests = await run('npm', ['test'], wt, 600_000);
-      } catch (e) {
-        return void (await update(fp, { status: 'fix-failed', note: `npm test fail sau khi sửa: ${clip(e.message, 600)}` }));
+      } catch (err) {
+        return void (await update(fp, { status: 'fix-failed', note: `npm test fail sau khi sửa: ${clip(err.message, 600)}` }));
       }
-      await run('git', ['add', '-A', '--', ...changed], wt);
-      const stat = await run('git', ['diff', '--cached', '--stat'], wt).catch(() => '');
-      await run('git', [...NO_HOOKS, 'commit', '--no-verify', '-m', `fix(auto): ${oneLine(v.summary)}`.slice(0, 120), '-m', `Lỗi ${fp} (${entry.sample.source}), sửa tự động bởi e2e-dashboard self-heal.`], wt);
-      await run('git', [...NO_HOOKS, 'push', '--no-verify', '-u', 'origin', branch], wt);
+      await run('git', [...NO_HOOKS, 'push', '--no-verify', 'origin', `${e.commit}:refs/heads/${e.branch}`], wt);
       pushed = true;
       // PR chỉ mang dữ liệu dashboard tự tạo + kết luận ngắn của AI, không chép câu trả lời tự do của AI
       const fence = '`'.repeat(3);
+      const v = e.verdict ?? { summary: '', confidence: 0 };
       const body = [
-        'Tạo tự động bởi **e2e-dashboard self-heal**: PR draft, cần review trước khi merge.',
+        'Tạo tự động bởi **e2e-dashboard self-heal**: diff đã được duyệt trên dashboard, PR draft, cần review trước khi merge.',
         '',
-        `**Lỗi** (${entry.sample.source}, gặp ${entry.count} lần, v${VERSION}):`,
-        fence, clip(entry.sample.message, 600).replaceAll(fence, "'''"), fence,
+        `**Lỗi** (${e.sample.source}, gặp ${e.count} lần, v${VERSION}):`,
+        fence, clip(e.sample.message, 600).replaceAll(fence, "'''"), fence,
         '',
         `**Kết luận AI** (độ tin cậy ${Math.round(v.confidence * 100)}%): ${oneLine(v.summary)}`,
         '',
-        '**File đổi:**', fence, clip(stat, 1500), fence,
+        '**File đổi:**', fence, clip(e.diffStat, 1500), fence,
         '',
         '**npm test:** pass', fence, tests.split('\n').filter((l) => /^ℹ (tests|pass|fail)/.test(l)).join('\n'), fence,
       ].join('\n');
-      const url = await run('gh', ['pr', 'create', '--draft', '--base', 'main', '--head', branch, '--title', `fix(auto): ${oneLine(v.summary)}`.slice(0, 120), '--body', body], wt);
+      const url = await run('gh', ['pr', 'create', '--draft', '--base', 'main', '--head', e.branch, '--title', `fix(auto): ${oneLine(v.summary)}`.slice(0, 120), '--body', body], wt);
       opened = true;
-      await update(fp, { status: 'pr-open', prUrl: url.split('\n').pop(), prAt: new Date(now()).toISOString(), branch });
+      await update(fp, { status: 'pr-open', prUrl: url.split('\n').pop(), prAt: new Date(now()).toISOString(), diff: null });
     } finally {
       await run('git', ['worktree', 'remove', '--force', wt], cfg.repo).catch(() => {});
       await rm(wt, { recursive: true, force: true });
       if (!opened) {
-        // không mở được PR: dọn branch đã tạo (local, và remote nếu đã push)
-        if (pushed) await run('git', ['push', 'origin', '--delete', branch], cfg.repo).catch(() => {});
-        await run('git', ['branch', '-D', branch], cfg.repo).catch(() => {});
+        // không mở được PR: dọn branch (remote nếu đã push, và local)
+        if (pushed) await run('git', ['push', 'origin', '--delete', e.branch], cfg.repo).catch(() => {});
+        await run('git', ['branch', '-D', e.branch], cfg.repo).catch(() => {});
       }
     }
   }
@@ -218,13 +284,13 @@ export function createSelfHeal({ projectRoot, env = process.env, aiFactory = cre
     const at = new Date(now()).toISOString();
     let fresh = false;
     // đọc - sửa - ghi trong một bước serial: hai lần báo cùng lỗi mới không xếp hàng hai lần, không mất đếm
-    const entry = await serial(`${projectRoot}:${FILE}`, async () => {
+    const entry = await serial(STATE, async () => {
       const s = await load();
       const prev = s.errors[fp];
       fresh = !prev;
       s.errors[fp] = { ...prev, fingerprint: fp, sample: prev?.sample ?? err, count: (prev?.count ?? 0) + 1, firstSeen: prev?.firstSeen ?? at, lastSeen: at, status: prev?.status ?? 'new', updatedAt: at };
       prune(s, fp);
-      await writeState(projectRoot, FILE, s);
+      await writeHealState(STATE, s);
       return s.errors[fp];
     });
     if (fresh) enqueue(fp);
@@ -239,8 +305,8 @@ export function createSelfHeal({ projectRoot, env = process.env, aiFactory = cre
 
   // crash lần trước (main.mjs ghi đồng bộ lúc process chết)
   function ingestCrashes() {
-    const p = [dataPath(projectRoot, CRASH_FILE), legacyDataPath(projectRoot, CRASH_FILE)].find((x) => existsSync(x));
-    if (!p || isLink(p) || isLink(dirname(p)) || isLink(join(projectRoot, DATA_DIR))) return; // repo lạ có thể cài sẵn file / symlink này
+    const p = crashPathFor(projectRoot, env); // chỉ đọc file crash dashboard tự ghi ngoài repo
+    if (!existsSync(p) || isLink(p)) return;
     const lines = readFileSync(p, 'utf8').split('\n').filter(Boolean).slice(-20);
     rmSync(p, { force: true });
     for (const l of lines) {
@@ -259,9 +325,26 @@ export function createSelfHeal({ projectRoot, env = process.env, aiFactory = cre
     async list() {
       return Object.values((await load()).errors).sort((a, b) => String(b.lastSeen).localeCompare(String(a.lastSeen)));
     },
+    async approve(fp) {
+      const e = await claim(fp, 'awaiting-review', { status: 'testing', note: null });
+      if (!e) return false;
+      if (!BRANCH_RE.test(e.branch ?? '') || !SHA_RE.test(e.commit ?? '')) {
+        await update(fp, { status: 'error', note: 'Bản sửa thiếu branch / commit hợp lệ' });
+        return false;
+      }
+      void publish(fp, e).catch((err) => update(fp, { status: 'error', note: clip(err.message, 500) }));
+      return true;
+    },
+    async reject(fp) {
+      const e = await claim(fp, 'awaiting-review', { status: 'rejected', diff: null, note: 'Đã bỏ bản sửa' });
+      if (!e) return false;
+      const { repo } = config();
+      if (repo && BRANCH_RE.test(e.branch ?? '')) await run('git', ['branch', '-D', e.branch], repo).catch(() => {});
+      return true;
+    },
     async retry(fp) {
       const e = (await load()).errors[fp];
-      if (!e || e.prUrl) return false; // đã có PR: không mở PR thứ hai
+      if (!e || e.prUrl || ['awaiting-review', 'testing'].includes(e.status)) return false; // đã có PR / đang chờ duyệt: không mở thêm
       await update(fp, { status: 'new', note: null });
       return enqueue(fp);
     },

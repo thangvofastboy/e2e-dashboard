@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import http from 'node:http';
 import { appendFileSync, mkdirSync } from 'node:fs';
-import { createSelfHeal, CRASH_FILE } from './selfheal.mjs';
+import { createSelfHeal, crashPathFor } from './selfheal.mjs';
 import { summarizeRun } from './aiextra.mjs';
 import { syncIndex } from './runindex.mjs';
 import { readUserConfig, aiPrefs } from './system.mjs';
@@ -111,9 +111,9 @@ function watchCrashes(projectRoot) {
   crashWatched = true;
   process.on('uncaughtExceptionMonitor', (e) => {
     try {
-      const crash = dataPath(projectRoot, CRASH_FILE); // runtime/selfheal-crash.jsonl
-      if (isLink(join(projectRoot, DATA_DIR)) || isLink(dirname(crash)) || isLink(crash)) return; // không ghi xuyên symlink do repo cài sẵn
-      mkdirSync(dirname(crash), { recursive: true });
+      const crash = crashPathFor(projectRoot); // ~/.e2e-dashboard/selfheal/<project>-crash.jsonl (ngoài repo)
+      if (isLink(crash)) return;
+      mkdirSync(dirname(crash), { recursive: true, mode: 0o700 });
       appendFileSync(crash, `${JSON.stringify({ message: String(e?.message ?? e).slice(0, 1000), stack: String(e?.stack ?? '').slice(0, 3000) })}\n`);
     } catch {
       // không ghi được: bỏ qua, process đang dừng

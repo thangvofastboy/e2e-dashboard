@@ -843,6 +843,7 @@ figure:fullscreen figcaption { font-size: calc(17px * var(--fs)); }
 .heal-list { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 10px; max-height: 360px; overflow: auto; }
 .heal-item { border-left: 3px solid var(--border); padding-left: 10px; }
 .heal-msg { display: block; margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.heal-diff pre { max-height: 320px; overflow: auto; margin: 6px 0; padding: 8px; background: var(--surface-2, rgba(127,127,127,.08)); border-radius: 6px; white-space: pre; }
 .system-grid .keys code { white-space: normal; word-break: break-all; }
 [data-part="ai"]:empty { display: none; }
 .ai-summary { border-left: 3px solid var(--violet); }
