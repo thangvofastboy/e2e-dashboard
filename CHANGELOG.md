@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.8.10 — 2026-10-12
+
+- **Tự sửa lỗi: danh sách file đổi lấy từ index**: trước đây tên file đọc từ `git status` bị lệch 1 ký tự ở dòng đầu (output bị trim), nên phạm vi cho phép kiểm tra sai file. Giờ lấy bằng `git diff --cached --name-only -z`.
+- **Tự sửa lỗi: diff luôn là văn bản, không cho duyệt bản quá lớn**: file nhị phân không còn hiện "Binary files differ" để người duyệt bỏ sót; diff quá 12.000 ký tự thì bỏ bản sửa thay vì cho duyệt phần không thấy hết.
+- **Công tắc toggle thay checkbox**: sự kiện webhook, tự tóm tắt AI, bật tự sửa lỗi, SQLite, watch, tự động theo máy, `--no-cache`, bỏ qua test cách ly, và "Hiện cả test không đổi" ở trang So sánh.
+- **Ô nhập trong Cài đặt rộng hơn**: Linear key, Linear team, URL webhook, Model giãn theo hàng thay vì co theo nội dung.
+- **README và ảnh chụp mới**: ảnh chụp lại ở 1280×800 (Overview sáng/tối, Run, Flaky, So sánh, Bản đồ route, Locator, trang test, thêm ảnh Cài đặt hệ thống); mục tính năng, sơ đồ dữ liệu theo ngày, bảo mật và lệnh `doctor` được cập nhật; Node ≥ 22.
+
 ## v0.8.9 — 2026-10-12
 
 - **Tự sửa lỗi chờ bạn duyệt**: AI sửa xong chỉ commit vào branch local rồi dừng ở trạng thái *Chờ bạn duyệt*, kèm diff ngay trên trang Cài đặt hệ thống. Chỉ khi bấm **Chạy test & tạo PR** dashboard mới chạy `npm test`, push và mở PR draft, trên đúng commit bạn đã xem. **Bỏ bản sửa** xoá branch. Trước đây code AI viết được chạy (`npm test`) ngay mà chưa ai đọc.
