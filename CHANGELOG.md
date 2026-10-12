@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.10.0 — 2026-10-13
+
+- **QC xác nhận** (trang mới, menu Theo dõi): hàng đợi *Chờ xác nhận* cho known bug mà run mới nhất đã pass (*Đã sửa* gỡ known bug sau khi xác nhận, *Chưa đúng* giữ lại và ẩn run đó cho tới khi có run pass mới hơn); **waiver có hạn** bỏ một test fail khỏi cổng chất lượng đến hết ngày đã chọn (bắt buộc lý do, tối đa 365 ngày); **nhật ký thay đổi** ghi mọi lần đổi ghi chú, known bug, waiver và xác nhận (500 dòng gần nhất).
+- **Bộ lọc đã lưu**: nút ngôi sao cạnh tiêu đề mỗi trang lưu trang kèm bộ lọc với một cái tên, mở lại bằng một cú bấm; lưu trong trình duyệt của từng người.
+- **Hiệu năng / dọn mã**: hàng đợi chờ xác nhận duyệt lịch sử một lần thay vì một lần cho mỗi known bug; bỏ `export` thừa.
+
 ## v0.9.1 — 2026-10-13
 
 - **Hiệu năng**: `app.js` và `style.css` được nén gzip khi trình duyệt cho phép (~420 KB còn ~130 KB), nén một lần cho mỗi phiên bản của file, có ETag riêng cho bản nén nên vẫn nhận 304.

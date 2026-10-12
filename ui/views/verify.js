@@ -28,11 +28,11 @@ function verifyQueueHtml(queue) {
 }
 
 function verifyWaiverHtml(d) {
-  const tomorrow = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+  const inAWeek = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
   const rows = d.waivers.map((w) => `<tr data-key="${escapeHtml(w.key)}"><td>${escapeHtml(vName(w.key))}</td><td class="${w.active ? '' : 'muted'}">${escapeHtml(w.until)}${w.active ? '' : ' (hết hạn)'}</td><td>${escapeHtml(w.reason)}</td><td><button type="button" class="small-btn" data-unwaive>${icon('close', { size: 13 })}Gỡ</button></td></tr>`).join('');
   return `<form class="fb-form" data-waive>
       <div class="form-row"><select name="key" required aria-label="Test đang fail">${d.failing.length ? d.failing.map((f) => `<option value="${escapeHtml(f.key)}">${escapeHtml(f.title)}</option>`).join('') : '<option value="">Run mới nhất không có test vFail</option>'}</select>
-      <input name="until" type="date" value="${tomorrow}" required aria-label="Hết hạn"><input name="reason" required minlength="5" maxlength="300" placeholder="Lý do bỏ qua (bắt buộc)" aria-label="Lý do"><button type="submit" class="primary"${d.failing.length ? '' : ' disabled'}>${icon('check', { size: 14 })}Tạo waiver</button></div>
+      <input name="until" type="date" value="${inAWeek}" required aria-label="Hết hạn"><input name="reason" required minlength="5" maxlength="300" placeholder="Lý do bỏ qua (bắt buộc)" aria-label="Lý do"><button type="submit" class="primary"${d.failing.length ? '' : ' disabled'}>${icon('check', { size: 14 })}Tạo waiver</button></div>
       <p class="muted small">Test có waiver còn hạn không bị tính là fail mới ở cổng chất lượng; hết hạn là tính lại.</p></form>
     ${d.waivers.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Test</th><th>Hết hạn</th><th>Lý do</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}`;
 }

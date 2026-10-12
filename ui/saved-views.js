@@ -6,7 +6,7 @@ import { toast } from './toast.js';
 const KEY = 'e2ed-views';
 const MAX_VIEWS = 30;
 
-export function loadViews() {
+function loadViews() {
   try {
     const list = JSON.parse(localStorage.getItem(KEY));
     return Array.isArray(list) ? list.filter((v) => typeof v?.name === 'string' && /^#\//.test(v?.hash)) : [];

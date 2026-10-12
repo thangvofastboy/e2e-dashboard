@@ -96,18 +96,24 @@ export function knownKeys(notes, now = Date.now()) {
 // `history` is newest first. Confirming clears the known bug; "not fixed" acks the run so it stays out of the queue
 // until a newer run passes again.
 export function verifyQueue(history, notes) {
-  const out = [];
-  for (const [key, n] of Object.entries(notes)) {
-    if (!n?.known) continue;
-    for (const { meta, report } of history) {
-      if (meta.kind === 'explore') continue;
-      const r = (report.run.results ?? []).find((x) => x.selected !== false && testKey(x) === key);
-      if (!r) continue;
-      if (r.status === 'passed' && meta.runId !== n.ack) out.push({ key, title: titleOf(r), known: n.known, runId: meta.runId, startedAt: meta.startedAt, note: n.note ?? '' });
-      break;
+  const wanted = Object.entries(notes).filter(([, n]) => n?.known);
+  if (!wanted.length) return [];
+  // newest result of each test, one pass over the history
+  const latest = new Map();
+  for (const { meta, report } of history) {
+    if (meta.kind === 'explore') continue;
+    for (const r of report.run.results ?? []) {
+      if (r.selected === false) continue;
+      const k = testKey(r);
+      if (!latest.has(k)) latest.set(k, { r, meta });
     }
   }
-  return out.sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)));
+  const out = [];
+  for (const [key, n] of wanted) {
+    const hit = latest.get(key);
+    if (hit?.r.status === 'passed' && hit.meta.runId !== n.ack) out.push({ key, title: titleOf(hit.r), known: n.known, runId: hit.meta.runId, startedAt: hit.meta.startedAt, note: n.note ?? '' });
+  }
+  return out.sort((x, y) => String(y.startedAt).localeCompare(String(x.startedAt)));
 }
 
 // ---------------------------------------------------------------- manual test cases
