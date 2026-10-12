@@ -60,8 +60,11 @@ function publishNotes(sh, out, tag, notes) {
       return false;
     }
   })();
-  if (exists) sh('gh', ['release', 'edit', tag, '--repo', REPO, '--title', tag, '--notes', notes]);
-  else sh('gh', ['release', 'create', tag, '--repo', REPO, '--title', tag, '--notes', notes, '--verify-tag']);
+  // chỉ bản cao nhất mang nhãn Latest (bổ sung Release cho bản cũ không được chiếm nhãn này)
+  const newest = out('git', ['tag', '--list', 'v*', '--sort=-v:refname']).split('\n')[0];
+  const latest = `--latest=${tag === newest}`;
+  if (exists) sh('gh', ['release', 'edit', tag, '--repo', REPO, '--title', tag, '--notes', notes, latest]);
+  else sh('gh', ['release', 'create', tag, '--repo', REPO, '--title', tag, '--notes', notes, '--verify-tag', latest]);
 }
 
 function main(argv) {
