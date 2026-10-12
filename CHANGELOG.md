@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.9.1 — 2026-10-13
+
+- **Hiệu năng**: `app.js` và `style.css` được nén gzip khi trình duyệt cho phép (~420 KB còn ~130 KB), nén một lần cho mỗi phiên bản của file, có ETag riêng cho bản nén nên vẫn nhận 304.
+- **Dọn mã**: xoá các export và hằng không còn ai dùng (`exploreSummary` và test của nó, `runIdOf`, `BROWSER_LABEL`, `RESET_SCOPES`).
+- **README**: ghi chú về nén gzip.
+
 ## v0.9.0 — 2026-10-13
 
 - **Đối chiếu với docs của e2e**: hộp thoại Run có thêm tag, tag-mode, exclude-tag, grep, shard, max-failures, strict-cache, trace, video, `--last-failed`, `-u` và `--ai-trace`; tab *Model* ở Run detail xem từng lần gọi model (token, độ trễ, prompt, phản hồi) từ `ai-trace.json`; trang Chi phí & cache có bảng replay cache và xoá theo test / mồ côi / toàn bộ; `import` nhận `junit.xml`; Live báo run dừng sớm do `--max-failures`; trang Môi trường tách thêm theo agent và engine; cảnh báo video / file `redaction: incomplete` trước khi chia sẻ.
