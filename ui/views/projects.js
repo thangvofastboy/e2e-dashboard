@@ -1,4 +1,5 @@
 import { toast } from '../toast.js';
+import { confirmDialog } from '../confirm.js';
 import { getJson, postJson } from '../api.js';
 import { pageHead, emptyBox, fmtPct, toneFor, copyToClipboard } from '../analysis.js';
 import { escapeHtml, fmtRelative, statusBadge, countChips } from '../format.js';
@@ -29,6 +30,7 @@ export async function renderProjects(main) {
   main.querySelectorAll('[data-copy-cmd]').forEach((b) => b.addEventListener('click', () => copyToClipboard(b.dataset.copyCmd, b)));
   main.querySelectorAll('[data-forget]').forEach((b) =>
     b.addEventListener('click', async () => {
+      if (!(await confirmDialog({ title: 'Gỡ project khỏi danh sách', message: 'Gỡ project này khỏi dashboard? Dữ liệu trong project không bị xoá, mở lại dashboard ở đó sẽ thêm vào danh sách.', confirmLabel: 'Gỡ project' }))) return;
       const ok = await postJson('/api/projects/forget', { root: b.dataset.forget }).then(() => true, (x) => toast(x.message, 'bad'));
       if (!ok) return;
       renderProjects(main);

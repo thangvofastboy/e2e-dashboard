@@ -81,3 +81,13 @@ test('isFailure and stepVideoOffset', () => {
   assert.equal(stepVideoOffset({ startedAt: '2026-07-24T12:00:00.500Z' }, video, attempt), null);
   assert.equal(stepVideoOffset({}, video, attempt), null);
 });
+
+test('filterKnown keeps, hides or ignores tests with a known-bug note', async () => {
+  const { filterKnown, knownKey } = await import('../ui/model.js');
+  const rows = [{ testId: 't1', target: 'web', agent: 'default' }, { testId: 't2', target: 'web', agent: 'default' }, { testId: 't3', target: 'ios', agent: 'buyer' }];
+  const notes = { [knownKey(rows[0])]: { known: 'ENG-7', note: '' }, [knownKey(rows[2])]: { known: null, note: 'only a note' } };
+  assert.deepEqual(filterKnown(rows, 'only', notes).map((r) => r.testId), ['t1']);
+  assert.deepEqual(filterKnown(rows, 'hide', notes).map((r) => r.testId), ['t2', 't3'], 'a note without a ticket is not a known bug');
+  assert.equal(filterKnown(rows, '', notes), rows);
+  assert.equal(filterKnown(rows, 'only', undefined).length, 0);
+});

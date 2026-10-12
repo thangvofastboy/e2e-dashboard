@@ -54,6 +54,13 @@ export function applyFilters(rows, { tags = [], files = [], targets = [], agents
       (!tags.length || r.tags.some((t) => tags.includes(t))));
 }
 
+// Known bug (QC notes keyed like the test page): mode 'only' keeps them, 'hide' drops them, anything else keeps all.
+export const knownKey = (r) => `${r.testId}|${r.target}|${r.agent}`;
+export function filterKnown(rows, mode, notes = {}) {
+  if (mode !== 'only' && mode !== 'hide') return rows;
+  return rows.filter((r) => Boolean(notes?.[knownKey(r)]?.known) === (mode === 'only'));
+}
+
 export function matrix(rows) {
   const targets = uniq(rows.map((r) => r.target));
   const byTest = new Map();

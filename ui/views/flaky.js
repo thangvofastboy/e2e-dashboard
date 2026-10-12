@@ -1,4 +1,5 @@
 import { toast } from '../toast.js';
+import { confirmDialog } from '../confirm.js';
 import { getJson, postJson } from '../api.js';
 import { openAiPanel } from './ai-panel.js';
 import { openRunDialog } from './run-dialog.js';
@@ -51,6 +52,7 @@ export async function renderFlaky(main) {
     }));
   main.querySelectorAll('[data-unlock]').forEach((b) =>
     b.addEventListener('click', async () => {
+      if (!(await confirmDialog({ title: 'Gỡ cách ly', message: 'Gỡ cách ly test này? Test sẽ chạy lại trong mọi run và có thể làm run fail.', confirmLabel: 'Gỡ cách ly' }))) return;
       const ok = await postJson('/api/quarantine/remove', { key: b.dataset.unlock }).then(() => true, (x) => toast(x.message, 'bad'));
       if (!ok) return;
       renderFlaky(main);

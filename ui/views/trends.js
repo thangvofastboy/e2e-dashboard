@@ -1,6 +1,7 @@
 // Long-term trends (M7): daily pass rate over months with timeline annotations, the 12-month calendar,
 // MTTR and time red, tests failing the longest, and the events list (deploys, releases, incidents…).
 import { getJson, postJson, isExport } from '../api.js';
+import { confirmDialog } from '../confirm.js';
 import { pageHead, emptyBox, fmtPct, fmtPoints, fmtSpan, toneFor, daysPicker } from '../analysis.js';
 import { lineChart, calendarHeatmap } from '../charts.js';
 import { escapeHtml, fmtRelative } from '../format.js';
@@ -83,6 +84,7 @@ export async function renderTrends(main) {
     renderTrends(main);
   });
   main.querySelectorAll('[data-ev-del]').forEach((b) => b.addEventListener('click', async () => {
+    if (!(await confirmDialog({ title: 'Xoá sự kiện', message: 'Xoá sự kiện này khỏi biểu đồ xu hướng?', confirmLabel: 'Xoá' }))) return;
     await postJson('/api/timeline/remove', { id: b.dataset.evDel }).catch(() => null);
     renderTrends(main);
   }));

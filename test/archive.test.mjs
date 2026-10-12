@@ -150,3 +150,11 @@ test('without a traces map, a trace is matched by the result id suffix of its di
   const meta = JSON.parse(readFileSync(join(res.runDir, 'meta.json'), 'utf8'));
   assert.equal(readFileSync(join(res.runDir, meta.traces[passed.id]), 'utf8'), '# by id');
 });
+
+test('meta.unredacted counts archived videos / downloads whose redaction is incomplete', async () => {
+  const { root } = makeProject(failFirst); // the fixture's local video and its hosted copy are both "incomplete"
+  const res = await archive(root, { source: 'hook' });
+  assert.equal(JSON.parse(readFileSync(join(res.runDir, 'meta.json'), 'utf8')).unredacted, 2);
+  const clean = makeProject((r) => { failFirst(r); for (const x of r.run.results) for (const at of x.attempts) for (const a of at.artifacts ?? []) a.redaction = 'complete'; return r; });
+  assert.equal(JSON.parse(readFileSync(join((await archive(clean.root, { source: 'hook' })).runDir, 'meta.json'), 'utf8')).unredacted, undefined);
+});

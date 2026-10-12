@@ -3,6 +3,7 @@ import http from 'node:http';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { createSelfHeal, crashPathFor } from './selfheal.mjs';
 import { summarizeRun } from './aiextra.mjs';
+import { autoLogBugs } from './autobug.mjs';
 import { syncIndex } from './runindex.mjs';
 import { readUserConfig, aiPrefs } from './system.mjs';
 import { mkdir, writeFile, rm, readFile, rename } from 'node:fs/promises';
@@ -145,6 +146,8 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
         notifier.runFinished(meta, { anomalies: found.length });
         // tóm tắt AI cho run có test không pass (tắt: "ai": { "autoSummary": false } trong ~/.e2e-dashboard/config.json)
         if (meta.status !== 'passed' && readUserConfig().ai?.autoSummary !== false) void summarizeRun({ projectRoot, ai, runId: meta.runId, language: cfg.ai?.language }).catch(() => {});
+        // tự log bug lên Linear (mặc định tắt: "ai": { "autoBugLog": true }); lỗi không làm hỏng việc khác
+        if (meta.status !== 'passed' && readUserConfig().ai?.autoBugLog === true) void autoLogBugs({ projectRoot, runId: meta.runId, ai, cfg }).then((r) => { const made = r.rows?.filter((x) => x.status === 'created') ?? []; if (made.length) console.log(`[e2e-dashboard] đã tạo ${made.length} issue Linear: ${made.map((x) => x.issue).join(', ')}`); }).catch((e) => console.error(`[e2e-dashboard] tự log bug lỗi: ${e.message}`));
         if (meta.status !== 'passed' || meta.summary?.flaky || found.length) {
           const m = runMessage(meta, basename(projectRoot));
           const hooks = await webhookConfig().catch(() => []);

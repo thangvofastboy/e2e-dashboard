@@ -46,3 +46,19 @@ test('explore runs are marked as explore', () => {
 test('runDirName is filesystem safe and ends with the run id', () => {
   assert.equal(runDirName(fixture()), '2026-07-24T12-00-00-000Z_018f0f5c-7b2a-7abc-8abc-0123456789ab');
 });
+
+test('errorClasses groups failures by e2e error category; infrastructure leaves the pass rate', async () => {
+  const { passRate } = await import('../ui/health.js');
+  const r = fixture();
+  const ok = { status: 'passed', attempts: [] };
+  const bad = (category) => ({ status: 'failed', attempts: [{ error: { code: 'X', category, message: 'm' } }] });
+  r.run.results = [ok, bad('test'), bad('infrastructure'), bad('configuration'), { status: 'failed', attempts: [] }];
+  r.run.errors = [{ code: 'REPORT_WRITE_FAILED', message: 'x' }];
+  const m = summarize(r, { source: 'hook' });
+  assert.deepEqual(m.errorClasses, { test: 2, infrastructure: 1, configuration: 1 });
+  assert.equal(m.runErrors, 1);
+  const meta = { summary: { passed: 1, failed: 4 }, errorClasses: m.errorClasses };
+  assert.equal(passRate(meta), 1 / 3); // 1 pass, 2 real failures; 2 non-test failures ignored
+  assert.equal(passRate({ summary: { passed: 1, failed: 4 } }), 1 / 5); // older run: unchanged
+  assert.equal(passRate({ summary: { failed: 2 }, errorClasses: { infrastructure: 2 } }), null);
+});

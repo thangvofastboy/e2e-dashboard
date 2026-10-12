@@ -179,7 +179,7 @@ export async function userSummary(env = process.env) {
       return { host, events: Array.isArray(w.events) ? w.events : WEBHOOK_EVENTS };
     }),
     events: WEBHOOK_EVENTS,
-    ai: { autoSummary: c.ai?.autoSummary !== false, model: validModel(c.ai?.model) ? c.ai.model : '', effort: AI_EFFORTS.includes(c.ai?.effort) ? c.ai.effort : '', efforts: AI_EFFORTS },
+    ai: { autoSummary: c.ai?.autoSummary !== false, autoBugLog: c.ai?.autoBugLog === true, model: validModel(c.ai?.model) ? c.ai.model : '', effort: AI_EFFORTS.includes(c.ai?.effort) ? c.ai.effort : '', efforts: AI_EFFORTS },
     selfHeal: { enabled: c.selfHeal?.enabled === true, repo: typeof c.selfHeal?.repo === 'string' ? c.selfHeal.repo : '', maxPerDay: Number.isInteger(c.selfHeal?.maxPerDay) ? c.selfHeal.maxPerDay : 3 },
   };
 }
@@ -212,6 +212,7 @@ async function writeUserNow(env, patch) {
     c.webhooks = [...(Array.isArray(c.webhooks) ? c.webhooks : []), { url: u.href, events: ev.length ? ev : WEBHOOK_EVENTS }];
   }
   if (typeof patch.autoSummary === 'boolean') c.ai = { ...(c.ai ?? {}), autoSummary: patch.autoSummary };
+  if (typeof patch.autoBugLog === 'boolean') c.ai = { ...(c.ai ?? {}), autoBugLog: patch.autoBugLog };
   if (patch.aiModel !== undefined) {
     if (patch.aiModel && !validModel(patch.aiModel)) throw bad('Tên model không hợp lệ');
     c.ai = { ...(c.ai ?? {}), model: patch.aiModel || undefined };

@@ -108,6 +108,14 @@ test('environment breakdown finds where failures concentrate', () => {
   assert.equal(e.dims.os, undefined, 'one OS only: nothing to compare');
 });
 
+test('environment breakdown splits results by agent / persona', () => {
+  const mk = (agent, status, i) => ({ ...result({ testId: `t${i}`, idSeed: i, status }), agent });
+  const h = [0, 1].map((k) => run({ results: [mk('default', 'passed', 1 + k * 10), mk('default', 'passed', 2 + k * 10), mk('buyer', 'failed', 3 + k * 10), mk('buyer', 'failed', 4 + k * 10)] }));
+  const e = environmentBreakdown(h);
+  assert.deepEqual(e.dims.agent.map((x) => [x.value, x.fails, x.results]), [['buyer', 4, 4], ['default', 0, 4]]);
+  assert.ok(e.hotspots.some((x) => x.dim === 'agent' && x.value === 'buyer'));
+});
+
 test('SLO budget and burn rate; gate checks new failures, health, SLO, tokens', () => {
   const now = Date.parse('2026-10-10T12:00:00Z');
   const at = (d) => new Date(now - d * 86_400_000).toISOString();
@@ -213,4 +221,18 @@ test('UI pieces escape text; new routes parse', () => {
   assert.doesNotMatch(html, /<img/);
   assert.equal(sloPanel({ executed: 0 }), '');
   for (const v of ['coverage', 'environment', 'report']) assert.deepEqual(parseRoute(`#/${v}`), { view: v });
+});
+
+test('gate: an infrastructure failure is not a new failure but still blocks, with its own check', async () => {
+  const { run: mkRun, result: mkResult, err: mkErr } = await import('./_history.mjs');
+  const { qualityGate: gate } = await import('../server/insights.mjs');
+  const { compareRuns: cmp } = await import('../server/analytics.mjs');
+  const infra = { ...mkErr('MODEL_PROVIDER_FAILED', 'provider 503'), category: 'infrastructure' };
+  const h = [
+    mkRun({ startedAt: '2026-10-02T00:00:00Z', results: [mkResult({ testId: 'a', idSeed: 1, status: 'failed', error: infra }), mkResult({ testId: 'b', idSeed: 2 })] }),
+    mkRun({ startedAt: '2026-10-01T00:00:00Z', results: [mkResult({ testId: 'a', idSeed: 1 }), mkResult({ testId: 'b', idSeed: 2 })] }),
+  ];
+  const g = gate({ history: h, compare: cmp });
+  assert.deepEqual(g.checks.map((c) => [c.name, c.pass]), [['new-failures', true], ['infrastructure', false]]);
+  assert.equal(g.pass, false);
 });

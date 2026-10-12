@@ -10,7 +10,7 @@ const slimTest = ({ steps, ...t }) => (t.status === 'running' ? { ...t, steps: s
 
 const empty = () => ({
   runId: null, status: 'idle', runStatus: null, startedAt: null, finishedAt: null, artifactsRoot: null,
-  total: 0, done: 0, lanes: 0, tests: [], output: [], error: null,
+  total: 0, done: 0, lanes: 0, tests: [], output: [], error: null, stopped: null, notices: [],
 });
 
 export function createLive({ throttleMs = 250 } = {}) {
@@ -35,7 +35,7 @@ export function createLive({ throttleMs = 250 } = {}) {
 
   const runFields = () => ({
     runId: state.runId, status: state.status, runStatus: state.runStatus, startedAt: state.startedAt, finishedAt: state.finishedAt,
-    artifactsRoot: state.artifactsRoot, total: state.total, done: state.done, lanes: state.lanes, error: state.error,
+    artifactsRoot: state.artifactsRoot, total: state.total, done: state.done, lanes: state.lanes, error: state.error, stopped: state.stopped, notices: state.notices,
   });
   const full = () => ({ kind: 'full', ...runFields(), tests: state.tests.map(slimTest), output: state.output.slice(-OUTPUT_SENT) });
   const notify = () => {
@@ -133,6 +133,12 @@ export function createLive({ throttleMs = 250 } = {}) {
         break;
       case 'run-error':
         state.error = e.error ?? null;
+        break;
+      case 'run-stopped': // --max-failures reached: the runner stops scheduling tests
+        state.stopped = { failures: Number(e.failures) || 0, limit: Number(e.limit) || 0 };
+        break;
+      case 'notice': // e.g. a target that fell back to another browser
+        state.notices = [...state.notices, { target: String(e.target ?? '').slice(0, 80), message: String(e.message ?? '').slice(0, 300) }].slice(-10);
         break;
       case 'run-interrupted':
         state.status = 'interrupted';

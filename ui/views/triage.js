@@ -29,6 +29,7 @@ export function triageRowHtml(r, statuses) {
 }
 
 let triageFilter = null;
+let triageWho = ''; // lọc theo người phụ trách: "việc của tôi"
 let aiSuggest = null; // fp -> gợi ý AI, bỏ khi vào lại trang
 
 const SEV = { high: ['Cao', 'bad'], medium: ['Vừa', 'warn'], low: ['Thấp', 'muted'] };
@@ -46,8 +47,9 @@ export async function renderTriage(main, route = {}) {
     main.innerHTML = `${head}${emptyBox('Không có lỗi nào cần xử lý', 'Mọi test đều đang pass. 🎉')}`;
     return;
   }
-  const chips = `<div class="filters tri-chips"><button type="button" class="pill ${!triageFilter ? 'on' : ''}" data-tri-filter="">Tất cả <strong>${b.rows.length}</strong></button>${b.statuses.map((s) => `<button type="button" class="pill ${triageFilter === s ? 'on' : ''}" data-tri-filter="${s}"><span class="chip tone-${TRIAGE_LABEL[s][1]}">${icon(TRIAGE_LABEL[s][2], { size: 12 })}${escapeHtml(TRIAGE_LABEL[s][0])}</span> <strong>${escapeHtml(b.counts[s])}</strong></button>`).join('')}</div>`;
-  const rows = b.rows.filter((r) => !triageFilter || r.status === triageFilter);
+  const chips = `<div class="filters tri-chips"><button type="button" class="pill ${!triageFilter ? 'on' : ''}" data-tri-filter="">Tất cả <strong>${b.rows.length}</strong></button>${b.statuses.map((s) => `<button type="button" class="pill ${triageFilter === s ? 'on' : ''}" data-tri-filter="${s}"><span class="chip tone-${TRIAGE_LABEL[s][1]}">${icon(TRIAGE_LABEL[s][2], { size: 12 })}${escapeHtml(TRIAGE_LABEL[s][0])}</span> <strong>${escapeHtml(b.counts[s])}</strong></button>`).join('')}</div><input class="tri-who" data-tri-who value="${escapeHtml(triageWho)}" placeholder="Lọc theo người phụ trách" aria-label="Lọc theo người phụ trách" maxlength="80"></div>`;
+  const who = triageWho.trim().toLowerCase();
+  const rows = b.rows.filter((r) => (!triageFilter || r.status === triageFilter) && (!who || (r.assignee ?? '').toLowerCase().includes(who)));
   main.innerHTML = `${head}${b.untriaged ? `<div class="banner tone-warn">${icon('alert', { size: 15 })}${escapeHtml(b.untriaged)} lỗi chưa ai nhận: chọn trạng thái hoặc người phụ trách.</div>` : ''}${chips}
     <div class="table-wrap"><table class="table tri-table"><thead><tr><th>Trạng thái</th><th>Test</th><th>Đang fail</th><th>Phụ trách</th><th>Ghi chú</th><th></th></tr></thead><tbody>${rows.map((r) => triageRowHtml(r, b.statuses)).join('')}</tbody></table></div>`;
   if (aiSuggest) for (const s of aiSuggest.values()) main.querySelector(`tr[data-fp="${CSS.escape(s.fp)}"]`)?.insertAdjacentHTML('afterend', suggestRow(s));
@@ -74,6 +76,10 @@ export async function renderTriage(main, route = {}) {
     toast(`Đã áp dụng gợi ý: “${TRIAGE_LABEL[s.status][0]}”`);
     renderTriage(main);
   }));
+  main.querySelector('[data-tri-who]')?.addEventListener('input', (e) => {
+    triageWho = e.target.value;
+    renderTriage(main);
+  });
   main.querySelectorAll('[data-tri-filter]').forEach((x) => x.addEventListener('click', () => {
     triageFilter = x.dataset.triFilter || null;
     replaceParams({ status: triageFilter });

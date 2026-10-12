@@ -1,4 +1,5 @@
 import { getJson, postJson } from '../api.js';
+import { confirmDialog } from '../confirm.js';
 import { pageHead } from '../analysis.js';
 import { toast } from '../toast.js';
 import { escapeHtml, fmtRelative, statusBadge } from '../format.js';
@@ -33,13 +34,24 @@ function browserFormHtml(p) {
     ${missing.length ? `<p class="muted small">Cài thêm trình duyệt: <code>npx @e2e-dev/web install ${missing.join(' ')}</code></p>` : ''}`;
 }
 
+// Tab dọc giống Cài đặt hệ thống: mọi panel vẫn có trong DOM, chỉ ẩn bằng hidden nên các listener không đổi.
+const SET_TABS = [
+  ['run', 'Chạy & lịch', 'gauge', 'Workers, watch, lịch chạy'],
+  ['notify', 'Thông báo & CI', 'send', 'Webhook, cảnh báo, đồng bộ CI'],
+  ['storage', 'Lưu trữ', 'download', 'Dung lượng, dọn rác, run nặng'],
+];
+
 export async function renderSettings(main) {
   const [auto, storage, ci, alerts, prefs] = await Promise.all([getJson('/api/automation'), getJson('/api/storage'), getJson('/api/ci').catch(() => null), getJson('/api/alerts').catch(() => null), getJson('/api/settings').catch(() => null)]);
   const s = auto.schedule;
   const kinds = [['video', 'Video'], ['image', 'Ảnh'], ['report', 'report.json'], ['trace', 'Trace'], ['other', 'Khác']];
   const biggest = [...storage.runs].sort((a, b) => b.bytes - a.bytes).slice(0, 8);
   main.innerHTML = `${pageHead('Tự động & lưu trữ', 'gauge', 'Chế độ watch, lịch chạy, webhook và dung lượng lịch sử.')}
-    <div class="two-col settings-grid">
+    <div class="sys">
+      <nav class="sys-nav" role="tablist" aria-orientation="vertical" aria-label="Nhóm cài đặt tự động và lưu trữ">${SET_TABS.map(([k, label, ic, sub], i) => `<button type="button" role="tab" id="set-tab-${k}" data-set-tab="${k}" aria-selected="${i === 0}" aria-controls="set-pane-${k}" tabindex="${i === 0 ? 0 : -1}"><span class="sys-nav-ic">${icon(ic, { size: 20 })}</span><span class="sys-nav-t"><strong>${label}</strong><span class="small">${sub}</span></span></button>`).join('')}</nav>
+      <div class="sys-body">
+        <div class="sys-pane" role="tabpanel" id="set-pane-run" aria-labelledby="set-tab-run">
+          <div class="settings-grid">
       ${prefs ? workersPanelHtml(prefs) : ''}
       <section class="panel"><h2>${icon('eye', { size: 15 })} Chế độ watch</h2>
         <p class="muted small">Lưu một file <code>*.e2e.ts</code> là dashboard tự chạy lại đúng file đó (bỏ qua test đang cách ly), xem ở trang Live.</p>
@@ -48,19 +60,38 @@ export async function renderSettings(main) {
       <section class="panel"><h2>${icon('clock', { size: 15 })} Lịch chạy</h2>
         ${s?.times?.length ? `<p>Hằng ngày lúc <strong>${s.times.map(escapeHtml).join(', ')}</strong> · lần tới ${escapeHtml(new Date(s.next).toLocaleString('vi-VN'))}</p>` : '<p class="muted">Chưa đặt lịch.</p>'}
         <details class="cfg"><summary class="small">${icon('file', { size: 13 })}Cách cấu hình</summary><p class="muted small">Đặt trong <code>.e2e-dashboard/config.json</code>: <code>"schedule": { "daily": ["02:00"], "tests": [] }</code>. Chỉ chạy khi dashboard đang mở; kết quả gửi qua thông báo desktop và webhook.</p></details></section>
+          </div>
+        </div>
+        <div class="sys-pane" role="tabpanel" id="set-pane-notify" aria-labelledby="set-tab-notify" hidden>
+          <div class="settings-grid">
       <section class="panel"><h2>${icon('send', { size: 15 })} Webhook (Slack / Discord)</h2>
         ${auto.webhooks.length ? `<ul>${auto.webhooks.map((w) => `<li><code>${escapeHtml(w.host)}</code> <span class="muted small">${escapeHtml(w.events.join(', '))}</span></li>`).join('')}</ul><button type="button" data-hook-test>${icon('send', { size: 14 })}Gửi thử</button>` : '<p class="muted">Chưa có webhook.</p>'}
         <details class="cfg"><summary class="small">${icon('file', { size: 13 })}Cách cấu hình</summary><p class="muted small">Thêm vào <code>~/.e2e-dashboard/config.json</code> (không đặt trong repo): <code>"webhooks": [{ "url": "https://hooks.slack.com/…", "events": ["run-failed", "digest"] }]</code>. Digest tuần: <code>/e2e-dashboard digest --send</code>.</p></details></section>
+      ${alerts ? alertsPanelHtml(alerts) : ''}
+      ${ci ? ciPanelHtml(ci) : ''}
+          </div>
+        </div>
+        <div class="sys-pane" role="tabpanel" id="set-pane-storage" aria-labelledby="set-tab-storage" hidden>
+          <div class="settings-grid">
       <section class="panel"><h2>${icon('download', { size: 15 })} Dung lượng: ${escapeHtml(fmtBytes(storage.bytes))}</h2>
         <ul class="hbar">${kinds.map(([k, label]) => `<li><span class="hb-label">${label}</span><span class="hb-track"><span class="hb-fill tone-info" style="width:${storage.bytes ? Math.round((storage.totals[k] / storage.bytes) * 100) : 0}%"></span></span><span class="hb-val">${escapeHtml(fmtBytes(storage.totals[k]))}</span></li>`).join('')}</ul>
         <form class="row" data-prune><label>Xoá video của run cũ hơn <input type="number" name="days" min="0" max="3650" value="7"> ngày</label><button type="submit">${icon('close', { size: 14 })}Xoá video</button></form>
         <p class="muted small">Giữ run fail lâu hơn: <code>"retention": { "keep": 50, "keepFailed": 200 }</code>. Run đã ghim không bao giờ bị xoá.</p></section>
       ${cleanupPanelHtml()}
-      ${alerts ? alertsPanelHtml(alerts) : ''}
-      ${ci ? ciPanelHtml(ci) : ''}
-    </div>
-    <section class="fill-me"><h2>Run nặng nhất</h2><table class="table"><thead><tr><th>Run</th><th>Bắt đầu</th><th class="num">Dung lượng</th><th class="num">Video</th><th></th></tr></thead><tbody>${biggest.map((r) => `<tr><td><a href="${runHref(r.runId)}">${statusBadge(r.status)}</a></td><td>${escapeHtml(fmtRelative(r.startedAt))}</td><td class="num">${escapeHtml(fmtBytes(r.bytes))}</td><td class="num">${escapeHtml(fmtBytes(r.video))}</td>
-      <td>${r.pinned ? `<span class="muted small">Đã ghim</span>` : `<button type="button" class="small-btn" data-del="${escapeHtml(r.runId)}">${icon('close', { size: 13 })}Xoá run</button>`}</td></tr>`).join('')}</tbody></table></section>`;
+          </div>
+                    <section class="panel fill-me"><h2>Run nặng nhất</h2><table class="table"><thead><tr><th>Run</th><th>Bắt đầu</th><th class="num">Dung lượng</th><th class="num">Video</th><th></th></tr></thead><tbody>${biggest.map((r) => `<tr><td><a href="${runHref(r.runId)}">${statusBadge(r.status)}</a></td><td>${escapeHtml(fmtRelative(r.startedAt))}</td><td class="num">${escapeHtml(fmtBytes(r.bytes))}</td><td class="num">${escapeHtml(fmtBytes(r.video))}</td>
+      <td>${r.pinned ? `<span class="muted small">Đã ghim</span>` : `<button type="button" class="small-btn" data-del="${escapeHtml(r.runId)}">${icon('close', { size: 13 })}Xoá run</button>`}</td></tr>`).join('')}</tbody></table></section>
+        </div>
+      </div>
+    </div>`;
+  main.querySelectorAll('[data-set-tab]').forEach((b) => b.addEventListener('click', () => {
+    main.querySelectorAll('[data-set-tab]').forEach((x) => {
+      const on = x === b;
+      x.setAttribute('aria-selected', String(on));
+      x.tabIndex = on ? 0 : -1;
+    });
+    main.querySelectorAll('.sys-pane').forEach((p) => (p.hidden = p.id !== `set-pane-${b.dataset.setTab}`));
+  }));
   main.querySelector('[data-browser]')?.addEventListener('change', async (e) => {
     const r = await postJson('/api/settings', { browser: e.target.value }).catch((x) => ({ error: x.message }));
     if (r.error) toast(r.error, 'bad');
@@ -101,7 +132,7 @@ export async function renderSettings(main) {
   main.querySelector('[data-prune]').addEventListener('submit', async (e) => {
     e.preventDefault();
     const days = Number(new FormData(e.target).get('days'));
-    if (!confirm(`Xoá video của mọi run (trừ run đã ghim) cũ hơn ${days} ngày?`)) return;
+    if (!(await confirmDialog({ title: 'Xoá video', message: `Xoá video của mọi run (trừ run đã ghim) cũ hơn ${days} ngày?`, confirmLabel: 'Xoá video' }))) return;
     const r = await postJson('/api/storage/prune', { days }).catch((x) => ({ error: x.message }));
     if (r.error) toast(r.error, 'bad');
     else {
@@ -140,7 +171,7 @@ export async function renderSettings(main) {
   out.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-cleanup-go]');
     if (!b || !query) return;
-    if (!confirm(`${b.textContent.trim()}? Không hoàn tác được.`)) return;
+    if (!(await confirmDialog({ title: 'Xoá run theo bộ lọc', message: `${b.textContent.trim()}? Không hoàn tác được.`, confirmLabel: 'Xoá' }))) return;
     b.setAttribute('aria-busy', 'true');
     try {
       const r = await postJson('/api/storage/cleanup', { ...query, olderThanDays: query.olderThanDays ?? null });
@@ -153,7 +184,7 @@ export async function renderSettings(main) {
   });
   main.querySelectorAll('[data-del]').forEach((b) =>
     b.addEventListener('click', async () => {
-      if (!confirm('Xoá hẳn run này khỏi lịch sử?')) return;
+      if (!(await confirmDialog({ title: 'Xoá run', message: 'Xoá hẳn run này khỏi lịch sử?', confirmLabel: 'Xoá' }))) return;
       const r = await postJson(`/api/runs/${encodeURIComponent(b.dataset.del)}/delete`, {}).catch((x) => ({ error: x.message }));
       if (r.error) toast(r.error, 'bad');
       else {

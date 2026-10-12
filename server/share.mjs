@@ -5,17 +5,31 @@ import { execFile } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve, basename, dirname, relative } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { junitToReport } from './junit.mjs';
 import { DATA_DIR, RUN_ID, archive, ensureDataDir, isLink, listRunDirs, runSortKey, nestedFromLegacy } from '../reporter/e2e-dashboard.reporter.mjs';
 
 const runsDir = (root) => join(root, DATA_DIR, 'runs');
 
-// `path` is a report.json or the e2e output directory holding one (with results/ beside it).
+// `path` is a report.json or the e2e output directory holding one (with results/ beside it), or a junit.xml
+// (also what a directory without report.json falls back to): far less detail, but CI often keeps only that.
 export async function importReport(root, path, { source = 'ci' } = {}) {
   const p = resolve(path);
   const st = await lstat(p).catch(() => null);
   if (!st || st.isSymbolicLink()) return { status: 'skipped', reason: 'not-found' };
   const dir = st.isDirectory() ? p : dirname(p);
-  const reportPath = st.isDirectory() ? join(p, 'report.json') : p;
+  let reportPath = st.isDirectory() ? join(p, 'report.json') : p;
+  if (reportPath.endsWith('.xml') || (st.isDirectory() && !(await lstat(reportPath).catch(() => null)))) {
+    const xmlPath = reportPath.endsWith('.xml') ? reportPath : join(p, 'junit.xml');
+    const xst = await lstat(xmlPath).catch(() => null);
+    if (!xst?.isFile() || xst.size > 10 * 1024 * 1024) return { status: 'skipped', reason: 'not-found' };
+    let report;
+    try {
+      report = junitToReport(await readFile(xmlPath, 'utf8'), { startedAt: xst.mtime.toISOString() });
+    } catch (e) {
+      return { status: 'skipped', reason: `junit: ${e.message}` };
+    }
+    return archive(root, { source, report });
+  }
   return archive(root, { source, reportPath, artifactsRoot: join(dir, 'results') });
 }
 
@@ -32,10 +46,12 @@ export async function importFromGithub(root, runId, { artifact = null, execImpl 
     const walk = async (d, depth = 0) => {
       for (const e of await readdir(d, { withFileTypes: true }).catch(() => [])) {
         if (e.isDirectory() && depth < 6) await walk(join(d, e.name), depth + 1);
-        else if (e.isFile() && e.name === 'report.json') reports.push(join(d, e.name));
+        else if (e.isFile() && (e.name === 'report.json' || e.name === 'junit.xml')) reports.push(join(d, e.name));
       }
     };
     await walk(tmp);
+    // junit.xml only where no report.json sits beside it (the e2e output directory holds both)
+    for (let i = reports.length - 1; i >= 0; i--) if (reports[i].endsWith('junit.xml') && reports.includes(join(dirname(reports[i]), 'report.json'))) reports.splice(i, 1);
     const out = [];
     for (const r of reports) out.push({ report: relative(tmp, r), ...(await importReport(root, r, { source: 'ci' })) });
     return out;
@@ -70,6 +86,7 @@ export async function sharePush(root, dir) {
   await mkdir(target, { recursive: true });
   const there = new Set(await readdir(target).catch(() => []));
   let pushed = 0;
+  let unredacted = 0;
   // thư mục chung giữ tên phẳng kiểu cũ (<ISO>_<id>): đồng đội dùng bản cũ vẫn đọc được
   for (const rel of isLink(runsDir(root)) ? [] : await listRunDirs(runsDir(root))) {
     const name = runSortKey(rel);
@@ -81,12 +98,13 @@ export async function sharePush(root, dir) {
       await copyTree(join(runsDir(root), rel), tmp);
       await rename(tmp, join(target, name));
       pushed++;
+      unredacted += Number(meta.unredacted) || 0;
     } catch (e) {
       await rm(tmp, { recursive: true, force: true });
       if (e.code !== 'ENOTEMPTY' && e.code !== 'EEXIST') throw e;
     }
   }
-  return { pushed, dir: target };
+  return { pushed, dir: target, unredacted };
 }
 
 // A teammate's runs come in as data only: names, ids and both JSON files are checked first.

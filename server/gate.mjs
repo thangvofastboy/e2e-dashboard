@@ -5,6 +5,7 @@ import { indexedCounts } from './runindex.mjs';
 import { compareRuns } from './analytics.mjs';
 import { qualityGate, sloStatus } from './insights.mjs';
 import { flakyShare } from './digest.mjs';
+import { readNotes, knownKeys } from './qc.mjs';
 import { healthScore } from '../ui/health.js';
 
 export function sloConfig(cfg) {
@@ -39,5 +40,6 @@ export async function runGate(root, overrides = {}) {
   const baseline = baseMeta ? await getRun(root, baseMeta.runId) : null;
   const rules = { ...(cfg.gate && typeof cfg.gate === 'object' ? cfg.gate : {}), ...overrides };
   const clean = Object.fromEntries(Object.entries(rules).filter(([k, v]) => (k === 'requireSlo' ? typeof v === 'boolean' : Number.isFinite(v))));
-  return { ...qualityGate({ history, health, slo, baseline, compare: compareRuns, rules: clean }), health: health?.score ?? null, slo };
+  const known = knownKeys(await readNotes(root));
+  return { ...qualityGate({ history, health, slo, baseline, compare: compareRuns, rules: clean, known }), health: health?.score ?? null, slo };
 }

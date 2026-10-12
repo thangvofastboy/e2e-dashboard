@@ -71,3 +71,15 @@ test('buildRunArgs passes --workers 1..1024 and rejects anything else', () => {
   assert.deepEqual(buildRunArgs({ workers: 4 }), ['e2e', 'run', '--workers', '4']);
   for (const bad of [0, 1025, 2.5, '4', -1]) assert.throws(() => buildRunArgs({ workers: bad }), /invalid workers/, String(bad));
 });
+
+test('buildRunArgs maps the selection, cache, trace and snapshot flags', () => {
+  assert.deepEqual(
+    buildRunArgs({ tag: ['@smoke', 'api'], tagMode: 'all', excludeTag: ['slow'], grep: 'login', shard: '2/4', maxFailures: 3, strictCache: true, trace: 'retain-on-failure', video: 'on', lastFailed: true, updateSnapshots: true, aiTrace: true }),
+    ['e2e', 'run', '--tag', '@smoke,api', '--tag-mode', 'all', '--exclude-tag', 'slow', '--grep', 'login', '--shard', '2/4', '--max-failures', '3', '--strict-cache', '--trace=retain-on-failure', '--video=on', '--last-failed', '--update-snapshots', '--ai-trace'],
+  );
+});
+
+test('buildRunArgs rejects bad selection and mode values', () => {
+  for (const bad of [{ tag: ['--x'] }, { tagMode: 'some' }, { grep: '--config' }, { shard: '5/4' }, { shard: '0/4' }, { maxFailures: 0 }, { trace: 'always' }, { video: '--x' }, { strictCache: 'yes' }, { aiTrace: 1 }])
+    assert.throws(() => buildRunArgs(bad), /invalid/, JSON.stringify(bad));
+});

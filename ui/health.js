@@ -19,8 +19,16 @@ export function passRate(meta) {
   const s = meta.summary ?? {};
   const n = (v) => Number(v) || 0; // counts come from report.json
   const ok = n(s.passed) + n(s.flaky);
-  const done = ok + n(s.failed) + n(s.interrupted);
-  return done ? ok / done : null;
+  const done = ok + n(s.failed) + n(s.interrupted) - nonTestFailures(meta);
+  return done > 0 ? ok / done : null;
+}
+
+// Failures that are not about the app under test (configuration / infrastructure): left out of the pass rate.
+// Runs archived before 0.9 have no errorClasses, so they count as before.
+export function nonTestFailures(meta) {
+  const c = meta.errorClasses ?? {};
+  const failed = Number(meta.summary?.failed) || 0;
+  return Math.min(failed, (Number(c.configuration) || 0) + (Number(c.infrastructure) || 0));
 }
 
 export function rateHealth(v, t) {

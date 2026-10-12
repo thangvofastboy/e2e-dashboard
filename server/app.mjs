@@ -10,10 +10,11 @@ import { join, extname, basename, relative, resolve, dirname } from 'node:path';
 import { platform, release } from 'node:os';
 import { timingSafeEqual, createHash } from 'node:crypto';
 import { safeJoin, realInside, readConfig, VERSION, DATA_DIR, RUN_ID, RESULT_ID, resultAttempts, isLink } from '../reporter/e2e-dashboard.reporter.mjs';
-import { listRuns, getRun, findRunDir, setFlag, testHistory, getAi, writeAi, listAi, loadHistory } from './store.mjs';
-import { flakyTests, compareRuns, groupErrors, costStats, slowSteps, routeMap, branchStats, compareBranches, locatorCandidates, traceToCode, testKey } from './analytics.mjs';
+import { listRuns, getRun, findRunDir, setFlag, testHistory, getAi, writeAi, listAi, loadHistory, dropCaches } from './store.mjs';
+import { resetPreview, resetAll } from './reset.mjs';
+import { flakyTests, compareRuns, groupErrors, costStats, slowSteps, routeMap, branchStats, compareBranches, locatorCandidates, traceToCode, testKey, resultError } from './analytics.mjs';
 import { projectSummaries, forgetProject } from './projects.mjs';
-import { acceptDescription, acceptTitle, placeImages, issueDraft, claudePrompt, linearConfig, createLinear, readIssueLinks, saveIssueLink } from './linear.mjs';
+import { acceptDescription, acceptTitle, placeImages, issueDraft, claudePrompt, linearConfig, createLinear, readIssueLinks, saveIssueLink, parseIssueRef, removeIssueLink, fingerprint as issueFingerprint } from './linear.mjs';
 import { healthScore } from '../ui/health.js';
 import { search, anomalies, lintAgentSteps, LINT_RULES, modelStats, bisectPlan, flakyEvidence, testDetail, appErrors, setupTiming } from './insights.mjs';
 import { changedFiles, impactedTests } from './impact.mjs';
@@ -40,6 +41,14 @@ import { syncLongterm, readDays, daySeries, totals, reliability, lifecycle, dayK
 import { syncTriage, triageBoard, updateTriage, TRIAGE_STATUSES } from './triage.mjs';
 import { groupReport } from './groups.mjs';
 import { traceMatrix, storyList } from './traceability.mjs';
+import { aiTraceView, aiTraceCall } from './aitrace.mjs';
+import { listCache, clearCache, cacheDir } from './replaycache.mjs';
+import { validateFeedback, buildIssue, rateOk, createIssue } from './feedback.mjs';
+import { commentIfNewBug, signatureOf } from './knownbug.mjs';
+import { findDuplicates, splitCandidates, actionPrompt, latestWithResults } from './dupes.mjs';
+import { analyzeQuality } from './quality.mjs';
+import { readTemplates, findTemplate, saveTemplate, resultVars, runVars, renderPrompt, keepFingerprint, PLACEHOLDERS } from './qc-templates.mjs';
+import { markKnown, readNotes, setNote, readManual, saveManual, manualSummary, bugReport, buildMatrix, bugRows, bugsCsv } from './qc.mjs';
 import { addEvent, removeEvent, timeline, lastCommits, EVENT_KINDS } from './events.mjs';
 import { releaseReport } from './release.mjs';
 import { alertRules, readAlerts, describeRule } from './alerts.mjs';
@@ -146,7 +155,7 @@ const runCount = (url, def = 30) => {
 // from inside the project.
 export async function readCacheEntry(projectRoot, entry, cfg = readConfig(projectRoot)) {
   if (!/^[0-9a-f]{64}$/.test(entry ?? '')) return null;
-  const dir = safeJoin(projectRoot, typeof cfg.cacheDir === 'string' ? cfg.cacheDir : `${typeof cfg.output === 'string' ? cfg.output : '.e2e'}/cache`);
+  const dir = cacheDir(projectRoot, cfg);
   const file = dir && safeJoin(dir, `${entry}.json`);
   const st = file && (await lstat(file).catch(() => null));
   if (!st?.isFile() || st.size > 1024 * 1024 || !realInside(projectRoot, file)) return null;
@@ -155,6 +164,41 @@ export async function readCacheEntry(projectRoot, entry, cfg = readConfig(projec
   } catch {
     return null;
   }
+}
+
+// Test ids of the latest run: a cache entry of any other test belongs to a test that was deleted or renamed.
+async function currentTestIds(projectRoot) {
+  const [latest] = await loadHistory(projectRoot, 1);
+  const ids = new Set((latest?.report?.run?.results ?? []).map((r) => r.testId).filter(Boolean));
+  return ids.size ? ids : null;
+}
+
+async function cacheView(projectRoot) {
+  const out = await listCache(projectRoot, { testIds: await currentTestIds(projectRoot) });
+  const byTest = new Map();
+  for (const e of out.entries) {
+    const k = `${e.testId ?? '-'}|${e.targetId ?? '-'}`;
+    if (!byTest.has(k)) byTest.set(k, { testId: e.testId, targetId: e.targetId, entries: 0, actions: 0, bytes: 0, newest: null, stale: 0, orphan: e.orphan });
+    const t = byTest.get(k);
+    t.entries++;
+    t.actions += e.actions;
+    t.bytes += e.bytes;
+    t.stale += e.stale ? 1 : 0;
+    if (!t.newest || e.createdAt > t.newest) t.newest = e.createdAt;
+  }
+  return { ...out, tests: [...byTest.values()].sort((a, b) => String(a.testId).localeCompare(String(b.testId))) };
+}
+
+// Variables for a prompt template: one result of a run when resultId is given, else the whole run (the newest by default).
+async function qcVars(projectRoot, { runId = null, resultId = null } = {}) {
+  const run = runId ? await getRun(projectRoot, String(runId)) : ((await loadHistory(projectRoot, 1))[0] ?? null);
+  if (!run) return null;
+  if (resultId == null) return runVars(run);
+  if (!RESULT_ID.test(String(resultId))) throw new Error('invalid resultId');
+  const r = (run.report.run.results ?? []).find((x) => x.id === resultId);
+  if (!r) throw new Error('result not found');
+  const n = (await readNotes(projectRoot))[testKey(r)] ?? {};
+  return resultVars(run, resultId, n.note || null, n.known || null);
 }
 
 // A compact text picture of the suite for the free-form AI question.
@@ -517,6 +561,49 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
           'content-disposition': `attachment; filename="e2e-run-${out.runId}.html"`,
         });
       }
+      if (p === '/api/cache') return send(res, 200, await cacheView(projectRoot));
+      if (p === '/api/reset/preview') return send(res, 200, await resetPreview(projectRoot, { env }));
+      if (p === '/api/qc/notes') return send(res, 200, await readNotes(projectRoot));
+      if (p === '/api/qc/quality') return send(res, 200, analyzeQuality(await loadHistory(projectRoot, Math.min(runCount(url), 30))));
+      if (p === '/api/qc/dupes') {
+        const latest = latestWithResults(await loadHistory(projectRoot, 30));
+        if (!latest) return send(res, 200, { runId: null, groups: [] });
+        const groups = [...findDuplicates(latest.report), ...splitCandidates(latest.report)].map((g) => ({ ...g, prompt: actionPrompt(g) }));
+        return send(res, 200, { runId: latest.meta.runId, groups });
+      }
+      if (p === '/api/qc/templates') return send(res, 200, { templates: await readTemplates(projectRoot), placeholders: PLACEHOLDERS });
+      if (p === '/api/qc/results') {
+        const [latest] = await loadHistory(projectRoot, 1);
+        return send(res, 200, { runId: latest?.meta.runId ?? null, results: bugRows(latest, await readNotes(projectRoot)).map(({ id, runId, test, target, status }) => ({ id, runId, test, target, status })) });
+      }
+      if (p === '/api/qc/manual') {
+        const items = await readManual(projectRoot);
+        return send(res, 200, { items, summary: manualSummary(items) });
+      }
+      // ma trận build: tối đa 60 report trong bộ nhớ
+      if (p === '/api/build-matrix') return send(res, 200, buildMatrix(await loadHistory(projectRoot, Math.min(runCount(url), 60)), { builds: Math.min(Math.max(Number(url.searchParams.get('builds')) || 8, 2), 12) }));
+      if (p === '/api/export/bugs.csv') {
+        const [latest] = await loadHistory(projectRoot, 1);
+        return send(res, 200, bugsCsv(bugRows(latest, await readNotes(projectRoot))), { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="e2e-bugs.csv"' });
+      }
+      const bug = /^\/api\/runs\/([^/]+)\/bug-report$/.exec(p);
+      if (bug) {
+        const run = await getRun(projectRoot, bug[1]);
+        if (!run) return send(res, 404, { error: 'run not found' });
+        const rid = url.searchParams.get('resultId') ?? '';
+        if (!RESULT_ID.test(rid)) return send(res, 400, { error: 'invalid resultId' });
+        const r = (run.report.run.results ?? []).find((x) => x.id === rid);
+        const n = r ? (await readNotes(projectRoot))[testKey(r)] ?? {} : {};
+        const md = r ? bugReport({ meta: run.meta, report: run.report, resultId: rid, note: n.note || null, known: n.known || null }) : null;
+        return md ? send(res, 200, md, { 'content-type': 'text/markdown; charset=utf-8' }) : send(res, 404, { error: 'result not found' });
+      }
+      const aiTr = /^\/api\/runs\/([^/]+)\/ai-trace(?:\/([\w.:-]{1,80}))?$/.exec(p);
+      if (aiTr) {
+        const dir = await findRunDir(projectRoot, aiTr[1]);
+        if (!dir) return send(res, 404, { error: 'run not found' });
+        const out = aiTr[2] ? await aiTraceCall(dir, aiTr[2]) : await aiTraceView(dir, { testId: url.searchParams.get('testId') });
+        return out ? send(res, 200, out) : send(res, 404, { error: 'no ai-trace for this run (chạy với --ai-trace)' });
+      }
       let m = /^\/api\/runs\/([^/]+)$/.exec(p);
       if (m) {
         const run = await getRun(projectRoot, m[1]);
@@ -664,6 +751,63 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         if (key && final) await writeAi(projectRoot, run.meta.runId, key, { action, resultId: body.resultId ?? null, markdown: final, createdAt: new Date().toISOString() });
         return res.end();
       }
+      if (p === '/api/linear/comment-known') {
+        // test known bug fail lại với lỗi khác: comment nội dung lỗi mới vào issue đã gắn (mỗi dạng lỗi một lần)
+        const b = await readBody(req);
+        const run = await getRun(projectRoot, String(b.runId ?? ''));
+        if (!run) return send(res, 404, { error: 'run not found' });
+        if (!RESULT_ID.test(String(b.resultId ?? ''))) return send(res, 400, { error: 'invalid resultId' });
+        const failing = (run.report.run.results ?? []).find((x) => x.id === b.resultId);
+        if (!failing) return send(res, 404, { error: 'result not found' });
+        const { apiKey, team } = await linearConfig(readConfig(projectRoot), env);
+        if (!apiKey) return send(res, 400, { error: 'Chưa cấu hình LINEAR_API_KEY' });
+        try {
+          const linear = createLinear({ apiKey, team, ...(linearFetch ? { fetchImpl: linearFetch } : {}) });
+          return send(res, 200, await commentIfNewBug({ projectRoot, run, result: failing, linear, notes: await readNotes(projectRoot) }));
+        } catch (e) {
+          return send(res, 502, { error: e.message });
+        }
+      }
+      if (p === '/api/linear/detach') {
+        // gỡ liên kết bug ↔ issue: xoá mã known bug và liên kết đã lưu; issue trên Linear giữ nguyên
+        const b = await readBody(req);
+        const run = await getRun(projectRoot, String(b.runId ?? ''));
+        if (!run) return send(res, 404, { error: 'run not found' });
+        if (!RESULT_ID.test(String(b.resultId ?? ''))) return send(res, 400, { error: 'invalid resultId' });
+        const failing = (run.report.run.results ?? []).find((x) => x.id === b.resultId);
+        if (!failing) return send(res, 404, { error: 'result not found' });
+        const known = (await readNotes(projectRoot))[testKey(failing)]?.known ?? null;
+        const linked = await removeIssueLink(projectRoot, issueFingerprint(failing, resultError(run.report, failing)));
+        if (known) await setNote(projectRoot, testKey(failing), { known: '' });
+        return send(res, 200, { removed: { known, link: linked } });
+      }
+      if (p === '/api/linear/attach') {
+        // gắn một issue Linear có sẵn vào một bug: lưu liên kết (lần sau gửi sẽ thấy "đã có") và đánh dấu known bug
+        const b = await readBody(req);
+        const run = await getRun(projectRoot, String(b.runId ?? ''));
+        if (!run) return send(res, 404, { error: 'run not found' });
+        if (!RESULT_ID.test(String(b.resultId ?? ''))) return send(res, 400, { error: 'invalid resultId' });
+        const failing = (run.report.run.results ?? []).find((x) => x.id === b.resultId);
+        if (!failing) return send(res, 404, { error: 'result not found' });
+        const identifier = parseIssueRef(b.ref);
+        if (!identifier) return send(res, 400, { error: 'Nhập mã issue (ví dụ ENG-123) hoặc link Linear' });
+        const { apiKey, team } = await linearConfig(readConfig(projectRoot), env);
+        let issue = { identifier, url: null, title: '' };
+        let verified = false;
+        if (apiKey) {
+          try {
+            const found = await createLinear({ apiKey, team, ...(linearFetch ? { fetchImpl: linearFetch } : {}) }).get(identifier);
+            if (!found) return send(res, 404, { error: `Linear không có issue ${identifier}` });
+            issue = found;
+            verified = true;
+          } catch (e) {
+            return send(res, 502, { error: e.message });
+          }
+        }
+        await saveIssueLink(projectRoot, issueFingerprint(failing, resultError(run.report, failing)), issue);
+        await markKnown(projectRoot, failing, issue, signatureOf(run.report, failing));
+        return send(res, 200, { issue: { identifier: issue.identifier, url: issue.url ?? null, title: issue.title ?? '', state: issue.state?.name ?? null }, verified });
+      }
       if (p === '/api/linear/draft' || p === '/api/linear/issue' || p === '/api/linear/rewrite') {
         const body = await readBody(req);
         const run = await getRun(projectRoot, body.runId);
@@ -697,7 +841,18 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         if (!apiKey) return send(res, 400, { error: 'Chưa cấu hình LINEAR_API_KEY: dùng nút "Copy cho Claude" để gửi qua Linear MCP.', prompt: claudePrompt(draft, team) });
         const linear = createLinear({ apiKey, team, ...(linearFetch ? { fetchImpl: linearFetch } : {}) });
         const found = await linear.find(draft.fingerprint);
+        const failing = (run.report.run.results ?? []).find((x) => x.id === body.resultId);
+        const attached = links[draft.fingerprint]; // issue gắn tay: không chứa fingerprint nên find() không thấy
+        if (!found.open && attached?.identifier && body.mode !== 'new' && !found.closed.some((c) => c.identifier === attached.identifier)) {
+          // chưa rõ trạng thái: hỏi Linear; đã đóng thì cho tạo issue mới (tái phát), còn lại coi là đã có
+          const live = await linear.get(attached.identifier).catch(() => null);
+          if (!['completed', 'canceled'].includes(live?.state?.type)) {
+            await markKnown(projectRoot, failing, live ?? attached, signatureOf(run.report, failing));
+            return send(res, 200, { status: 'duplicate', issue: live ?? attached, fingerprint: draft.fingerprint });
+          }
+        }
         if (found.open) {
+          await markKnown(projectRoot, failing, found.open, signatureOf(run.report, failing)); // đã có issue đang mở: test này là known bug
           if (body.mode !== 'comment') return send(res, 200, { status: 'duplicate', issue: found.open, fingerprint: draft.fingerprint });
           const where = run.meta.git?.commit ? ` trên \`${run.meta.git.branch ?? '?'}@${String(run.meta.git.commit).slice(0, 10)}\`` : '';
           await linear.comment(found.open.id, `Lỗi xảy ra lại ở run \`${run.meta.runId}\` (${run.meta.startedAt})${where}.`);
@@ -722,6 +877,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         const old = found.closed[0];
         const issue = await linear.create({ ...draft, title: acceptTitle(draft, body.title), description: old ? `Tái phát của ${old.identifier} (đã đóng).\n\n${description}` : description });
         await saveIssueLink(projectRoot, draft.fingerprint, issue);
+        await markKnown(projectRoot, failing, issue, signatureOf(run.report, failing)); // thêm task lên Linear = tự đánh dấu known bug
         return send(res, 201, { status: 'created', issue, reopenedFrom: old?.identifier ?? null, fingerprint: draft.fingerprint, images: urls.filter(Boolean).length });
       }
       if (p === '/api/triage') {
@@ -921,7 +1077,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         if (body.rerunOf !== undefined && !RUN_ID.test(String(body.rerunOf))) return send(res, 400, { error: 'invalid rerunOf' });
         let out;
         try {
-          const RUN_KEYS = ['tests', 'targets', 'agents', 'retries', 'repeatEach', 'noCache', 'rerunOf', 'workers', 'browser'];
+          const RUN_KEYS = ['tests', 'targets', 'agents', 'retries', 'repeatEach', 'noCache', 'rerunOf', 'workers', 'browser', 'tag', 'tagMode', 'excludeTag', 'grep', 'shard', 'maxFailures', 'strictCache', 'trace', 'video', 'lastFailed', 'updateSnapshots', 'aiTrace'];
           const opts = Object.fromEntries(RUN_KEYS.filter((k) => body[k] !== undefined).map((k) => [k, body[k]]));
           // workers: không gửi = mặc định ở Settings; null = để e2e tự chọn theo máy cho lần chạy này
           if (body.workers === undefined) {
@@ -939,6 +1095,99 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         if (out.ok) return send(res, 202, { started: true, pid: out.pid ?? null });
         if (out.error === 'busy') return send(res, 409, { error: 'busy' });
         return send(res, 503, { error: out.error === 'e2e-missing' ? 'Project chưa cài e2e (node_modules/e2e) — chạy npm install rồi thử lại.' : out.error });
+      }
+      if (p === '/api/reset') {
+        const b = await readBody(req);
+        if (b.confirm !== 'RESET') return send(res, 400, { error: 'Gõ đúng RESET để xác nhận' });
+        if (runner.state().running || live.snapshot().status === 'running') return send(res, 409, { error: 'Đang có run chạy: dừng run trước khi reset' });
+        try {
+          closeIndex(projectRoot); // trước khi xoá cache/index.sqlite
+          const r = await resetAll(projectRoot, b.scopes, { env });
+          dropCaches();
+          return send(res, 200, r);
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+      }
+      if (p === '/api/feedback') {
+        let f;
+        try {
+          f = validateFeedback(await readBody(req));
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+        if (!rateOk()) return send(res, 429, { error: 'Đã gửi quá nhiều phản hồi trong 10 phút, thử lại sau' });
+        try {
+          return send(res, 201, await createIssue(buildIssue(f, { version: VERSION, node: process.version, platform: `${platform()} ${release()}` })));
+        } catch (e) {
+          return send(res, 502, { error: e.message });
+        }
+      }
+      if (p === '/api/qc/templates') {
+        try {
+          return send(res, 200, await saveTemplate(projectRoot, await readBody(req)));
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+      }
+      if (p === '/api/qc/render' || p === '/api/qc/generate') {
+        const b = await readBody(req);
+        const tpl = findTemplate(await readTemplates(projectRoot), String(b.templateId ?? ''));
+        if (!tpl) return send(res, 404, { error: 'mẫu không tồn tại' });
+        let vars;
+        try {
+          vars = await qcVars(projectRoot, b);
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+        if (!vars) return send(res, 404, { error: 'chưa có run nào' });
+        const { prompt, missing } = renderPrompt(tpl, vars);
+        if (p === '/api/qc/render') return send(res, 200, { prompt, missing });
+        const ac = new AbortController();
+        res.on('close', () => !res.writableEnded && ac.abort());
+        let final = null;
+        let error = null;
+        await ai.run({ signal: ac.signal, prompt: `${prompt}\n\nChỉ trả về nội dung cuối cùng, không thêm lời dẫn.`, onEvent: (e) => {
+          if (e.type === 'done' && !e.isError) final = e.result;
+          if (e.type === 'error') error = e.message;
+        } });
+        if (!final) return send(res, 502, { error: error ?? 'AI không trả lời' });
+        let text = final.trim().replace(/^```(?:markdown|md)?\n([\s\S]*)\n```$/, '$1');
+        if (typeof b.fingerprintLine === 'string') text = keepFingerprint(text, b.fingerprintLine.slice(0, 300));
+        return send(res, 200, { text, missing });
+      }
+      if (p === '/api/qc/notes') {
+        const b = await readBody(req);
+        try {
+          // đặt mã known bug cho một result cụ thể: lỗi hiện tại được coi là lỗi đã biết của issue đó
+          let seen;
+          if (b.known && RESULT_ID.test(String(b.resultId ?? ''))) {
+            const run = await getRun(projectRoot, String(b.runId ?? ''));
+            const r = run?.report.run.results?.find((x) => x.id === b.resultId);
+            if (r) seen = [signatureOf(run.report, r)];
+          }
+          return send(res, 200, { note: await setNote(projectRoot, b.key, { ...b, seen }) });
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+      }
+      if (p === '/api/qc/manual') {
+        const b = await readBody(req);
+        try {
+          return send(res, 200, await saveManual(projectRoot, b));
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+      }
+      if (p === '/api/cache/clear') {
+        const body = await readBody(req);
+        const ids = body.ids;
+        if (ids !== undefined && !(Array.isArray(ids) && ids.length <= 5000 && ids.every((x) => typeof x === 'string' && /^[0-9a-f]{64}$/.test(x)))) return send(res, 400, { error: 'invalid ids' });
+        if (body.testId !== undefined && (typeof body.testId !== 'string' || body.testId.length > 500)) return send(res, 400, { error: 'invalid testId' });
+        if (ids === undefined && body.testId === undefined && body.orphans !== true && body.all !== true) return send(res, 400, { error: 'Chỉ rõ cần xoá gì: ids, testId, orphans hoặc all' });
+        const orphans = body.orphans === true ? await currentTestIds(projectRoot) : null;
+        if (body.orphans === true && !orphans) return send(res, 409, { error: 'Chưa có run nào để biết test nào còn tồn tại' });
+        return send(res, 200, { removed: await clearCache(projectRoot, { ids, testId: body.testId, orphansOf: orphans }) });
       }
       if (p === '/api/run/stop') {
         const external = !runner.state().running; // run từ terminal: chỉ đánh dấu interrupted, không giết được process

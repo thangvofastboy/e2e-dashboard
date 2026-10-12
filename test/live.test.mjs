@@ -114,3 +114,16 @@ test('e2e 0.19 wire result (test.id + target {name}, no testId/targetId) updates
   live.apply({ type: 'run-finished', at: at(9), status: 'failed', exitCode: 1 });
   assert.equal(live.snapshot().total, live.snapshot().done, 'a finished run shows done/done, not done/plan');
 });
+
+test('run-stopped and notice events reach the snapshot; a new run clears them', () => {
+  const live = createLive({ throttleMs: 1 });
+  live.apply({ type: 'run-started', at: '2026-10-13T00:00:00Z', runId: 'r1' });
+  live.apply({ type: 'notice', target: 'web', message: 'fell back to chromium' });
+  live.apply({ type: 'run-stopped', failures: 3, limit: 3 });
+  assert.deepEqual(live.snapshot().stopped, { failures: 3, limit: 3 });
+  assert.deepEqual(live.snapshot().notices, [{ target: 'web', message: 'fell back to chromium' }]);
+  assert.equal(live.full().stopped.limit, 3);
+  live.apply({ type: 'run-started', at: '2026-10-13T00:01:00Z', runId: 'r2' });
+  assert.equal(live.snapshot().stopped, null);
+  assert.deepEqual(live.snapshot().notices, []);
+});

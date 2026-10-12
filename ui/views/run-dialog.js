@@ -1,9 +1,13 @@
 import { postJson, getJson } from '../api.js';
+import { confirmDialog } from '../confirm.js';
 import { escapeHtml } from '../format.js';
 import { icon } from '../icons.js';
 
+const MODES = ['off', 'on', 'retain-on-failure', 'on-first-retry', 'on-all-retries'];
+const csv = (v) => String(v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+
 // Modal to start an e2e run (spec §4.5): tests are file:line, plus targets/agents and run flags.
-export function openRunDialog({ tests, targets = [], agents = [], allTargets = targets, allAgents = agents, rerunOf = null, title = 'Chạy test', repeatEach = null }) {
+export function openRunDialog({ tests, targets = [], agents = [], allTargets = targets, allAgents = agents, rerunOf = null, title = 'Chạy test', repeatEach = null, preset = {} }) {
   document.getElementById('run-dialog')?.remove();
   const box = (name, values, checked) => values
     .map((v) => `<label class="pill"><input type="checkbox" name="${name}" value="${escapeHtml(v)}" ${checked.includes(v) ? 'checked' : ''}>${escapeHtml(v)}</label>`)
@@ -23,6 +27,26 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
       <label title="Số test chạy song song. Để trống = tự động theo máy">Workers <input type="number" name="workers" min="1" max="1024" placeholder="tự động"></label>
       <label class="pill switch"><input type="checkbox" name="noCache"><span class="track"></span><span>--no-cache</span></label>
     </div>
+    <details class="run-adv"${preset.updateSnapshots ? ' open' : ''}><summary>Nâng cao</summary>
+      <div class="row">
+        <label>Tag <input type="text" name="tag" placeholder="smoke,api"></label>
+        <label>Tag mode <select name="tagMode"><option value="">mặc định</option><option value="any">any</option><option value="all">all</option></select></label>
+        <label>Bỏ tag <input type="text" name="excludeTag" placeholder="slow"></label>
+        <label>Grep <input type="text" name="grep" placeholder="login"></label>
+      </div>
+      <div class="row">
+        <label>Shard <input type="text" name="shard" placeholder="1/4" pattern="\d+/\d+"></label>
+        <label>Max failures <input type="number" name="maxFailures" min="1" max="1000" placeholder="không giới hạn"></label>
+        <label>Trace <select name="trace">${['', ...MODES].map((m) => `<option value="${m}">${m || 'theo config'}</option>`).join('')}</select></label>
+        <label>Video <select name="video">${['', ...MODES].map((m) => `<option value="${m}">${m || 'theo config'}</option>`).join('')}</select></label>
+      </div>
+      <div class="row">
+        <label class="pill switch"><input type="checkbox" name="strictCache"><span class="track"></span><span>--strict-cache</span></label>
+        <label class="pill switch"><input type="checkbox" name="lastFailed"><span class="track"></span><span>--last-failed</span></label>
+        <label class="pill switch"><input type="checkbox" name="updateSnapshots"${preset.updateSnapshots ? ' checked' : ''}><span class="track"></span><span>-u (cập nhật snapshot)</span></label>
+        <label class="pill switch" title="Ghi ai-trace.json: từng lần gọi model của mỗi step"><input type="checkbox" name="aiTrace"><span class="track"></span><span>--ai-trace</span></label>
+      </div>
+    </details>
     <p class="small tone-warn" data-browser-note hidden></p>
     <label class="pill switch" data-q-wrap hidden><input type="checkbox" name="excludeQuarantined" checked><span class="track"></span><span>Bỏ qua <span data-q-count></span> test đang cách ly</span></label>
     <p class="err" hidden></p>
@@ -48,10 +72,20 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
       // trống = tự động cho lần này (null); chưa tải được Settings thì không gửi để server dùng mặc định
       ...(fd.get('workers') !== '' ? { workers: Number(fd.get('workers')) } : settingsLoaded ? { workers: null } : {}),
       ...(fd.get('excludeQuarantined') === 'on' && !dlg.querySelector('[data-q-wrap]').hidden ? { excludeQuarantined: true } : {}),
+      ...(csv(fd.get('tag')).length ? { tag: csv(fd.get('tag')) } : {}),
+      ...(fd.get('tagMode') ? { tagMode: fd.get('tagMode') } : {}),
+      ...(csv(fd.get('excludeTag')).length ? { excludeTag: csv(fd.get('excludeTag')) } : {}),
+      ...(fd.get('grep').trim() ? { grep: fd.get('grep').trim() } : {}),
+      ...(fd.get('shard').trim() ? { shard: fd.get('shard').trim() } : {}),
+      ...(fd.get('maxFailures') !== '' ? { maxFailures: Number(fd.get('maxFailures')) } : {}),
+      ...(fd.get('trace') ? { trace: fd.get('trace') } : {}),
+      ...(fd.get('video') ? { video: fd.get('video') } : {}),
+      ...Object.fromEntries(['strictCache', 'lastFailed', 'updateSnapshots', 'aiTrace'].filter((k) => fd.get(k) === 'on').map((k) => [k, true])),
       ...(rerunOf ? { rerunOf } : {}),
     };
     if (!body.targets.length) delete body.targets;
     if (!body.agents?.length) delete body.agents;
+    if (body.updateSnapshots && !(await confirmDialog({ title: 'Cập nhật snapshot', message: 'Chạy với -u: ảnh mẫu (snapshot) trong project sẽ bị ghi đè bằng ảnh hiện tại, kể cả khi test fail vì giao diện sai. Hãy xem git diff trước khi commit.', confirmLabel: 'Chạy và ghi đè' }))) return;
     try {
       await postJson('/api/run', body);
       dlg.close();

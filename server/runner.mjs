@@ -24,7 +24,14 @@ function int(v, min, max, what) {
 // --grep-invert patterns (quarantined tests): one regex each, bounded, never mistaken for a flag
 const PATTERN = /^(?!-)[^\n\r\0]{1,400}$/;
 
-export function buildRunArgs({ tests, targets, agents, retries, repeatEach, noCache, grepInvert, workers } = {}) {
+const TAG = /^(?!-)[\w.@:/+-]{1,100}$/;
+const MODES = ['off', 'on', 'retain-on-failure', 'on-first-retry', 'on-all-retries'];
+const flag = (v, what) => {
+  if (v !== undefined && typeof v !== 'boolean') throw new Error(`invalid ${what}`);
+  return v === true;
+};
+
+export function buildRunArgs({ tests, targets, agents, retries, repeatEach, noCache, grepInvert, workers, tag, tagMode, excludeTag, grep, shard, maxFailures, strictCache, trace, video, lastFailed, updateSnapshots, aiTrace } = {}) {
   const args = ['e2e', 'run', ...list(tests, TEST, 'tests')];
   const t = list(targets, NAME, 'targets');
   const a = list(agents, NAME, 'agents');
@@ -39,6 +46,34 @@ export function buildRunArgs({ tests, targets, agents, retries, repeatEach, noCa
   if (noCache !== undefined && typeof noCache !== 'boolean') throw new Error('invalid noCache');
   if (noCache) args.push('--no-cache');
   for (const p of list(grepInvert, PATTERN, 'grepInvert').slice(0, 100)) args.push('--grep-invert', p);
+  const tags = list(tag, TAG, 'tag');
+  if (tags.length) args.push('--tag', tags.join(','));
+  if (tagMode !== undefined) {
+    if (tagMode !== 'any' && tagMode !== 'all') throw new Error('invalid tagMode');
+    args.push('--tag-mode', tagMode);
+  }
+  const ex = list(excludeTag, TAG, 'excludeTag');
+  if (ex.length) args.push('--exclude-tag', ex.join(','));
+  if (grep !== undefined) {
+    if (typeof grep !== 'string' || !PATTERN.test(grep)) throw new Error('invalid grep');
+    args.push('--grep', grep);
+  }
+  if (shard !== undefined) {
+    const m = /^(\d{1,4})\/(\d{1,4})$/.exec(shard);
+    if (!m || +m[1] < 1 || +m[1] > +m[2]) throw new Error('invalid shard');
+    args.push('--shard', shard);
+  }
+  const mf = int(maxFailures, 1, 1000, 'maxFailures');
+  if (mf !== undefined) args.push('--max-failures', String(mf));
+  if (flag(strictCache, 'strictCache')) args.push('--strict-cache');
+  for (const [name, v] of [['trace', trace], ['video', video]]) {
+    if (v === undefined) continue;
+    if (!MODES.includes(v)) throw new Error(`invalid ${name}`);
+    args.push(`--${name}=${v}`);
+  }
+  if (flag(lastFailed, 'lastFailed')) args.push('--last-failed');
+  if (flag(updateSnapshots, 'updateSnapshots')) args.push('--update-snapshots');
+  if (flag(aiTrace, 'aiTrace')) args.push('--ai-trace');
   return args;
 }
 

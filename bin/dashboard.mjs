@@ -6,7 +6,7 @@ import { existsSync, openSync, closeSync } from 'node:fs';
 import { join, basename, dirname, resolve, relative } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DATA_DIR, VERSION, readServerInfo, ensureDataDir, readConfig, dataPath, legacyDataPath, listRunDirs, isLegacyRunName, nestedFromLegacy, STATE_FILES, RUNTIME_FILES, isLink, pruneEmptyParents } from '../reporter/e2e-dashboard.reporter.mjs';
+import { DATA_DIR, VERSION, readServerInfo, ensureDataDir, readConfig, dataPath } from '../reporter/e2e-dashboard.reporter.mjs';
 import { findProjectRoot, findConfig } from './project.mjs';
 import { exportRun } from '../server/export.mjs';
 import { buildDigest } from '../server/digest.mjs';
@@ -359,10 +359,10 @@ export async function main(argv, cwd) {
     if (gh >= 0) {
       const name = argv.indexOf('--name') >= 0 ? argv[argv.indexOf('--name') + 1] : null;
       const res = await importFromGithub(root, argv[gh + 1], { artifact: name });
-      if (!res.length) return { code: 1, out: 'Artifact không có report.json nào.' };
+      if (!res.length) return { code: 1, out: 'Artifact không có report.json hay junit.xml nào.' };
       return { code: 0, out: res.map((r) => `${r.report}: ${r.status}${r.reason ? ` (${r.reason})` : ''}`).join('\n') };
     }
-    if (!argv[1]) return { code: 1, out: 'Dùng: /e2e-dashboard import <report.json | thư mục output> hoặc import --gh <run id> [--name <artifact>]' };
+    if (!argv[1]) return { code: 1, out: 'Dùng: /e2e-dashboard import <report.json | junit.xml | thư mục output> hoặc import --gh <run id> [--name <artifact>]' };
     const r = await importReport(root, resolve(cwd, argv[1]));
     return { code: r.status === 'skipped' ? 1 : 0, out: r.status === 'archived' ? `Đã nhập run vào lịch sử (${r.runDir}).` : r.status === 'exists' ? 'Run này đã có trong lịch sử.' : `Không nhập được: ${r.reason}` };
   }
@@ -379,7 +379,7 @@ export async function main(argv, cwd) {
     if ((sub !== 'push' && sub !== 'pull') || typeof dir !== 'string' || !dir) return { code: 1, out: 'Dùng: /e2e-dashboard share push|pull <thư mục chung> (hoặc đặt "share": { "dir": … } trong ~/.e2e-dashboard/config.json)' };
     if (sub === 'push') {
       const r = await sharePush(root, dir);
-      return { code: 0, out: `Đã đẩy ${r.pushed} run lên ${r.dir}.` };
+      return { code: 0, out: `Đã đẩy ${r.pushed} run lên ${r.dir}.${r.unredacted ? `\nLưu ý: ${r.unredacted} video / file tải về chưa che secret hoàn toàn (redaction: incomplete) đã nằm trong thư mục chung.` : ''}` };
     }
     const r = await sharePull(root, dir, { by: process.env.USER ?? null });
     return { code: 0, out: `Đã lấy ${r.pulled} run từ ${r.dir}${r.skipped ? ` (bỏ qua ${r.skipped} run không hợp lệ)` : ''}.` };

@@ -17,6 +17,20 @@ function allSteps(report) {
   return out;
 }
 
+// Failed results grouped by the class e2e gives their error (test | configuration | infrastructure | interrupted | internal).
+// Only `test` failures say anything about the app: the rest (model provider down, bad credentials, a crashed worker…) are not regressions.
+export function errorClasses(report) {
+  const out = {};
+  for (const r of report.run.results ?? []) {
+    if (!['failed', 'timed-out', 'interrupted'].includes(r.status)) continue;
+    const a = (r.attempts ?? []).at(-1);
+    const err = a?.error ?? (a?.steps ?? []).find((x) => x.error)?.error;
+    const c = r.status === 'interrupted' ? 'interrupted' : typeof err?.category === 'string' ? err.category.slice(0, 30) : 'test';
+    out[c] = (out[c] ?? 0) + 1;
+  }
+  return out;
+}
+
 export function summarize(report, { source, rerunOf = null, git = null }) {
   const run = report.run;
   const tokens = { input: 0, output: 0 };
@@ -46,6 +60,8 @@ export function summarize(report, { source, rerunOf = null, git = null }) {
     kind: run.explore ? 'explore' : 'run',
     summary: run.summary,
     tokens,
+    errorClasses: errorClasses(report),
+    runErrors: (run.errors ?? []).length,
     modelCalls,
     costUsd: run.usage?.estimatedCostUsd ?? null,
     replay,
@@ -107,7 +123,7 @@ export async function listRunDirs(runsDir, { sort = true } = {}) {
 
 // Bố cục .e2e-dashboard (v0.8.8): state/ dữ liệu lâu dài, runtime/ file tạm của server, cache/ chỉ mục (dựng lại được).
 // config.json và server.json ở gốc (người dùng sửa tay / reporter bản cũ trong project tìm server qua đó).
-export const STATE_FILES = new Set(['settings.json', 'triage.json', 'alerts.json', 'selfheal.json', 'events.json', 'coverage-ignore.json', 'ci-sync.json', 'quarantine.json', 'issues.json', 'longterm']);
+export const STATE_FILES = new Set(['settings.json', 'triage.json', 'alerts.json', 'selfheal.json', 'events.json', 'coverage-ignore.json', 'ci-sync.json', 'quarantine.json', 'issues.json', 'qc-notes.json', 'qc-manual.json', 'longterm']);
 export const RUNTIME_FILES = new Set(['live.json', 'server.log', 'selfheal-crash.jsonl']);
 export function dataPath(root, rel) {
   const top = rel.split('/')[0];
@@ -264,6 +280,27 @@ async function resolveTraces(projectRoot, report, artRoot, traces) {
   return map;
 }
 
+const AI_TRACE_MAX = 30 * 1024 * 1024;
+
+// `e2e run --ai-trace` writes {runs[], steps[]} next to report.json and overwrites it on every run: keep it only when
+// it belongs to this run (its first model call started after the run did), is a regular file inside the project/output and is small enough.
+async function readAiTrace(projectRoot, output, report, aiTracePath) {
+  const file = aiTracePath ? resolve(projectRoot, aiTracePath) : join(output, 'ai-trace.json');
+  try {
+    if (isLink(file) || !(realInside(projectRoot, file) || realInside(output, file))) return null;
+    const st = await stat(file);
+    if (!st.isFile() || st.size > AI_TRACE_MAX) return null;
+    const raw = await readFile(file, 'utf8');
+    const doc = JSON.parse(raw);
+    if (!Array.isArray(doc?.runs) || !Array.isArray(doc?.steps) || !doc.steps.length) return null;
+    const first = Math.min(...doc.runs.map((r) => Date.parse(r?.started_at)).filter(Number.isFinite));
+    if (!(first >= Date.parse(report.run.startedAt) - 5000)) return null;
+    return { raw, runs: doc.runs.length, calls: doc.steps.length };
+  } catch {
+    return null;
+  }
+}
+
 // Creates <project>/.e2e-dashboard (never through a planted symlink) and makes git ignore it.
 export async function ensureDataDir(projectRoot) {
   const dataDir = join(projectRoot, DATA_DIR);
@@ -274,7 +311,7 @@ export async function ensureDataDir(projectRoot) {
   return dataDir;
 }
 
-export async function archive(projectRoot, { source, rerunOf = null, report, reportPath, artifactsRoot, traces, outputDir, keep, signal } = {}) {
+export async function archive(projectRoot, { source, rerunOf = null, report, reportPath, artifactsRoot, traces, outputDir, keep, signal, aiTracePath } = {}) {
   const cfg = readConfig(projectRoot);
   const output = resolve(projectRoot, outputDir ?? cfg.output ?? '.e2e');
   if (!report) {
@@ -313,12 +350,16 @@ export async function archive(projectRoot, { source, rerunOf = null, report, rep
       await copyFile(abs, join(tmp, 'traces', `${id}.md`));
       traceMeta[id] = `traces/${id}.md`;
     }
+    const unredacted = new Set(); // videos and downloads e2e could not mask secrets in (redaction: "incomplete"); a hosted video (url) counts too
     for (const a of keptArtifacts(report, { allScreenshots: cfg.screenshots === 'all', allVideos: cfg.videos === 'all' })) {
       aborted();
-      if (a.path && artOk) await copyInto(artRoot, join(tmp, 'artifacts'), a.path);
+      const copied = a.path && artOk && (await copyInto(artRoot, join(tmp, 'artifacts'), a.path));
+      if (a.redaction === 'incomplete' && (copied || (!a.path && a.url))) unredacted.add(a.path ?? a.url);
     }
     aborted();
-    const meta = { ...summarize(report, { source, rerunOf, git: report.run.vcs ? null : gitInfo(projectRoot) }), traces: traceMeta };
+    const aiTrace = await readAiTrace(projectRoot, output, report, aiTracePath);
+    if (aiTrace) await writeFile(join(tmp, 'ai-trace.json'), aiTrace.raw);
+    const meta = { ...summarize(report, { source, rerunOf, git: report.run.vcs ? null : gitInfo(projectRoot) }), traces: traceMeta, ...(unredacted.size ? { unredacted: unredacted.size } : {}), ...(aiTrace ? { aiTrace: { runs: aiTrace.runs, calls: aiTrace.calls } } : {}) };
     await writeFile(join(tmp, 'meta.json'), JSON.stringify(meta, null, 2));
     // runs/YYYY/MM/DD: không cấp nào được là symlink (repo lạ có thể commit sẵn runs/2026 -> ~/)
     const segs = name.split('/').slice(0, -1);
@@ -428,6 +469,7 @@ export function createReporter({ env = process.env, fetchImpl = globalThis.fetch
           reportPath: run.reportPath,
           artifactsRoot: run.artifactsRoot,
           traces: run.traces,
+          aiTracePath: run.aiTracePath,
           signal,
         });
         const s = server ?? readServerInfo(run.projectRoot);

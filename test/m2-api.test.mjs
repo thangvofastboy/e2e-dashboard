@@ -41,6 +41,7 @@ before(async () => {
       linearState.open = { id: 'i1', identifier: 'ENG-7', url: 'https://linear.app/x/issue/ENG-7', title: body.variables.input.title, state: { name: 'Todo', type: 'unstarted' } };
       return Response.json({ data: { issueCreate: { success: true, issue: linearState.open } } });
     }
+    if (body.query.includes('issue(id:')) return body.variables.id === 'ENG-42' ? Response.json({ data: { issue: { id: 'i42', identifier: 'ENG-42', url: 'https://linear.app/x/issue/ENG-42', title: 'Checkout lỗi', state: { name: 'In Progress', type: 'started' } } } }) : Response.json({ errors: [{ message: 'Entity not found: Issue' }] });
     if (body.query.includes('commentCreate')) return Response.json({ data: { commentCreate: { success: true } } });
     return Response.json({ errors: [{ message: 'unexpected' }] });
   };
@@ -151,6 +152,8 @@ test('Linear: draft, create once, then duplicate, then comment', async () => {
   assert.equal(created.status, 201);
   assert.equal(created.body.issue.identifier, 'ENG-7');
   assert.equal(linearCalls.find((c) => c.query.includes('issueCreate')).variables.input.teamId, 'team-1');
+  const filed = runs[1].report.run.results[0];
+  assert.equal((await get('/api/qc/notes')).body[`${filed.testId}|${filed.targetId}|${filed.agent ?? 'default'}`]?.known, 'ENG-7', 'a test sent to Linear is a known bug');
   const dup = await post('/api/linear/issue', { runId, resultId });
   assert.equal(dup.body.status, 'duplicate');
   assert.equal(linearCalls.filter((c) => c.query.includes('issueCreate')).length, 1, 'no second issue');
@@ -161,3 +164,40 @@ test('Linear: draft, create once, then duplicate, then comment', async () => {
   assert.equal((await post('/api/linear/draft', { runId, resultId })).body.link.identifier, 'ENG-7');
   assert.equal((await post('/api/linear/issue', { runId, resultId: 'f'.repeat(64) })).status, 404);
 });
+
+test('Linear: attach an existing issue to a bug: verified, known, and no second issue is created', async () => {
+  const runId = runs[0].meta.runId;
+  const r = runs[0].report.run.results[0];
+  linearState.open = null;
+  const before = linearCalls.filter((c) => c.query.includes('issueCreate')).length;
+  assert.equal((await post('/api/linear/attach', { runId, resultId: r.id, ref: 'không có mã' })).status, 400);
+  assert.equal((await post('/api/linear/attach', { runId, resultId: r.id, ref: 'ENG-999' })).status, 404, 'Linear does not know it');
+  const ok = await post('/api/linear/attach', { runId, resultId: r.id, ref: 'https://linear.app/x/issue/eng-42/checkout-loi' });
+  assert.equal(ok.status, 200);
+  assert.deepEqual([ok.body.issue.identifier, ok.body.issue.title, ok.body.verified], ['ENG-42', 'Checkout lỗi', true]);
+  const notes = (await get('/api/qc/notes')).body;
+  assert.equal(notes[`${r.testId}|${r.targetId}|${r.agent ?? 'default'}`].known, 'ENG-42');
+  assert.equal((await post('/api/linear/draft', { runId, resultId: r.id })).body.link.identifier, 'ENG-42');
+  const send = await post('/api/linear/issue', { runId, resultId: r.id });
+  assert.equal(send.body.status, 'duplicate', 'the attached issue is not duplicated');
+  assert.equal(send.body.issue.identifier, 'ENG-42');
+  assert.equal(linearCalls.filter((c) => c.query.includes('issueCreate')).length, before, 'no issue created');
+});
+
+test('Linear: detach removes the known-bug mark and the saved link, and leaves the Linear issue alone', async () => {
+  const runId = runs[0].meta.runId;
+  const r = runs[0].report.run.results[0];
+  const key = `${r.testId}|${r.targetId}|${r.agent ?? 'default'}`;
+  await post('/api/linear/attach', { runId, resultId: r.id, ref: 'ENG-42' });
+  assert.equal((await get('/api/qc/notes')).body[key].known, 'ENG-42');
+  const calls = linearCalls.length;
+  const out = await post('/api/linear/detach', { runId, resultId: r.id });
+  assert.equal(out.status, 200);
+  assert.deepEqual(out.body.removed, { known: 'ENG-42', link: 'ENG-42' });
+  assert.equal((await get('/api/qc/notes')).body[key]?.known ?? null, null);
+  assert.equal((await post('/api/linear/draft', { runId, resultId: r.id })).body.link, null);
+  assert.equal(linearCalls.length, calls, 'detach never talks to Linear (the issue is left alone)');
+  assert.deepEqual((await post('/api/linear/detach', { runId, resultId: r.id })).body.removed, { known: null, link: null }, 'detaching twice is harmless');
+  assert.equal((await post('/api/linear/detach', { runId, resultId: 'f'.repeat(64) })).status, 404);
+});
+

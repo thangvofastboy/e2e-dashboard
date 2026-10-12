@@ -1,11 +1,13 @@
 import { getJson, postJson, fileUrl, isExport } from '../api.js';
+import { confirmDialog } from '../confirm.js';
 import { translate } from '../i18n.js';
-import { flattenResults, facets, applyFilters, matrix, isFailure, isFailed, stepVideoOffset, selectionToRun } from '../model.js';
+import { flattenResults, facets, applyFilters, filterKnown, knownKey, matrix, isFailure, isFailed, stepVideoOffset, selectionToRun } from '../model.js';
 import { openRunDialog } from './run-dialog.js';
 import { openAiPanel } from './ai-panel.js';
 import { openLinearDialog } from './linear.js';
 import { openBisectDialog } from './actions.js';
 import { errorGroupHtml } from './errors.js';
+import { renderAiTrace } from './aitrace.js';
 import { visualCompareHtml, attachVisualCompare, screenshotTriplets } from '../visual.js';
 import { fmtDuration, fmtTokens, statusBadge, countChips, escapeHtml } from '../format.js';
 import { renderMarkdown } from '../markdown.js';
@@ -15,11 +17,11 @@ import { toast } from '../toast.js';
 import { copyToClipboard } from '../analysis.js';
 import { icon } from '../icons.js';
 import { shareBar, legend } from '../charts.js';
-import { passRate } from '../health.js';
+import { passRate, nonTestFailures } from '../health.js';
 
 // View state survives re-renders of the same run (filters, matrix toggle, chosen attempt, tab).
-const ui = { runId: null, data: null, filters: {}, matrix: false, attempt: new Map(), tab: 'media', selected: new Set(), saved: [], compareWith: null, groups: [], anomalies: [], owners: {} };
-const TABS = [['media', 'Video & ảnh', 'video'], ['log', 'Log', 'terminal'], ['trace', 'Trace', 'route'], ['source', 'Source', 'code']];
+const ui = { runId: null, data: null, notes: {}, known: '', filters: {}, matrix: false, attempt: new Map(), tab: 'media', selected: new Set(), saved: [], compareWith: null, groups: [], anomalies: [], owners: {} };
+const TABS = [['media', 'Video & ảnh', 'video'], ['log', 'Log', 'terminal'], ['trace', 'Trace', 'route'], ['model', 'Model', 'cpu'], ['source', 'Source', 'code']];
 const FILTERS = [['statuses', 'Status'], ['targets', 'Target'], ['agents', 'Agent'], ['tags', 'Tag'], ['files', 'File']];
 
 export function artifactsOf(attempt) {
@@ -53,6 +55,27 @@ export function cacheText(cache) {
   return `cache ${cache.mode}${cache.reason ? ` (${cache.reason})` : ''} · replay ${cache.replayedActions ?? 0}/${cache.totalActions ?? 0}`;
 }
 
+const CLASS_LABEL = { configuration: 'Cấu hình', infrastructure: 'Hạ tầng', interrupted: 'Bị ngắt', internal: 'Nội bộ runner' };
+const EXIT_TEXT = { 1: 'Có test fail', 2: 'Lỗi cấu hình / thu thập test', 3: 'Lỗi hạ tầng (engine, app, model provider, artifact)', 4: 'Lỗi nội bộ của runner', 130: 'Run bị ngắt' };
+
+// e2e classes every error; only `test` ones say something about the app (the others stay out of the pass rate).
+function classChip(err) {
+  const label = CLASS_LABEL[err.category];
+  return label ? `<span class="tag err-class err-class-${escapeHtml(err.category)}" title="Không tính vào pass rate: lỗi này không nói gì về app đang test">${label}</span> ` : '';
+}
+
+// Under the summary: failures that are not the app's fault, and what the exit code means.
+function classNote(meta) {
+  const c = meta.errorClasses ?? {};
+  const n = nonTestFailures(meta);
+  const parts = [];
+  if (n) parts.push(`${n} kết quả fail do ${[c.infrastructure && 'hạ tầng', c.configuration && 'cấu hình'].filter(Boolean).join(' / ')} (không tính vào pass rate)`);
+  if (meta.unredacted) parts.push(`${meta.unredacted} video / file tải về chưa che secret hoàn toàn (redaction: incomplete) — xem lại trước khi chia sẻ (Share, publish); Export HTML không chứa video`);
+  if (meta.runErrors) parts.push(`${meta.runErrors} lỗi cấp run`);
+  if (meta.exitCode > 1 && EXIT_TEXT[meta.exitCode]) parts.push(`exit ${meta.exitCode}: ${EXIT_TEXT[meta.exitCode]}`);
+  return parts.length ? `<p class="small tone-warn class-note">${icon('alert', { size: 14 })}${escapeHtml(parts.join(' · '))}</p>` : '';
+}
+
 function errorBox(err) {
   if (!err) return '';
   const d = err.details ?? {};
@@ -61,7 +84,7 @@ function errorBox(err) {
     .map(([k, v]) => `<div><span class="muted">${k}:</span> <code>${escapeHtml(v)}</code></div>`)
     .join('');
   const src = err.source ? `<div class="muted">${escapeHtml(err.source.file)}:${escapeHtml(err.source.line)}</div>` : '';
-  return `<div class="err"><strong>${escapeHtml(err.code ?? 'Lỗi')}</strong> ${escapeHtml(err.message)}${rows}${src}</div>`;
+  return `<div class="err">${classChip(err)}<strong>${escapeHtml(err.code ?? 'Lỗi')}</strong> ${escapeHtml(err.message)}${rows}${src}</div>`;
 }
 
 function header(meta, report) {
@@ -94,7 +117,7 @@ function header(meta, report) {
     </div>
     ${aiSummary}
     ${report.run.explore && !(report.run.results ?? []).length ? '' : `<section class="panel run-summary">${shareBar({ segments: keys.map((k) => ({ key: k, value: s[k] ?? 0 })), center: rate == null ? '—' : `${Math.round(rate * 100)}%`, centerLabel: 'Pass rate', ariaLabel: 'Kết quả run' })}
-      <div><div>${countChips(s)}</div>${legend(keys.filter((k) => s[k]))}</div></section>`}${runErrors}${explorePanel(report)}${anomaliesPanel()}${groupsPanel()}`;
+      <div><div>${countChips(s)}</div>${legend(keys.filter((k) => s[k]))}</div></section>`}${classNote(meta)}${runErrors}${explorePanel(report)}${anomaliesPanel()}${groupsPanel()}`;
 }
 
 // An `e2e explore` run: its goal, steps and findings (most severe first), and an AI draft of a test.
@@ -130,6 +153,9 @@ function groupsPanel() {
     <div class="err-groups">${g.map((x) => errorGroupHtml(x, { compact: true })).join('')}</div></details>`;
 }
 
+const knownOf = (r) => ui.notes?.[knownKey(r)]?.known ?? null;
+const urlParams = () => ({ ...Object.fromEntries(Object.entries(ui.filters).map(([k, v]) => [k, v[0]])), failed: ui.onlyFailed ? '1' : undefined, known: ui.known || undefined });
+
 function filterBar(all) {
   const f = facets(all);
   const selects = FILTERS.filter(([k]) => f[k].length > 1 || ui.filters[k]?.length)
@@ -138,14 +164,16 @@ function filterBar(all) {
       .join('')}</select></label>`)
     .join('');
   const nFail = all.filter((r) => isFailed(r.status)).length;
-  return `<div class="filters"><button type="button" class="only-failed" data-only-failed aria-pressed="${Boolean(ui.onlyFailed)}"${nFail ? '' : ' disabled'}>${icon('x', { size: 14 })}Chỉ test fail <strong>${nFail}</strong></button>${selects}<button class="btn-matrix" data-toggle="matrix" aria-pressed="${ui.matrix}">${icon('table', { size: 15 })}Ma trận</button></div>`;
+  const nKnown = all.filter((r) => knownOf(r)).length;
+  const known = nKnown || ui.known ? `<label>Known bug <select data-known aria-label="Lọc known bug"><option value="">Tất cả</option><option value="only"${ui.known === 'only' ? ' selected' : ''}>Chỉ known bug (${nKnown})</option><option value="hide"${ui.known === 'hide' ? ' selected' : ''}>Ẩn known bug</option></select></label>` : '';
+  return `<div class="filters"><button type="button" class="only-failed" data-only-failed aria-pressed="${Boolean(ui.onlyFailed)}"${nFail ? '' : ' disabled'}>${icon('x', { size: 14 })}Chỉ test fail <strong>${nFail}</strong></button>${selects}${known}<button class="btn-matrix" data-toggle="matrix" aria-pressed="${ui.matrix}">${icon('table', { size: 15 })}Ma trận</button></div>`;
 }
 
 function testList(rows, runId, selectedId) {
   if (!rows.length) return '<p class="muted">Không có test nào khớp bộ lọc.</p>';
   return `<ul class="test-list">${rows
     .map((r) => `<li>${isExport() ? '' : `<input type="checkbox" class="sel" data-sel="${escapeHtml(r.id)}" ${ui.selected.has(r.id) ? 'checked' : ''} aria-label="Chọn ${escapeHtml(r.title)}">`}<a class="${r.id === selectedId ? 'selected' : ''}" href="${runHref(runId, r.id)}">
-      ${statusBadge(r.status)} <span class="title">${escapeHtml(r.title)}</span>
+      ${statusBadge(r.status)} <span class="title">${escapeHtml(r.title)}</span>${knownOf(r) ? ` <span class="chip tone-warn known-chip" title="Known bug: đã có ticket">KNOWN ${escapeHtml(knownOf(r))}</span>` : ''}
       <span class="muted">[${escapeHtml(r.target)}${r.agent !== 'default' ? ` · ${escapeHtml(r.agent)}` : ''}] ${fmtDuration(r.durationMs)}</span></a></li>`)
     .join('')}</ul>`;
 }
@@ -198,7 +226,7 @@ function mediaTab(row, attempt, runId) {
     })
     .join('');
   const visual = screenshotTriplets(screenshots)
-    .map((t) => `${visualCompareHtml({ left: mediaSrc(runId, t.expected), right: mediaSrc(runId, t.actual), diff: t.diff ? mediaSrc(runId, t.diff) : null, leftLabel: 'Ảnh mẫu (expected)', rightLabel: 'Thực tế (actual)', title: `toHaveScreenshot · ${t.name}` })}${isExport() ? '' : `<p class="visual-ai"><button type="button" class="btn-ai" data-ai-visual="${escapeHtml(row.id)}" data-name="${escapeHtml(t.name)}">${icon('sparkles', { size: 14 })}AI giải thích khác biệt</button> <span class="muted small">Lỗi thật hay thay đổi có chủ đích</span></p>`}`)
+    .map((t) => `${visualCompareHtml({ left: mediaSrc(runId, t.expected), right: mediaSrc(runId, t.actual), diff: t.diff ? mediaSrc(runId, t.diff) : null, leftLabel: 'Ảnh mẫu (expected)', rightLabel: 'Thực tế (actual)', title: `toHaveScreenshot · ${t.name}` })}${isExport() ? '' : `<p class="visual-ai"><button type="button" class="btn-ai" data-ai-visual="${escapeHtml(row.id)}" data-name="${escapeHtml(t.name)}">${icon('sparkles', { size: 14 })}AI giải thích khác biệt</button> <button type="button" data-update-snapshot="${escapeHtml(row.id)}" title="Chạy lại test này với -u: ảnh mẫu được ghi đè bằng ảnh thực tế (commit file *-snapshots/ sau đó)">${icon('check', { size: 14 })}Chấp nhận ảnh mới (-u)</button> <span class="muted small">Lỗi thật hay thay đổi có chủ đích</span></p>`}`)
     .join('');
   return `${visual}${vid}${shots ? `<div class="shots">${shots}</div>` : ''}`;
 }
@@ -230,10 +258,10 @@ function detail(row, meta, runId) {
   const { video } = artifactsOf(attempt);
   const skip = attempt.skip?.reason ? `<p class="muted">Skip: ${escapeHtml(attempt.skip.reason)}</p>` : '';
   const steps = (attempt.steps ?? []).map((s) => stepItem(s, video, attempt)).join('');
-  const tabs = TABS.filter(([k]) => k !== 'trace' || meta.traces?.[row.id])
+  const tabs = TABS.filter(([k]) => (k !== 'trace' || meta.traces?.[row.id]) && (k !== 'model' || (meta.aiTrace && !isExport())))
     .map(([k, label, ic]) => `<button data-tab="${k}" aria-pressed="${ui.tab === k}">${icon(ic, { size: 15 })}${label}</button>`)
     .join('');
-  const body = { media: () => mediaTab(row, attempt, runId), log: () => logTab(attempt), trace: () => '<div id="trace" class="md">Đang tải trace…</div>', source: () => sourceTab(row, attempt) }[ui.tab]();
+  const body = { media: () => mediaTab(row, attempt, runId), log: () => logTab(attempt), trace: () => '<div id="trace" class="md">Đang tải trace…</div>', model: () => '<div id="aitrace" class="ai-trace">Đang tải…</div>', source: () => sourceTab(row, attempt) }[ui.tab]();
   const savedFail = ui.saved.find((e) => e.action === 'analyze-failure' && e.resultId === row.id);
   const aiBtn = isFailure(row.status) && (!isExport() || savedFail)
     ? `<button type="button" class="btn-ai" data-ai="analyze-failure" data-result="${escapeHtml(row.id)}">${icon('sparkles', { size: 14 })}${isExport() ? 'Xem phân tích lỗi' : 'Phân tích lỗi'}</button>`
@@ -241,7 +269,15 @@ function detail(row, meta, runId) {
   const linearBtn = isFailure(row.status) && !isExport()
     ? `<button type="button" data-linear="${escapeHtml(row.id)}">${icon('ticket', { size: 14 })}Gửi Linear</button><button type="button" data-bisect="${escapeHtml(row.id)}">${icon('commit', { size: 14 })}Tìm commit gây lỗi</button><button type="button" data-fix="${escapeHtml(row.id)}" title="Copy lệnh để Claude Code đọc lỗi, sửa và chạy lại test">${icon('bolt', { size: 14 })}Sửa bằng Claude Code</button>`
     : '';
-  return `${head}${pills}${skip}${errorBox(attempt.error)}${aiBtn}${linearBtn}
+  const qc = isExport() ? '' : `<section class="qc-box" data-qc-key="${escapeHtml(`${row.testId}|${row.target}|${row.agent}`)}">
+      <h3>${icon('ticket', { size: 14 })}Ghi chú QC</h3>
+      <label class="fb-field"><span>Ghi chú</span><textarea data-qc-note rows="2" maxlength="2000" placeholder="Ví dụ: lỗi do data staging, đã báo dev"></textarea></label>
+      <label class="fb-field"><span>Known bug (mã ticket)</span><input data-qc-known maxlength="40" placeholder="LIN-123"></label>
+      <div class="form-row"><button type="button" data-qc-save>${icon('check', { size: 14 })}Lưu ghi chú</button><button type="button" data-qc-bug title="Chép nội dung bug report (Markdown) của attempt này">${icon('copy', { size: 14 })}Copy bug report</button></div>
+      <div class="form-row"><input data-qc-attach maxlength="200" placeholder="Gắn issue Linear có sẵn: ENG-123 hoặc link" aria-label="Issue Linear có sẵn"><button type="button" data-qc-attach-go>${icon('ticket', { size: 14 })}Gắn issue</button><button type="button" data-qc-detach hidden title="Gỡ liên kết với issue Linear (issue trên Linear không bị xoá)">${icon('close', { size: 14 })}Gỡ issue</button><button type="button" data-qc-comment hidden title="Lỗi khác lỗi đã biết: comment nội dung lỗi này vào issue của known bug">${icon('send', { size: 14 })}Comment lỗi mới vào issue</button></div>
+      <div class="form-row"><select data-qc-tpl aria-label="Mẫu prompt"></select><button type="button" data-qc-prompt title="Chép prompt đã điền dữ liệu để dán vào Claude">${icon('copy', { size: 14 })}Copy prompt</button><button type="button" class="btn-ai" data-qc-ai>${icon('sparkles', { size: 14 })}Để AI viết</button></div>
+      <pre class="tpl-out" data-qc-out hidden></pre></section>`;
+  return `${head}${pills}${skip}${errorBox(attempt.error)}${aiBtn}${linearBtn}${qc}
     <ol class="timeline">${steps || '<li class="muted">Không có step.</li>'}</ol>
     <div class="tabs">${tabs}</div><div class="tab-body">${body}</div>`;
 }
@@ -250,6 +286,8 @@ export async function renderRun(main, route) {
   const { runId, resultId } = route;
   if (ui.runId !== runId || !ui.data) {
     Object.assign(ui, { runId, onlyFailed: route.params?.failed === '1', filters: Object.fromEntries(Object.entries(route.params ?? {}).filter(([k]) => FILTERS.some(([f]) => f === k)).map(([k, v]) => [k, [v]])), matrix: false, attempt: new Map(), tab: 'media', selected: new Set(), saved: [] });
+    ui.known = ['only', 'hide'].includes(route.params?.known) ? route.params.known : ''; // known bug: chỉ hiện / ẩn
+    ui.notes = {};
     // a newer renderRun (the viewer clicked another run) owns `ui` now: a slow response must not land in it
     const stale = () => ui.runId !== runId || !main.isConnected;
     const data = await getJson(`/api/runs/${encodeURIComponent(runId)}`);
@@ -269,20 +307,23 @@ export async function renderRun(main, route) {
       ui.compareWith = base ?? (i >= 0 ? metas[i + 1] ?? null : null);
       ui.groups = errs.groups ?? [];
       const files = [...new Set(flattenResults(ui.data.report).map((r) => r.file).filter(Boolean))].slice(0, 200);
-      const [an, own] = await Promise.all([
+      const [an, own, notes] = await Promise.all([
         getJson(`/api/anomalies?runId=${encodeURIComponent(runId)}`).catch(() => ({ anomalies: [] })),
         getJson(`/api/owners?files=${encodeURIComponent(files.join(','))}`).catch(() => ({ owners: {} })),
+        getJson('/api/qc/notes').catch(() => ({})),
       ]);
       if (stale()) return;
       ui.anomalies = an.anomalies ?? [];
       ui.owners = own.owners ?? {};
+      ui.notes = notes ?? {};
     }
   }
   const { meta, report } = ui.data;
   const all = flattenResults(report);
-  const rows = applyFilters(all, ui.filters).filter((r) => !ui.onlyFailed || isFailed(r.status));
+  const rows = filterKnown(applyFilters(all, ui.filters).filter((r) => !ui.onlyFailed || isFailed(r.status)), ui.known, ui.notes);
   const selected = all.find((r) => r.id === resultId) ?? rows.find((r) => isFailure(r.status)) ?? rows[0];
   if (ui.tab === 'trace' && !meta.traces?.[selected?.id]) ui.tab = 'media';
+  if (ui.tab === 'model' && !(meta.aiTrace && !isExport())) ui.tab = 'media';
   const exploreOnly = report.run.explore && !all.length;
   main.innerHTML = `${header(meta, report)}${exploreOnly ? '' : `${filterBar(all)}
     <div class="run-body">
@@ -294,12 +335,17 @@ export async function renderRun(main, route) {
   main.querySelectorAll('[data-filter]').forEach((el) =>
     el.addEventListener('change', () => {
       ui.filters[el.dataset.filter] = el.value ? [el.value] : [];
-      replaceParams({ ...Object.fromEntries(Object.entries(ui.filters).map(([k, v]) => [k, v[0]])), failed: ui.onlyFailed ? '1' : undefined });
+      replaceParams(urlParams());
       rerender();
     }));
+  main.querySelector('[data-known]')?.addEventListener('change', (e) => {
+    ui.known = e.target.value;
+    replaceParams(urlParams());
+    rerender();
+  });
   main.querySelector('[data-only-failed]')?.addEventListener('click', () => {
     ui.onlyFailed = !ui.onlyFailed;
-    replaceParams({ ...Object.fromEntries(Object.entries(ui.filters).map(([k, v]) => [k, v[0]])), failed: ui.onlyFailed ? '1' : undefined });
+    replaceParams(urlParams());
     rerender();
   });
   main.querySelector('[data-toggle="matrix"]')?.addEventListener('click', () => {
@@ -390,6 +436,15 @@ export async function renderRun(main, route) {
       const v = main.querySelector('#run-video');
       if (v) v.currentTime = Number(el.dataset.offset);
     }));
+  main.querySelectorAll('[data-update-snapshot]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const f = facets(all);
+      openRunDialog({ ...selectionToRun(all, new Set([b.dataset.updateSnapshot])), allTargets: f.targets, allAgents: f.agents, rerunOf: runId, title: 'Cập nhật snapshot', preset: { updateSnapshots: true } });
+    }));
+  const qcEl = main.querySelector('.qc-box');
+  if (qcEl && selected) bindQc(qcEl, runId, selected);
+  const aiEl = main.querySelector('#aitrace');
+  if (aiEl && selected) renderAiTrace(aiEl, runId, selected.testId);
   const trace = main.querySelector('#trace');
   if (trace && selected) {
     fetch(fileUrl(runId, meta.traces[selected.id]))
@@ -401,6 +456,125 @@ export async function renderRun(main, route) {
     // leaving the run page drops cached data so the next visit refetches
     if (!location.hash.startsWith(`#/run/${encodeURIComponent(runId)}`)) ui.data = null;
   };
+}
+
+// Danh sách mẫu prompt: giữ 20 giây để chuyển qua lại giữa các test không tải lại mỗi lần.
+let tplCache = { at: 0, list: [] };
+async function qcTemplates() {
+  if (Date.now() - tplCache.at < 20_000) return tplCache.list;
+  const list = await getJson('/api/qc/templates').then((r) => r.templates).catch(() => null);
+  if (list) tplCache = { at: Date.now(), list };
+  return list ?? tplCache.list;
+}
+
+// Ghi chú QC của một test (dùng chung cho mọi run) và bug report của một result.
+async function bindQc(el, runId, row) {
+  const key = el.dataset.qcKey;
+  const note = el.querySelector('[data-qc-note]');
+  const known = el.querySelector('[data-qc-known]');
+  const all = ui.notes ?? {}; // đã tải cùng lúc với run
+  note.value = all[key]?.note ?? '';
+  known.value = all[key]?.known ?? '';
+  const commentBtn = el.querySelector('[data-qc-comment]');
+  const detachBtn = el.querySelector('[data-qc-detach]');
+  const syncComment = () => {
+    commentBtn.hidden = !(known.value.trim() && isFailure(row.status));
+    detachBtn.hidden = !known.value.trim();
+  };
+  syncComment();
+  known.addEventListener('input', syncComment);
+  el.querySelector('[data-qc-attach-go]').addEventListener('click', async (e) => {
+    const input = el.querySelector('[data-qc-attach]');
+    if (!input.value.trim()) return;
+    e.currentTarget.setAttribute('aria-busy', 'true');
+    try {
+      const r = await postJson('/api/linear/attach', { runId, resultId: row.id, ref: input.value });
+      known.value = r.issue.identifier;
+      ui.notes = { ...(ui.notes ?? {}), [key]: { note: note.value, known: r.issue.identifier } };
+      input.value = '';
+      syncComment();
+      toast(`Đã gắn ${r.issue.identifier}${r.issue.title ? `: ${r.issue.title}` : ''}${r.verified ? '' : ' (chưa xác minh với Linear)'}`);
+    } catch (x) {
+      toast(x.message.replace(/^\d{3}: /, ''), 'bad');
+    } finally {
+      e.currentTarget.removeAttribute('aria-busy');
+    }
+  });
+  const COMMENT_RESULT = {
+    commented: (c) => `Đã comment lỗi mới vào ${c.issue}`,
+    'same-bug': (c) => `Lỗi này đã được ghi nhận trên ${c.issue}: không comment lại`,
+    'issue-closed': (c) => `${c.issue} đã đóng: dùng "Gửi Linear" để tạo issue mới`,
+    'issue-missing': (c) => `Linear không còn issue ${c.issue}`,
+    'not-known': () => 'Test này chưa gắn issue nào',
+  };
+  detachBtn.addEventListener('click', async (e) => {
+    const id = known.value.trim();
+    if (!(await confirmDialog({ title: 'Gỡ liên kết issue', message: `Gỡ liên kết ${id} khỏi bug này? Issue trên Linear không bị xoá.`, confirmLabel: 'Gỡ liên kết' }))) return;
+    e.currentTarget.setAttribute('aria-busy', 'true');
+    try {
+      await postJson('/api/linear/detach', { runId, resultId: row.id });
+      known.value = '';
+      ui.notes = { ...(ui.notes ?? {}), [key]: { note: note.value, known: null } };
+      syncComment();
+      toast(`Đã gỡ ${id} khỏi bug`);
+    } catch (x) {
+      toast(x.message.replace(/^\d{3}: /, ''), 'bad');
+    } finally {
+      e.currentTarget.removeAttribute('aria-busy');
+    }
+  });
+  commentBtn.addEventListener('click', async (e) => {
+    e.currentTarget.setAttribute('aria-busy', 'true');
+    try {
+      const c = await postJson('/api/linear/comment-known', { runId, resultId: row.id });
+      toast(COMMENT_RESULT[c.status]?.(c) ?? c.status, c.status === 'commented' || c.status === 'same-bug' ? 'good' : 'warn');
+    } catch (x) {
+      toast(x.message.replace(/^\d{3}: /, ''), 'bad');
+    } finally {
+      e.currentTarget.removeAttribute('aria-busy');
+    }
+  });
+  el.querySelector('[data-qc-save]').addEventListener('click', async () => {
+    try {
+      await postJson('/api/qc/notes', { key, note: note.value, known: known.value.trim(), runId, resultId: row.id });
+      ui.notes = { ...(ui.notes ?? {}), [key]: { note: note.value, known: known.value.trim() || null } };
+      toast('Đã lưu ghi chú QC');
+    } catch (x) {
+      toast(x.message.replace(/^\d{3}: /, ''), 'bad');
+    }
+  });
+  const tplSel = el.querySelector('[data-qc-tpl]');
+  const tpls = await qcTemplates();
+  tplSel.innerHTML = tpls.map((t) => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)}</option>`).join('');
+  const useTpl = async (path, label) => {
+    const out = el.querySelector('[data-qc-out]');
+    try {
+      const r = await postJson(path, { templateId: tplSel.value, runId, resultId: row.id });
+      const text = r.prompt ?? r.text;
+      if (path.endsWith('/render')) {
+        await navigator.clipboard.writeText(text);
+        toast('Đã chép prompt');
+      } else {
+        out.hidden = false;
+        out.textContent = text;
+        await navigator.clipboard.writeText(text);
+        toast(`${label}: đã chép kết quả`);
+      }
+    } catch (x) {
+      toast(x.message.replace(/^\d{3}: /, ''), 'bad');
+    }
+  };
+  el.querySelector('[data-qc-prompt]').addEventListener('click', () => useTpl('/api/qc/render', 'Prompt'));
+  el.querySelector('[data-qc-ai]').addEventListener('click', (e) => { e.currentTarget.setAttribute('aria-busy', 'true'); useTpl('/api/qc/generate', 'AI').finally(() => e.currentTarget.removeAttribute('aria-busy')); });
+  el.querySelector('[data-qc-bug]').addEventListener('click', async () => {
+    try {
+      const md = await fetch(`/api/runs/${encodeURIComponent(runId)}/bug-report?resultId=${encodeURIComponent(row.id)}`).then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))));
+      await navigator.clipboard.writeText(md);
+      toast('Đã chép bug report (Markdown)');
+    } catch (x) {
+      toast(`Không chép được: ${x.message}`, 'bad');
+    }
+  });
 }
 
 // "AI giải thích khác biệt" ở khối so sánh ảnh: một listener cho mọi lần vẽ lại tab ảnh

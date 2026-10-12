@@ -1,6 +1,6 @@
 import { readdir, readFile, writeFile, mkdir, rename, rm, lstat, stat } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
-import { basename, join, relative } from 'node:path';
+import { join, relative } from 'node:path';
 import { serial } from './jsonstate.mjs';
 import { DATA_DIR, RUN_ID, RESULT_ID, resultAttempts, realInside, isLink, listRunDirs } from '../reporter/e2e-dashboard.reporter.mjs';
 
@@ -10,6 +10,13 @@ const readJson = async (p) => JSON.parse(await readFile(p, 'utf8'));
 // Parsed meta.json by path, reused while the file's mtime and size are unchanged: with thousands of
 // runs a stat is far cheaper than reading and parsing every file on each request.
 const metaCache = new Map();
+
+// After a reset: nothing read earlier may be served from memory.
+export function dropCaches() {
+  metaCache.clear();
+  for (const k of [...reportCache.keys()]) dropReport(k);
+  countCache.clear();
+}
 
 export async function listRuns(root) {
   if (isLink(join(root, DATA_DIR)) || isLink(runsDir(root))) return [];

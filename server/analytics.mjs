@@ -101,7 +101,7 @@ export function compareRuns(base, head) {
     const tb = b ? resultTokens(head.report, b) : null;
     const err = (rep, x) => {
       const e = x && resultAttempts(rep, x).at(-1)?.error;
-      return e ? { code: e.code ?? null, message: String(e.message ?? '').slice(0, 300) } : null;
+      return e ? { code: e.code ?? null, category: typeof e.category === 'string' ? e.category.slice(0, 30) : null, message: String(e.message ?? '').slice(0, 300) } : null;
     };
     rows.push({
       ...row(r), repeat: r.repeat ?? 0, change,

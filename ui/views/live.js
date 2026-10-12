@@ -1,4 +1,5 @@
 import { getJson, liveStream, postJson, isExport } from '../api.js';
+import { confirmDialog } from '../confirm.js';
 import { renderMarkdown } from '../markdown.js';
 import { isFailed } from '../model.js';
 import { openRunDialog } from './run-dialog.js';
@@ -210,6 +211,8 @@ export async function renderLive(main) {
         <p class="muted">${escapeHtml(snap.done)}/${escapeHtml(snap.total)} test${eta}${tally(snap.tests, snap.lanes)}</p>
         ${snap.status !== 'running' ? `<p class="row-actions"><a class="button" href="#/runs">${icon('list', { size: 14 })}Xem ở Runs</a> <button type="button" data-run-all>${icon('play', { size: 14 })}Chạy lại toàn bộ suite</button></p>` : ''}
         ${snap.error ? `<div class="err">${escapeHtml(snap.error.message ?? '')}</div>` : ''}
+        ${snap.stopped ? `<div class="banner tone-warn">${icon('alert', { size: 14 })}Run dừng sớm: đã chạm <code>--max-failures</code> (${escapeHtml(snap.stopped.failures)}/${escapeHtml(snap.stopped.limit)} test fail), các test còn lại không chạy.</div>` : ''}
+        ${(snap.notices ?? []).map((n) => `<div class="banner tone-info">${icon('info', { size: 14 })}${n.target ? `<strong>${escapeHtml(n.target)}</strong>: ` : ''}${escapeHtml(n.message)}</div>`).join('')}
         ${blockersHtml(snap.tests)}`,
       ai: aiSum.runId === snap.runId && aiSum.md
         ? `<h2>${icon('sparkles', { size: 15 })} Tóm tắt AI</h2><div class="md">${renderMarkdown(aiSum.md)}</div>`
@@ -289,6 +292,7 @@ export async function renderLive(main) {
       return;
     }
     if (!e.target.closest('[data-stop]') || stopping) return;
+    if (!(await confirmDialog({ title: 'Dừng run', message: 'Dừng run đang chạy? Test đang chạy bị ngắt và kết quả run sẽ không đầy đủ.', confirmLabel: 'Dừng run' }))) return;
     stopping = true;
     draw();
     const r = await postJson('/api/run/stop', {}).catch((x) => ({ error: x.message }));

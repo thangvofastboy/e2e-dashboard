@@ -1,4 +1,5 @@
-import { postJson, fileUrl } from '../api.js';
+import { getJson, postJson, fileUrl } from '../api.js';
+import { confirmDialog } from '../confirm.js';
 import { copyToClipboard } from '../analysis.js';
 import { renderMarkdown } from '../markdown.js';
 import { escapeHtml } from '../format.js';
@@ -52,7 +53,7 @@ export async function openLinearDialog({ runId, resultId }) {
   let sending = false;
 
   body.innerHTML = `
-    ${d.link ? `<div class="banner tone-info">${icon('info', { size: 15 })}Đã gửi trước đây: ${issueLink(d.link)}</div>` : ''}
+    ${d.link ? `<div class="banner tone-info">${icon('info', { size: 15 })}<span>Đã gửi trước đây: ${issueLink(d.link)}</span> <button type="button" class="small-btn" data-unlink title="Gỡ liên kết (issue trên Linear không bị xoá)">${icon('close', { size: 13 })}Gỡ liên kết</button></div>` : ''}
     <div class="seg-btns linear-modes" role="tablist">
       <button type="button" role="tab" data-mode="preview">${icon('eye', { size: 14 })}Xem trước</button>
       <button type="button" role="tab" data-mode="edit">${icon('file', { size: 14 })}Sửa nội dung</button>
@@ -70,6 +71,8 @@ export async function openLinearDialog({ runId, resultId }) {
     <div data-status hidden></div>
     <footer>
       <button type="button" class="btn-ai" data-rewrite title="AI viết lại cho giống người viết, giữ đủ dữ kiện">${icon('sparkles', { size: 14 })}Viết lại cho tự nhiên (AI)</button>
+      <select data-qc-tpl aria-label="Mẫu QC" class="linear-tpl"></select>
+      <button type="button" class="btn-ai" data-qc-linear title="AI viết nội dung theo mẫu QC đã chọn, giữ dòng fingerprint">${icon('sparkles', { size: 14 })}Viết bằng mẫu QC</button>
       <button type="button" data-copy-claude title="Dán vào Claude Code có Linear MCP">${icon('copy', { size: 14 })}Copy cho Claude (Linear MCP)</button>
       ${d.configured ? `<button type="button" class="primary" data-send>${icon('send', { size: 14 })}Gửi lên Linear</button>` : '<span class="muted small">Đặt Linear API key ở <a href="#/system">Cài đặt hệ thống</a> (hoặc <code>LINEAR_API_KEY</code>) để gửi trực tiếp.</span>'}
     </footer>`;
@@ -127,8 +130,8 @@ export async function openLinearDialog({ runId, resultId }) {
     pull();
     setMode('preview');
   });
-  $('[data-reset]').addEventListener('click', () => {
-    if (!confirm('Bỏ mọi chỗ đã sửa và quay về bản gốc?')) return;
+  $('[data-reset]').addEventListener('click', async () => {
+    if (!(await confirmDialog({ title: 'Khôi phục bản gốc', message: 'Bỏ mọi chỗ đã sửa và quay về bản gốc?', confirmLabel: 'Khôi phục' }))) return;
     edit = { ...original };
     remember();
     setMode(mode);
@@ -154,6 +157,40 @@ export async function openLinearDialog({ runId, resultId }) {
     } finally {
       b.disabled = false;
       desc.disabled = false;
+      b.removeAttribute('aria-busy');
+    }
+  });
+  $('[data-unlink]')?.addEventListener('click', async (e) => {
+    if (!(await confirmDialog({ title: 'Gỡ liên kết issue', message: 'Gỡ liên kết issue khỏi bug này? Issue trên Linear không bị xoá; lần gửi sau sẽ tạo issue mới.', confirmLabel: 'Gỡ liên kết' }))) return;
+    try {
+      await postJson('/api/linear/detach', { runId, resultId });
+      e.currentTarget.closest('.banner').remove();
+      status(`${icon('check', { size: 15 })}Đã gỡ liên kết.`, 'good');
+    } catch (x) {
+      status(escapeHtml(x.message.replace(/^\d{3}: /, '')), 'bad');
+    }
+  });
+  const qcSel = $('[data-qc-tpl]');
+  getJson('/api/qc/templates').then((r) => {
+    qcSel.innerHTML = r.templates.map((t) => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)}</option>`).join('');
+  }).catch(() => { qcSel.hidden = true; $('[data-qc-linear]').hidden = true; });
+  $('[data-qc-linear]').addEventListener('click', async (e) => {
+    const b = e.currentTarget;
+    pull();
+    b.disabled = true;
+    b.setAttribute('aria-busy', 'true');
+    status(`${icon('loader', { size: 14 })} AI đang viết theo mẫu QC…`);
+    try {
+      const fpLine = original.description.split('\n').filter((l) => l.includes('fingerprint:')).pop() ?? '';
+      const r = await postJson('/api/qc/generate', { templateId: qcSel.value, runId, resultId, fingerprintLine: fpLine });
+      edit = { ...edit, description: r.text };
+      remember();
+      setMode('preview');
+      status(`${icon('check', { size: 15 })}Đã viết theo mẫu QC: xem trước, sửa thêm nếu cần rồi gửi.`, 'good');
+    } catch (x) {
+      status(escapeHtml(x.message.replace(/^\d{3}: /, '')), 'bad');
+    } finally {
+      b.disabled = false;
       b.removeAttribute('aria-busy');
     }
   });

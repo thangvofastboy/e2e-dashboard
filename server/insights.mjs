@@ -2,6 +2,7 @@
 // bisect plans. Pure functions over `history` ([{meta, report}], newest first), like analytics.mjs.
 import { resultAttempts } from '../reporter/e2e-dashboard.reporter.mjs';
 import { testKey, resultError, dayKey } from './analytics.mjs';
+import { nonTestFailures } from '../ui/health.js';
 
 const FAIL = new Set(['failed', 'timed-out', 'interrupted']);
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -371,7 +372,7 @@ export function exploreSummary(report) {
 // Fail rate per value of each environment dimension; a value far above the overall rate is
 // where the failures live ("only on webkit", "only in the evening run").
 export function environmentBreakdown(history, { minResults = 3 } = {}) {
-  const dims = { target: new Map(), os: new Map(), browser: new Map(), runner: new Map(), hour: new Map(), branch: new Map() };
+  const dims = { target: new Map(), os: new Map(), browser: new Map(), runner: new Map(), hour: new Map(), branch: new Map(), agent: new Map(), engine: new Map() };
   let total = 0;
   let fails = 0;
   const bump = (dim, value, failed) => {
@@ -386,6 +387,7 @@ export function environmentBreakdown(history, { minResults = 3 } = {}) {
   for (const { meta, report } of history) {
     const env = report.run?.environment ?? {};
     const hour = new Date(meta.startedAt).getHours();
+    const engines = new Map((report.run?.targets ?? []).map((t) => [t.id, t.engine?.name ? `${t.engine.name}${t.platform ? ` (${t.platform})` : ''}` : null]));
     for (const r of results(report)) {
       if (r.status === 'skipped') continue;
       const failed = FAIL.has(r.status);
@@ -398,6 +400,8 @@ export function environmentBreakdown(history, { minResults = 3 } = {}) {
       bump('runner', report.run?.runner?.version ? `e2e ${report.run.runner.version}` : null, failed);
       bump('hour', Number.isFinite(hour) ? `${String(hour).padStart(2, '0')}h` : null, failed);
       bump('branch', meta.git?.branch, failed);
+      bump('agent', r.agent, failed); // tests pinned to different agents / personas
+      bump('engine', engines.get(r.targetId), failed); // Playwright, agent-device, or an engine of a hosted browser / device service
     }
   }
   const overall = total ? fails / total : null;
@@ -449,7 +453,10 @@ export function sloStatus(history, { target = 0.95, days = 7, now = Date.now() }
 
 // Pass/fail for CI or a pre-push hook: new failures vs the previous run (or the baseline),
 // health score, SLO and token budget. Each check says why.
-export function qualityGate({ history, health, slo, baseline = null, compare, rules = {} }) {
+const NON_TEST = new Set(['configuration', 'infrastructure']);
+
+// known: test keys with a known bug (QC notes): their failures are not new ones
+export function qualityGate({ history, health, slo, baseline = null, compare, rules = {}, known = new Set() }) {
   const r = { maxNewFailures: 0, minHealth: null, requireSlo: false, maxTokens: null, ...rules };
   const latest = history[0];
   if (!latest) return { pass: false, checks: [{ name: 'run', pass: false, detail: 'Chưa có run nào.' }] };
@@ -457,9 +464,13 @@ export function qualityGate({ history, health, slo, baseline = null, compare, ru
   const checks = [];
   if (base) {
     const c = compare(base, latest);
-    const n = c.counts.regressed;
-    checks.push({ name: 'new-failures', pass: n <= r.maxNewFailures, detail: `${n} test mới fail so với ${baseline ? 'baseline' : 'run trước'} (cho phép ${r.maxNewFailures})`, tests: c.rows.filter((x) => x.change === 'regressed').map((x) => x.title).slice(0, 10) });
+    // a provider outage or bad credentials is not a regression: it gets its own check below
+    const regressed = c.rows.filter((x) => x.change === 'regressed' && !NON_TEST.has(x.b?.error?.category) && !known.has(x.key));
+    const n = regressed.length;
+    checks.push({ name: 'new-failures', pass: n <= r.maxNewFailures, detail: `${n} test mới fail so với ${baseline ? 'baseline' : 'run trước'} (cho phép ${r.maxNewFailures})${known.size ? `; bỏ qua ${[...c.rows].filter((x) => x.change === 'regressed' && known.has(x.key)).length} test có known bug` : ''}`, tests: regressed.map((x) => x.title).slice(0, 10) });
   } else checks.push({ name: 'new-failures', pass: latest.meta.status === 'passed', detail: 'Chưa có run để so: dùng kết quả run mới nhất.' });
+  const infra = nonTestFailures(latest.meta);
+  if (infra) checks.push({ name: 'infrastructure', pass: false, detail: `${infra} kết quả fail do hạ tầng / cấu hình ở run mới nhất — không phải lỗi app, chạy lại sau khi sửa môi trường` });
   if (Number.isFinite(r.minHealth) && health) checks.push({ name: 'health', pass: health.score >= r.minHealth, detail: `Health score ${health.score} (tối thiểu ${r.minHealth})` });
   if (r.requireSlo && slo?.met != null) checks.push({ name: 'slo', pass: slo.met, detail: `Pass rate ${Math.round((slo.actual ?? 0) * 1000) / 10}% trong ${slo.days} ngày (mục tiêu ${Math.round(slo.target * 100)}%)` });
   if (Number.isFinite(r.maxTokens)) {

@@ -19,6 +19,12 @@ const title = (r) => (Array.isArray(r.titlePath) ? r.titlePath.join(' › ') : S
 // report text goes into Markdown: no raw HTML, no forged fingerprint line
 const md = (s, n) => clip(s, n).replace(/[<>]/g, (c) => (c === '<' ? '‹' : '›')).replace(/e2ed-([0-9a-f]{12})/g, 'e2ed‐$1');
 
+// "ENG-123" from a bare identifier or any Linear URL (…/issue/ENG-123/some-title).
+export function parseIssueRef(text) {
+  const m = /(?:^|[^A-Za-z0-9])([A-Za-z][A-Za-z0-9]{1,9}-\d{1,7})(?![A-Za-z0-9])/.exec(String(text ?? '').slice(0, 300));
+  return m ? m[1].toUpperCase() : null;
+}
+
 export function fingerprint(r, err) {
   const sig = errorSignature(err)?.id ?? 'no-error';
   return `e2ed-${createHash('sha256').update(`${testKey(r)}\0${sig}`).digest('hex').slice(0, 12)}`;
@@ -175,6 +181,16 @@ export function createLinear({ apiKey, team, fetchImpl = globalThis.fetch, timeo
       const open = nodes.find((i) => !['completed', 'canceled'].includes(i.state?.type));
       return { open: open ?? null, closed: nodes.filter((i) => i !== open) };
     },
+    // one issue by identifier ("ENG-123"); null when Linear does not know it
+    async get(identifier) {
+      if (!/^[A-Z][A-Z0-9]{1,9}-\d{1,7}$/.test(identifier)) throw new Error('invalid identifier');
+      try {
+        return (await gql(`query($id: String!) { issue(id: $id) { ${ISSUE} } }`, { id: identifier })).issue ?? null;
+      } catch (e) {
+        if (/not found|entity/i.test(e.message)) return null;
+        throw e;
+      }
+    },
     async create(draft) {
       const data = await gql(`mutation($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { ${ISSUE} } } }`, { input: { teamId: await teamId(), title: draft.title, description: draft.description } });
       if (!data.issueCreate?.success) throw new Error('Linear: tạo issue thất bại.');
@@ -203,6 +219,19 @@ export function createLinear({ apiKey, team, fetchImpl = globalThis.fetch, timeo
 export async function readIssueLinks(root) {
   const m = await readState(root, 'issues.json', {}); // state/issues.json (đọc cả vị trí cũ)
   return m && typeof m === 'object' && !Array.isArray(m) ? m : {};
+}
+
+// Unlink only: the issue itself stays in Linear. Returns the identifier that was linked, or null.
+export async function removeIssueLink(root, fp) {
+  if (!FP.test(fp) || isLink(join(root, DATA_DIR))) return null;
+  return serial(`${root}:issues`, async () => {
+    const all = await readIssueLinks(root);
+    if (!Object.hasOwn(all, fp)) return null;
+    const { identifier } = all[fp];
+    delete all[fp];
+    await writeState(root, 'issues.json', all);
+    return identifier || null;
+  });
 }
 
 export async function saveIssueLink(root, fp, issue) {

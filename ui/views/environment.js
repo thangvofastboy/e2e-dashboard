@@ -3,7 +3,7 @@ import { runCountPicker, analysisCount, pageHead, emptyBox, meter, fmtPct } from
 import { escapeHtml } from '../format.js';
 import { icon } from '../icons.js';
 
-const DIM_LABEL = { target: 'Target', os: 'Hệ điều hành', browser: 'Trình duyệt', runner: 'Phiên bản e2e', hour: 'Giờ chạy', branch: 'Branch' };
+const DIM_LABEL = { target: 'Target', os: 'Hệ điều hành', browser: 'Trình duyệt', runner: 'Phiên bản e2e', hour: 'Giờ chạy', branch: 'Branch', agent: 'Agent / persona', engine: 'Engine' };
 
 export function envTableHtml(dim, rows, overall) {
   return `<section class="panel"><h2>${escapeHtml(DIM_LABEL[dim] ?? dim)}</h2><table class="table compact"><tbody>${rows.map((r) => `<tr><td>${escapeHtml(r.value)}</td>
@@ -13,7 +13,7 @@ export function envTableHtml(dim, rows, overall) {
 export async function renderEnvironment(main) {
   const picker = runCountPicker(() => renderEnvironment(main));
   const d = await getJson(`/api/environment?n=${analysisCount()}`);
-  const head = pageHead('Lỗi theo môi trường', 'gauge', `Tỉ lệ fail theo target, hệ điều hành, trình duyệt, phiên bản e2e, giờ chạy và branch. Tỉ lệ chung: <strong>${escapeHtml(fmtPct(d.overall))}</strong> (${escapeHtml(d.fails)}/${escapeHtml(d.total)} kết quả).`, picker.html);
+  const head = pageHead('Lỗi theo môi trường', 'gauge', `Tỉ lệ fail theo target, hệ điều hành, trình duyệt, phiên bản e2e, giờ chạy, branch, agent và engine. Tỉ lệ chung: <strong>${escapeHtml(fmtPct(d.overall))}</strong> (${escapeHtml(d.fails)}/${escapeHtml(d.total)} kết quả).`, picker.html);
   const dims = Object.entries(d.dims);
   main.innerHTML = dims.length
     ? `${head}${d.hotspots.map((h) => `<div class="banner tone-bad">${icon('alert', { size: 15 })}Fail tập trung ở <strong>${escapeHtml(DIM_LABEL[h.dim] ?? h.dim)} = ${escapeHtml(h.value)}</strong>: ${escapeHtml(fmtPct(h.failRate))} (gấp ${escapeHtml(h.lift.toFixed(1))} lần tỉ lệ chung)</div>`).join('')}
