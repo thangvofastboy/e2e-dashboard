@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 // Cut a release: bump the version everywhere, pin the marketplace to the new tag, commit and tag.
 // `/e2e-dashboard update` installs whatever tag the marketplace on main points at.
+// Tag và GitHub Release mang nội dung mục CHANGELOG của version (tính năng mới / cập nhật / sửa lỗi).
 //
 //   npm run release -- minor          (patch | minor | major | X.Y.Z)
-//   npm run release -- minor --push   (also push main and the tag)
+//   npm run release -- minor --push   (also push main and the tag, and create the GitHub Release)
+//   npm run release -- patch --trailer="Claude-Session: …"   (dòng thêm vào cuối commit release)
+//   npm run release -- notes v0.8.6   (tạo / cập nhật GitHub Release của một tag đã push)
 import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { parseChangelog } from '../server/changelog.mjs';
 
 const REPO = 'thangvofastboy/e2e-dashboard';
 const semver = (v) => v.split('.').map(Number);
@@ -39,10 +43,40 @@ export function setVersion(root, version, repo = REPO) {
   return files;
 }
 
+// Nội dung mục "## vX.Y.Z — ngày" của CHANGELOG; thiếu mục thì lỗi (không phát hành bản không có ghi chú)
+export function releaseNotes(changelogMd, version) {
+  const entry = parseChangelog(changelogMd).find((e) => e.version === version);
+  if (!entry?.body) throw new Error(`CHANGELOG.md chưa có mục v${version} — viết tính năng mới / cập nhật / sửa lỗi trước khi release`);
+  return entry.body;
+}
+
+// Tạo GitHub Release cho tag (đã push) với ghi chú; có rồi thì cập nhật ghi chú
+function publishNotes(sh, out, tag, notes) {
+  const exists = (() => {
+    try {
+      out('gh', ['release', 'view', tag, '--repo', REPO, '--json', 'tagName']);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  if (exists) sh('gh', ['release', 'edit', tag, '--repo', REPO, '--title', tag, '--notes', notes]);
+  else sh('gh', ['release', 'create', tag, '--repo', REPO, '--title', tag, '--notes', notes, '--verify-tag']);
+}
+
 function main(argv) {
   const root = fileURLToPath(new URL('..', import.meta.url));
   const sh = (cmd, args, opts = {}) => execFileSync(cmd, args, { cwd: root, stdio: 'inherit', ...opts });
   const out = (cmd, args) => execFileSync(cmd, args, { cwd: root, encoding: 'utf8' }).trim();
+  const changelog = () => readFileSync(join(root, 'CHANGELOG.md'), 'utf8');
+  if (argv[0] === 'notes') {
+    const tag = argv[1];
+    if (!/^v\d+\.\d+\.\d+$/.test(tag ?? '')) throw new Error('usage: release notes vX.Y.Z');
+    publishNotes(sh, out, tag, releaseNotes(changelog(), tag.slice(1)));
+    console.log(`release notes published for ${tag}`);
+    return;
+  }
+  const trailer = argv.find((a) => a.startsWith('--trailer='))?.slice('--trailer='.length);
   const kind = argv.find((a) => !a.startsWith('--')) ?? 'patch';
   if (out('git', ['branch', '--show-current']) !== 'main') throw new Error('release from main only');
   if (out('git', ['status', '--porcelain'])) throw new Error('working tree is not clean; commit or stash first');
@@ -50,6 +84,7 @@ function main(argv) {
   const version = nextVersion(current, kind);
   const tag = `v${version}`;
   if (out('git', ['tag', '--list', tag])) throw new Error(`tag ${tag} already exists`);
+  const notes = releaseNotes(changelog(), version); // kiểm tra trước khi bump
   sh('claude', ['plugin', 'validate', '.']);
   const files = setVersion(root, version);
   // test sau khi bump: test CHANGELOG kiểm tra mục đầu khớp version đang release
@@ -61,10 +96,17 @@ function main(argv) {
     throw e;
   }
   sh('git', ['add', ...files]);
-  sh('git', ['commit', '-m', `chore: release ${tag}`]);
-  sh('git', ['tag', '-a', tag, '-m', tag]);
-  if (argv.includes('--push')) sh('git', ['push', 'origin', 'HEAD', tag]);
-  console.log(`released ${tag}${argv.includes('--push') ? '' : ` (push with: git push origin main ${tag})`}`);
+  sh('git', ['commit', '-m', trailer ? `chore: release ${tag}\n\n${trailer}` : `chore: release ${tag}`]);
+  sh('git', ['tag', '-a', tag, '-m', `${tag}\n\n${notes}`]); // tag mang ghi chú của bản
+  if (argv.includes('--push')) {
+    sh('git', ['push', 'origin', 'HEAD', tag]);
+    try {
+      publishNotes(sh, out, tag, notes);
+    } catch (e) {
+      console.error(`release: đã push nhưng chưa tạo được GitHub Release (${e.message}); chạy lại: npm run release -- notes ${tag}`);
+    }
+  }
+  console.log(`released ${tag}${argv.includes('--push') ? '' : ` (push with: git push origin main ${tag}; then: npm run release -- notes ${tag})`}`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

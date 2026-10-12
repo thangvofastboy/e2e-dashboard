@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { setVersion, nextVersion } from '../scripts/release.mjs';
+import { setVersion, nextVersion, releaseNotes } from '../scripts/release.mjs';
 
 test('nextVersion bumps patch, minor, major or takes an explicit X.Y.Z', () => {
   assert.equal(nextVersion('0.1.9', 'patch'), '0.1.10');
@@ -30,4 +30,11 @@ test('setVersion updates manifest, package, reporter and pins the marketplace to
   assert.deepEqual(mp.source, { source: 'github', repo: 'thangvofastboy/e2e-dashboard', ref: 'v0.2.0' });
   assert.equal(mp.version, '0.2.0');
   assert.equal(files.length, 4);
+});
+
+test('releaseNotes takes the CHANGELOG section of the version and refuses a release without one', () => {
+  const md = '# Changelog\n\n## v1.2.0 — 2026-01-02\n\n- **Mới**: a\n- **Sửa lỗi**: b\n\n## v1.1.0 — 2026-01-01\n\n- old\n';
+  assert.equal(releaseNotes(md, '1.2.0'), '- **Mới**: a\n- **Sửa lỗi**: b');
+  assert.equal(releaseNotes(md, '1.1.0'), '- old');
+  assert.throws(() => releaseNotes(md, '1.3.0'), /chưa có mục v1.3.0/);
 });
