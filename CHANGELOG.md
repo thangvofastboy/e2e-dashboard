@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.8.4 — 2026-10-12
+
+- **Trang Live, số worker**: dòng tiến độ hiện `N worker đang chạy (tối đa M)` — M là số làn đã dùng cao nhất trong run.
+- **Output đảo thứ tự**: dòng mới nhất nằm trên cùng (50 dòng cuối). Lưu ý: stack trace nhiều dòng đọc từ dưới lên.
+
 ## v0.8.3 — 2026-10-12
 
 - **Số worker chạy test**: trang *Tự động & lưu trữ* có mục *Số worker khi chạy test* — tự động theo máy (nửa số core, hoặc `workers` trong `e2e.config`) hoặc số cố định. Áp dụng cho nút Chạy, lịch chạy và watch.

@@ -12,11 +12,15 @@ export function stripAnsi(s) {
 }
 
 // " · 2 pass · 35 fail · 137 skip" sau thanh tiến độ: run fail trong vài giây vẫn thấy ngay kết quả
-export function tally(tests = []) {
+// peak = làn đã dùng cao nhất (số worker thật đã chạy song song); running = test đang chạy lúc này
+export function tally(tests = [], peak = 0) {
   const n = (s) => tests.filter((t) => t.status === s).length;
+  const running = n('running');
   const parts = [[n('passed'), 'pass', 'tone-good'], [n('failed'), 'fail', 'tone-bad'], [n('flaky'), 'flaky', 'tone-warn'], [n('skipped'), 'skip', '']]
     .filter(([c]) => c)
     .map(([c, label, cls]) => `<span class="${cls}">${c} ${label}</span>`);
+  if (running) parts.unshift(`<span class="tone-info">${running} worker đang chạy${peak > running ? ` (tối đa ${peak})` : ''}</span>`);
+  else if (peak) parts.unshift(`<span class="muted">tối đa ${peak} worker</span>`);
   return parts.length ? ` · ${parts.join(' · ')}` : '';
 }
 
@@ -78,14 +82,15 @@ export async function renderLive(main) {
            .map((s) => `<li class="step">${statusBadge(s.status)} <code>${escapeHtml(s.api)}</code> ${escapeHtml(s.label ?? '')} <span class="muted">${fmtDuration(s.durationMs)}</span>${s.error ? `<div class="err">${escapeHtml(s.error.message ?? '')}</div>` : ''}</li>`)
            .join('') || '<li class="muted">Chưa có step.</li>'}</ol>`
       : '';
-    const out = snap.output.slice(-50).map((o) => escapeHtml(stripAnsi(o.text))).join('');
+    // mới nhất lên đầu: 50 dòng cuối, đảo thứ tự (mỗi phần tử là một dòng output)
+    const out = snap.output.slice(-50).reverse().map((o) => escapeHtml(stripAnsi(o.text))).join('');
     main.style.setProperty('--phase', `-${Math.round(performance.now() % 2400)}ms`); // rebuilt nodes resume their loops (2.4 s = lcm of 0.8 s / 1.2 s)
     const beat = snap.status === 'running' ? `<span class="beat${fresh ? '' : ' idle'}" title="Đang nhận dữ liệu live" aria-hidden="true"></span>` : '';
     fresh = false;
     main.innerHTML = `<h1>Live ${beat}${statusBadge(snap.status === 'finished' ? snap.runStatus ?? 'finished' : snap.status)}</h1>
       ${snap.status === 'running' ? `<p><button type="button" class="btn-stop" data-stop${stopping ? ' disabled' : ''}>${icon('square', { size: 14 })}Dừng run</button> <span class="muted small" data-stop-note>${escapeHtml(stopNote)}</span></p>` : ''}
       <div class="progress${snap.status === 'running' ? ' running' : ''}"><div class="bar" style="width:${pct}%"></div></div>
-      <p class="muted">${escapeHtml(snap.done)}/${escapeHtml(snap.total)} test${eta}${tally(snap.tests)}</p>
+      <p class="muted">${escapeHtml(snap.done)}/${escapeHtml(snap.total)} test${eta}${tally(snap.tests, snap.lanes)}</p>
       ${snap.status !== 'running' ? `<p class="row-actions"><a class="button" href="#/runs">${icon('list', { size: 14 })}Xem ở Runs</a> <button type="button" data-run-all>${icon('play', { size: 14 })}Chạy lại toàn bộ suite</button></p>` : ''}
       ${snap.error ? `<div class="err">${escapeHtml(snap.error.message ?? '')}</div>` : ''}
       <section class="panel gantt"><div class="gantt-body"><div class="gantt-axis" aria-hidden="true"><span>0s</span><span>${fmtDuration(spanMs)}</span></div><div class="gantt-lanes">${lanes}</div></div>

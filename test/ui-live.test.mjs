@@ -47,3 +47,12 @@ test('tally counts finished statuses for the Live progress line', async () => {
   assert.match(html, /1 skip/);
   assert.doesNotMatch(html, /flaky/);
 });
+
+test('tally shows how many workers are running now and the peak reached', async () => {
+  const { tally } = await import('../ui/views/live.js');
+  const running = tally([{ status: 'running' }, { status: 'running' }, { status: 'passed' }], 5);
+  assert.match(running, /2 worker đang chạy \(tối đa 5\)/);
+  assert.match(running, /1 pass/);
+  assert.match(tally([{ status: 'passed' }], 4), /tối đa 4 worker/);
+  assert.doesNotMatch(tally([{ status: 'running' }], 1), /tối đa/);
+});
