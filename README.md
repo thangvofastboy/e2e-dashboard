@@ -130,7 +130,7 @@
 | 🗂️ | **Cài đặt chia tab dọc** | Cài đặt hệ thống và Tự động & lưu trữ chia nhóm ở menu dọc, hiện số liệu tổng quan, nút và công tắc lớn rõ ràng |
 
 > [!TIP]
-> **Không cài thêm gì.** Plugin chỉ cần Node (e2e vốn đã cần), không có dependency npm, không bước build, không tải CDN, nên chạy được cả khi không có mạng.
+> **Không cài thêm gì.** Plugin chỉ cần Node (e2e vốn đã cần), không có dependency npm, không bước build, không tải CDN, nên chạy được cả khi không có mạng. Giao diện (~420 KB) được nén gzip khi truyền (~130 KB), nén một lần cho mỗi phiên bản.
 
 ---
 

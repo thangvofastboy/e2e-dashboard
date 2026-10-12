@@ -99,7 +99,6 @@ export function runRelPath(report) {
 }
 // khoá sắp xếp chung cho hai bố cục: '2026/10/12/13-17-13-716Z_id' → '2026-10-12T13-17-13-716Z_id'
 export const runSortKey = (rel) => rel.replace(/^(\d{4})\/(\d{2})\/(\d{2})\//, '$1-$2-$3T');
-export const runIdOf = (rel) => rel.slice(rel.lastIndexOf('_') + 1);
 
 // mọi thư mục run (cả hai bố cục), mới nhất trước; bỏ symlink và thư mục tạm .tmp-*
 export async function listRunDirs(runsDir, { sort = true } = {}) {

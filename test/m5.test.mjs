@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { testDetail, appErrors, normalizeLogText, setupTiming, exploreSummary } from '../server/insights.mjs';
+import { testDetail, appErrors, normalizeLogText, setupTiming } from '../server/insights.mjs';
 import { featureWords, impactedTests, changedFiles } from '../server/impact.mjs';
 import { storageUsage, pruneVideos, deleteRun } from '../server/storage.mjs';
 import { webhookConfig, sendWebhooks } from '../server/webhook.mjs';
@@ -66,13 +66,6 @@ test('setupTiming splits setup, hooks and bodies', () => {
   assert.deepEqual(t.runs[0], { runId: t.runs[0].runId, startedAt: t.runs[0].startedAt, setup: 2000, beforeEach: 300, afterEach: 0, body: 700 });
   assert.equal(t.setups[0].name, 'auth');
   assert.ok(Math.abs(t.share.setup - 2000 / 3000) < 1e-9);
-});
-
-test('exploreSummary sorts findings by severity', () => {
-  const h = run({ results: [] });
-  h.report.run.explore = { goal: 'g', ended: 'finished', steps: [{ index: 1, title: 't', instruction: 'i', status: 'passed', startedAt: 'x', durationMs: 1 }], findings: [{ title: 'low', severity: 1 }, { title: 'high', severity: 5 }] };
-  assert.deepEqual(exploreSummary(h.report).findings.map((f) => f.title), ['high', 'low']);
-  assert.equal(exploreSummary(run({ results: [] }).report), null);
 });
 
 test('impact: changed files mapped to tests by file, route and title words', async () => {

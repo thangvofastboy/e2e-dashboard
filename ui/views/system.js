@@ -145,12 +145,6 @@ function junkHtml(j) {
     </form></section>`;
 }
 
-const RESET_SCOPES = {
-  settings: 'Cài đặt',
-  data: 'Dữ liệu',
-  global: 'Cấu hình chung của máy',
-};
-
 // Vùng nguy hiểm: xoá cài đặt và/hoặc dữ liệu. Mỗi mục nói rõ sẽ mất gì; xoá thật chỉ sau popup và gõ RESET.
 function resetHtml(p) {
   if (!p) return `<section class="panel"><h2>${icon('recycle', { size: 18 })} Reset</h2><p class="muted">Không tải được thông tin reset.</p></section>`;

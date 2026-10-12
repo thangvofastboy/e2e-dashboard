@@ -355,18 +355,6 @@ export function setupTiming(history) {
   };
 }
 
-// ---------------------------------------------------------------- explore runs
-
-export function exploreSummary(report) {
-  const e = report?.run?.explore;
-  if (!e) return null;
-  return {
-    goal: String(e.goal ?? ''), ended: e.ended ?? null, summary: e.summary ?? null,
-    steps: (e.steps ?? []).map((s) => ({ index: s.index, title: s.title, instruction: s.instruction, status: s.status, summary: s.summary ?? null, durationMs: s.durationMs })),
-    findings: [...(e.findings ?? [])].sort((a, b) => num(b.severity) - num(a.severity)),
-  };
-}
-
 // ---------------------------------------------------------------- failures by environment
 
 // Fail rate per value of each environment dimension; a value far above the overall rate is

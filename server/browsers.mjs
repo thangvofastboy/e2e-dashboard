@@ -7,7 +7,6 @@ import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 
 export const BROWSERS = ['chromium', 'firefox', 'webkit'];
-export const BROWSER_LABEL = { chromium: 'Chromium', firefox: 'Firefox', webkit: 'WebKit (Safari)' };
 export const validBrowser = (b) => BROWSERS.includes(b);
 
 // Playwright cài trình duyệt vào PLAYWRIGHT_BROWSERS_PATH hoặc thư mục cache mặc định theo hệ điều hành

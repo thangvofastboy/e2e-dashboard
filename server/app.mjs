@@ -9,6 +9,7 @@ import { pipeline } from 'node:stream';
 import { join, extname, basename, relative, resolve, dirname } from 'node:path';
 import { platform, release } from 'node:os';
 import { timingSafeEqual, createHash } from 'node:crypto';
+import { gzipSync } from 'node:zlib';
 import { safeJoin, realInside, readConfig, VERSION, DATA_DIR, RUN_ID, RESULT_ID, resultAttempts, isLink } from '../reporter/e2e-dashboard.reporter.mjs';
 import { listRuns, getRun, findRunDir, setFlag, testHistory, getAi, writeAi, listAi, loadHistory, dropCaches } from './store.mjs';
 import { resetPreview, resetAll } from './reset.mjs';
@@ -263,7 +264,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
     const hit = assets.get(path);
     if (hit?.sig === sig) return hit;
     const body = path === '/app.js' ? await bundleUi(uiDir) : await readFile(join(uiDir, 'style.css'), 'utf8');
-    const a = { sig, body, etag: `"${createHash('sha1').update(body).digest('base64url')}"` };
+    const a = { sig, body, gz: gzipSync(body, { level: 9 }), etag: `"${createHash('sha1').update(body).digest('base64url')}"` };
     assets.set(path, a);
     return a;
   }
@@ -291,11 +292,17 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       if (p === '/app.js' || p === '/style.css') {
         // bundle / đọc một lần cho tới khi file trong ui/ đổi; ETag để trình duyệt nhận 304 thay vì tải lại ~320KB
         const a = await uiAsset(p);
-        if (req.headers['if-none-match'] === a.etag) {
-          res.writeHead(304, { etag: a.etag, 'cache-control': 'no-cache' });
+        // ~420 KB còn ~130 KB khi nén: nén một lần cho mỗi phiên bản của file, ETag riêng cho bản nén
+        const gzip = /\bgzip\b/.test(req.headers['accept-encoding'] ?? '');
+        const etag = gzip ? `${a.etag.slice(0, -1)}-gz"` : a.etag;
+        if (req.headers['if-none-match'] === etag) {
+          res.writeHead(304, { etag, vary: 'accept-encoding', 'cache-control': 'no-cache' });
           return res.end();
         }
-        return send(res, 200, a.body, { ...ui, 'cache-control': 'no-cache', etag: a.etag, 'content-type': `text/${p === '/app.js' ? 'javascript' : 'css'}; charset=utf-8` });
+        const headers = { ...ui, 'cache-control': 'no-cache', etag, vary: 'accept-encoding', 'content-type': `text/${p === '/app.js' ? 'javascript' : 'css'}; charset=utf-8` };
+        if (!gzip) return send(res, 200, a.body, headers);
+        res.writeHead(200, { 'referrer-policy': 'no-referrer', ...headers, 'content-encoding': 'gzip' });
+        return res.end(a.gz);
       }
       if (p === '/api/system') {
         return send(res, 200, {
