@@ -66,3 +66,8 @@ test('stop sends SIGINT, then SIGTERM after the grace period', async () => {
   calls[0].child.emit('close', 130);
   assert.equal(runner.stop(), false);
 });
+
+test('buildRunArgs passes --workers 1..1024 and rejects anything else', () => {
+  assert.deepEqual(buildRunArgs({ workers: 4 }), ['e2e', 'run', '--workers', '4']);
+  for (const bad of [0, 1025, 2.5, '4', -1]) assert.throws(() => buildRunArgs({ workers: bad }), /invalid workers/, String(bad));
+});

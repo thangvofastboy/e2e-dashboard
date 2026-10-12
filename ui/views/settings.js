@@ -8,12 +8,13 @@ import { icon } from '../icons.js';
 export const fmtBytes = (b) => (b < 1024 ? `${b} B` : b < 1024 ** 2 ? `${(b / 1024).toFixed(0)} KB` : b < 1024 ** 3 ? `${(b / 1024 ** 2).toFixed(1)} MB` : `${(b / 1024 ** 3).toFixed(2)} GB`);
 
 export async function renderSettings(main) {
-  const [auto, storage, ci, alerts] = await Promise.all([getJson('/api/automation'), getJson('/api/storage'), getJson('/api/ci').catch(() => null), getJson('/api/alerts').catch(() => null)]);
+  const [auto, storage, ci, alerts, prefs] = await Promise.all([getJson('/api/automation'), getJson('/api/storage'), getJson('/api/ci').catch(() => null), getJson('/api/alerts').catch(() => null), getJson('/api/settings').catch(() => null)]);
   const s = auto.schedule;
   const kinds = [['video', 'Video'], ['image', 'Ảnh'], ['report', 'report.json'], ['trace', 'Trace'], ['other', 'Khác']];
   const biggest = [...storage.runs].sort((a, b) => b.bytes - a.bytes).slice(0, 8);
   main.innerHTML = `${pageHead('Tự động & lưu trữ', 'gauge', 'Chế độ watch, lịch chạy, webhook và dung lượng lịch sử.')}
     <div class="two-col">
+      ${prefs ? workersPanelHtml(prefs) : ''}
       <section class="panel"><h2>${icon('eye', { size: 15 })} Chế độ watch</h2>
         <p class="muted small">Lưu một file <code>*.e2e.ts</code> là dashboard tự chạy lại đúng file đó (bỏ qua test đang cách ly), xem ở trang Live.</p>
         <label class="pill"><input type="checkbox" data-watch ${auto.watch.enabled ? 'checked' : ''}> Bật watch</label>
@@ -33,6 +34,17 @@ export async function renderSettings(main) {
     </div>
     <section><h2>Run nặng nhất</h2><table class="table"><thead><tr><th>Run</th><th>Bắt đầu</th><th class="num">Dung lượng</th><th class="num">Video</th><th></th></tr></thead><tbody>${biggest.map((r) => `<tr><td><a href="${runHref(r.runId)}">${statusBadge(r.status)}</a></td><td>${escapeHtml(fmtRelative(r.startedAt))}</td><td class="num">${escapeHtml(fmtBytes(r.bytes))}</td><td class="num">${escapeHtml(fmtBytes(r.video))}</td>
       <td>${r.pinned ? `<span class="muted small">đã ghim</span>` : `<button type="button" class="small-btn" data-del="${escapeHtml(r.runId)}">${icon('close', { size: 13 })}Xoá run</button>`}</td></tr>`).join('')}</tbody></table></section>`;
+  const wf = main.querySelector('[data-workers]');
+  wf?.auto.addEventListener('change', () => {
+    wf.workers.disabled = wf.auto.checked;
+  });
+  wf?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const workers = wf.auto.checked ? null : Number(wf.workers.value);
+    const r = await postJson('/api/settings', { workers }).catch((x) => ({ error: x.message }));
+    if (r.error) toast(r.error.includes('invalid') ? 'Số worker phải từ 1 đến 1024.' : r.error, 'bad');
+    else toast(r.workers ? `Mặc định chạy ${r.workers} worker` : `Mặc định tự động theo máy (${r.autoWorkers} worker)`);
+  });
   main.querySelector('[data-watch]').addEventListener('change', async (e) => {
     const r = await postJson('/api/watch', { enabled: e.target.checked }).catch((x) => ({ error: x.message }));
     if (r.error || !r.ok) {
@@ -75,6 +87,19 @@ export async function renderSettings(main) {
         renderSettings(main);
       }
     }));
+}
+
+// Số worker mặc định cho run do dashboard khởi động (nút Chạy, lịch, watch). Tự động = để e2e chọn:
+// workers trong e2e.config, không có thì một nửa số core.
+export function workersPanelHtml(p) {
+  const isAuto = p.workers == null;
+  return `<section class="panel"><h2>${icon('cpu', { size: 15 })} Số worker khi chạy test</h2>
+    <form class="row" data-workers>
+      <label class="pill"><input type="checkbox" name="auto" ${isAuto ? 'checked' : ''}> Tự động theo máy (${escapeHtml(p.autoWorkers)} worker)</label>
+      <label>Số worker <input type="number" name="workers" min="1" max="1024" required value="${escapeHtml(p.workers ?? p.autoWorkers)}" ${isAuto ? 'disabled' : ''}></label>
+      <button type="submit">${icon('check', { size: 14 })}Lưu</button>
+    </form>
+    <p class="muted small">Áp dụng cho run bấm từ dashboard, lịch chạy và watch; đổi riêng từng lần trong hộp thoại <em>Chạy test</em>. Tự động: dùng <code>workers</code> trong <code>e2e.config</code>, không có thì một nửa số core. Nhiều worker chạy nhanh hơn nhưng các test dùng chung tài khoản hoặc dữ liệu có thể đụng nhau.</p></section>`;
 }
 
 export function alertsPanelHtml(a) {

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.8.3 — 2026-10-12
+
+- **Số worker chạy test**: trang *Tự động & lưu trữ* có mục *Số worker khi chạy test* — tự động theo máy (nửa số core, hoặc `workers` trong `e2e.config`) hoặc số cố định. Áp dụng cho nút Chạy, lịch chạy và watch.
+- **Dialog Chạy test**: ô *Workers* điền sẵn mặc định, sửa được cho từng lần chạy; để trống = tự động.
+- **Cập nhật plugin**: dashboard đang chạy bản cũ được thay bằng bản mới. Nếu đang có run do dashboard khởi động thì giữ server cũ đến khi run xong, và báo cần chạy lại `/e2e-dashboard`.
+
 ## v0.8.2 — 2026-10-12
 
 - **Sửa lỗi chạy test từ dashboard**: chạy test không thấy kết quả. e2e 0.19 gửi kết quả dạng `test.id` và `target.name`, dashboard đọc trường cũ nên mọi test kẹt ở *running* rồi thành *interrupted*, số làn tăng vô lý.

@@ -65,3 +65,29 @@ test('annotateRun records who launched a run and what it reran, nothing else', a
   assert.equal(meta.pinned, false);
   assert.equal(meta.source, 'reporter');
 });
+
+test('settings: default workers is saved, validated and applied to dashboard runs; null means auto', async () => {
+  const started = [];
+  const runner = { start(o) { started.push(o); return { ok: true, pid: 1 }; }, stop: () => false, state: () => ({ running: false, pid: null }) };
+  const { server, base, post } = await serve(runner);
+  const get = async (p) => (await fetch(base + p, { headers: { 'x-e2e-dashboard-token': 't' } })).json();
+  try {
+    const s0 = await get('/api/settings');
+    assert.equal(s0.workers, null);
+    assert.ok(s0.autoWorkers >= 1);
+    assert.equal((await post('/api/settings', { workers: 0 })).status, 400);
+    assert.equal((await post('/api/settings', { workers: 2.5 })).status, 400);
+    assert.equal((await (await post('/api/settings', { workers: 3 })).json()).workers, 3);
+    assert.equal((await get('/api/settings')).workers, 3);
+    await post('/api/run', { tests: ['tests/a.e2e.ts'] }); // no workers sent: the saved default
+    await post('/api/run', { tests: ['tests/a.e2e.ts'], workers: 6 }); // per-run override
+    await post('/api/run', { tests: ['tests/a.e2e.ts'], workers: null }); // auto for this run
+    assert.deepEqual(started.map((o) => o.workers), [3, 6, undefined]);
+    assert.equal('workers' in started[2], false);
+    assert.equal((await (await post('/api/settings', { workers: null })).json()).workers, null);
+    await post('/api/run', { tests: ['tests/a.e2e.ts'] });
+    assert.equal('workers' in started[3], false, 'auto default sends no --workers');
+  } finally {
+    server.close();
+  }
+});

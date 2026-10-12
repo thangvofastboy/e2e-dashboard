@@ -137,3 +137,22 @@ test('stop never signals a pid that is not our dashboard', async () => {
     victim.kill();
   }
 });
+
+test('start replaces a running server from an older plugin version (after an update)', async () => {
+  const root = project();
+  const a = await start(root, { open: false });
+  const file = join(root, '.e2e-dashboard/server.json');
+  const old = JSON.parse(readFileSync(file, 'utf8'));
+  writeFileSync(file, JSON.stringify({ ...old, version: '0.0.1' })); // the live server, but launched by an older plugin
+  let b;
+  try {
+    b = await start(root, { open: false });
+    assert.equal(b.reused, false);
+    const now = JSON.parse(readFileSync(file, 'utf8'));
+    assert.notEqual(now.pid, old.pid);
+    assert.throws(() => process.kill(old.pid, 0), 'old server was stopped');
+  } finally {
+    await stop(root);
+  }
+  assert.ok(a.url);
+});

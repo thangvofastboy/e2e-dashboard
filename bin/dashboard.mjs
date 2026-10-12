@@ -6,7 +6,7 @@ import { existsSync, openSync, closeSync } from 'node:fs';
 import { join, basename, dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DATA_DIR, readServerInfo, ensureDataDir, readConfig } from '../reporter/e2e-dashboard.reporter.mjs';
+import { DATA_DIR, VERSION, readServerInfo, ensureDataDir, readConfig } from '../reporter/e2e-dashboard.reporter.mjs';
 import { findProjectRoot, findConfig } from './project.mjs';
 import { exportRun } from '../server/export.mjs';
 import { buildDigest } from '../server/digest.mjs';
@@ -112,7 +112,8 @@ async function running(root) {
     const res = await fetch(`http://127.0.0.1:${s.port}/api/info`, { headers: { 'x-e2e-dashboard-token': s.token }, signal: AbortSignal.timeout(2000) });
     if (!res.ok) return null;
     // server.json comes from the repo: trust the pid only when our server reports the same one
-    return (await res.json()).pid === s.pid ? s : null;
+    const info = await res.json();
+    return info.pid === s.pid ? { ...s, busy: Boolean(info.runner?.running) } : null;
   } catch {
     return null;
   }
@@ -130,11 +131,14 @@ function openBrowser(url) {
 
 export async function start(root, { open = true } = {}) {
   const existing = await running(root);
-  if (existing) {
+  // bản cũ nhưng đang chạy run do dashboard khởi động: tắt server sẽ đứt stdout của run, nên giữ đến khi run xong
+  if (existing && (existing.version === VERSION || existing.busy)) {
     const url = `http://127.0.0.1:${existing.port}/?token=${existing.token}`;
     if (open) openBrowser(url);
-    return { url, reused: true };
+    return { url, reused: true, ...(existing.version !== VERSION ? { staleVersion: existing.version ?? '?' } : {}) };
   }
+  // server của bản plugin cũ (vd. trước khi update): vẫn chạy code ở thư mục cache cũ, phải tắt rồi chạy lại
+  if (existing) await stop(root);
   await refuseSymlink(join(root, DATA_DIR));
   await ensureDataDir(root); // self-ignoring .e2e-dashboard/; the user's .gitignore is only touched by setup
   await rm(join(root, DATA_DIR, 'server.json'), { force: true });
@@ -284,8 +288,9 @@ export async function main(argv, cwd) {
   if (!root) return { code: 1, out: 'Không tìm thấy e2e.config.(ts|mts|js|mjs) từ thư mục hiện tại trở lên. Chạy `npx e2e init` trước.' };
   const [cmd = 'start'] = argv;
   if (cmd === 'start' || cmd === 'open') {
-    const { url, reused } = await start(root, { open: !process.env.E2E_DASHBOARD_NO_OPEN });
+    const { url, reused, staleVersion } = await start(root, { open: !process.env.E2E_DASHBOARD_NO_OPEN });
     const lines = [`Dashboard${reused ? ' (đang chạy sẵn)' : ''}: ${url}`];
+    if (staleVersion) lines.push(`Dashboard đang chạy bản ${staleVersion} và có run chưa xong — giữ nguyên để không cắt run. Chạy lại \`/e2e-dashboard\` sau khi run xong để lên bản ${VERSION}.`);
     if (!existsSync(join(root, 'e2e-dashboard.reporter.mjs'))) lines.push('Gợi ý: chạy `/e2e-dashboard setup` để xem tiến độ live.');
     return { code: 0, out: lines.join('\n') };
   }

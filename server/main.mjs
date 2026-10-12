@@ -23,6 +23,7 @@ import { syncLongterm } from './longterm.mjs';
 import { ciConfig, createCiSync, syncCi } from './cisync.mjs';
 import { reportSchedule, createReportScheduler, sendReport } from './reports.mjs';
 import { publishSite } from './site.mjs';
+import { readSettings } from './settings.mjs';
 
 const UI_DIR = fileURLToPath(new URL('../ui', import.meta.url));
 
@@ -146,7 +147,8 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
   const grepInvert = async () => quarantineFlags(await readQuarantine(projectRoot)).args.filter((x) => x !== '--grep-invert');
   const startAuto = async (opts) => {
     try {
-      return runner.start({ ...opts, grepInvert: await grepInvert() });
+      const { workers } = await readSettings(projectRoot); // số worker mặc định ở Settings; null = e2e tự chọn
+      return runner.start({ ...opts, ...(workers ? { workers } : {}), grepInvert: await grepInvert() });
     } catch (e) {
       return { ok: false, error: e.message };
     }

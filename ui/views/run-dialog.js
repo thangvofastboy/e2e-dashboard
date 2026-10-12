@@ -19,6 +19,7 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
     <div class="row">
       <label>Retries <input type="number" name="retries" min="0" max="10" placeholder="theo config"></label>
       <label>Repeat each <input type="number" name="repeatEach" min="1" max="50" placeholder="1"${Number.isInteger(repeatEach) ? ` value="${repeatEach}"` : ''}></label>
+      <label title="Số test chạy song song. Để trống = tự động theo máy">Workers <input type="number" name="workers" min="1" max="1024" placeholder="tự động"></label>
       <label class="pill"><input type="checkbox" name="noCache"> --no-cache</label>
     </div>
     <label class="pill" data-q-wrap hidden><input type="checkbox" name="excludeQuarantined" checked> Bỏ qua <span data-q-count></span> test đang cách ly</label>
@@ -41,6 +42,8 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
       ...(fd.get('retries') !== '' ? { retries: Number(fd.get('retries')) } : {}),
       ...(fd.get('repeatEach') !== '' ? { repeatEach: Number(fd.get('repeatEach')) } : {}),
       noCache: fd.get('noCache') === 'on',
+      // trống = tự động cho lần này (null); chưa tải được Settings thì không gửi để server dùng mặc định
+      ...(fd.get('workers') !== '' ? { workers: Number(fd.get('workers')) } : settingsLoaded ? { workers: null } : {}),
       ...(fd.get('excludeQuarantined') === 'on' && !dlg.querySelector('[data-q-wrap]').hidden ? { excludeQuarantined: true } : {}),
       ...(rerunOf ? { rerunOf } : {}),
     };
@@ -56,6 +59,13 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
     }
   });
   dlg.showModal();
+  let settingsLoaded = false;
+  getJson('/api/settings').then((s) => {
+    const input = form.elements.workers;
+    input.placeholder = `tự động (${s.autoWorkers})`;
+    if (s.workers && input.value === '') input.value = String(s.workers);
+    settingsLoaded = true;
+  }).catch(() => {});
   getJson('/api/quarantine').then((q) => {
     const n = q.list.length - q.expired.length;
     if (!n) return;

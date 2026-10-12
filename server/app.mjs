@@ -27,6 +27,7 @@ import { buildPrompt, cacheKey, commitsBetween } from './ai.mjs';
 import { estimateEta } from './live.mjs';
 import { bundleUi } from '../ui/bundle.mjs';
 import { buildExportHtml } from './export.mjs';
+import { readSettings, writeSettings, autoWorkers } from './settings.mjs';
 import { syncLongterm, readDays, daySeries, totals, reliability, lifecycle, dayKey } from './longterm.mjs';
 import { syncTriage, triageBoard, updateTriage, TRIAGE_STATUSES } from './triage.mjs';
 import { groupReport } from './groups.mjs';
@@ -209,6 +210,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       if (p === '/') return send(res, 200, await readFile(join(uiDir, 'index.html'), 'utf8'), { ...ui, 'content-type': 'text/html; charset=utf-8' });
       if (p === '/app.js') return send(res, 200, await bundleUi(uiDir), { ...ui, 'content-type': 'text/javascript; charset=utf-8' });
       if (p === '/style.css') return send(res, 200, await readFile(join(uiDir, 'style.css'), 'utf8'), { ...ui, 'content-type': 'text/css; charset=utf-8' });
+      if (p === '/api/settings') return send(res, 200, { ...(await readSettings(projectRoot)), autoWorkers: autoWorkers() });
       if (p === '/api/info') return send(res, 200, { version: VERSION, pid: process.pid, project: basename(projectRoot), reporter: reporterStatus(projectRoot), lastArchive: lastArchive(), thresholds: readConfig(projectRoot).thresholds ?? null, runner: runner.state() });
       if (p === '/api/runs') return send(res, 200, await listRuns(projectRoot));
       if (p === '/api/tests') return send(res, 200, await testHistory(projectRoot, 10));
@@ -616,6 +618,10 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         const out = await deleteRun(projectRoot, del[1]);
         return send(res, out.deleted ? 200 : out.reason === 'not-found' ? 404 : 409, out);
       }
+      if (p === '/api/settings') {
+        const { workers } = await readBody(req);
+        return send(res, 200, { ...(await writeSettings(projectRoot, { workers })), autoWorkers: autoWorkers() });
+      }
       if (p === '/api/watch') {
         const { enabled } = await readBody(req);
         if (!automation) return send(res, 503, { error: 'unavailable' });
@@ -684,8 +690,13 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         if (body.rerunOf !== undefined && !RUN_ID.test(String(body.rerunOf))) return send(res, 400, { error: 'invalid rerunOf' });
         let out;
         try {
-          const RUN_KEYS = ['tests', 'targets', 'agents', 'retries', 'repeatEach', 'noCache', 'rerunOf'];
+          const RUN_KEYS = ['tests', 'targets', 'agents', 'retries', 'repeatEach', 'noCache', 'rerunOf', 'workers'];
           const opts = Object.fromEntries(RUN_KEYS.filter((k) => body[k] !== undefined).map((k) => [k, body[k]]));
+          // workers: không gửi = mặc định ở Settings; null = để e2e tự chọn theo máy cho lần chạy này
+          if (body.workers === undefined) {
+            const { workers } = await readSettings(projectRoot);
+            if (workers) opts.workers = workers;
+          } else if (body.workers === null) delete opts.workers;
           if (body.excludeQuarantined === true) opts.grepInvert = quarantineFlags(await readQuarantine(projectRoot)).args.filter((x) => x !== '--grep-invert');
           out = runner.start(opts);
         } catch (e) {
