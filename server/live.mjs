@@ -51,7 +51,7 @@ export function createLive({ throttleMs = 250 } = {}) {
         }
         const t = {
           key, testId: e.testId, title: e.title, file: e.file, target: e.target, agent: e.agent ?? 'default', repeat: e.repeat ?? 0,
-          lane: takeLane(), status: 'running', startedAt: e.at, finishedAt: null, durationMs: null, activity: null, steps: [],
+          lane: takeLane(), status: 'running', startedAt: e.at, finishedAt: null, durationMs: null, activity: null, steps: [], error: null,
         };
         byKey.set(key, t);
         state.tests.push(t);
@@ -80,11 +80,15 @@ export function createLive({ throttleMs = 250 } = {}) {
           state.total = Math.max(0, state.total - 1);
           break;
         }
-        const t = byKey.get(keyOf(r.testId, r.targetId, r.agent, r.repeat));
+        // e2e ≥ 0.19 gửi result dạng wire: test.id thay cho testId, target { name, platform } thay cho targetId
+        // (report.json vẫn ghi phẳng testId / targetId)
+        const t = byKey.get(keyOf(r.testId ?? r.test?.id, r.targetId ?? r.target?.name, r.agent, r.repeat));
         state.done += 1;
         if (!t) break;
+        const err = r.attempts?.at(-1)?.error;
         Object.assign(t, {
           status: r.status, finishedAt: e.at, activity: null,
+          error: err ? { code: err.code ?? null, message: String(err.message ?? '').slice(0, 2000) } : null,
           // serial members finish with no attempts of their own: fall back to wall-clock time
           durationMs: (r.attempts ?? []).reduce((sum, a) => sum + (a.durationMs ?? 0), 0) || Math.max(0, Date.parse(e.at) - Date.parse(t.startedAt)) || 0,
         });
@@ -103,6 +107,8 @@ export function createLive({ throttleMs = 250 } = {}) {
         break;
       case 'run-finished':
         state.status = state.status === 'interrupted' ? 'interrupted' : 'finished';
+        // plan.total tính cả setup không được chọn (không bao giờ có test-finished): run xong bình thường thì đếm theo số đã xong
+        if (state.status === 'finished') state.total = state.done;
         state.runStatus = e.status ?? null; // report-level verdict: passed | failed | blocked | error | interrupted
         state.finishedAt = e.at;
         break;

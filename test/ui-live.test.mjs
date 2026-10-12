@@ -37,3 +37,13 @@ test('testRowHtml escapes the source line from a tampered report', async () => {
   const html = testRowHtml({ title: 't', line: '<img src=x onerror=alert(1)>', tags: [], target: 'web', agent: 'default', history: [], avgDurationMs: null });
   assert.doesNotMatch(html, /<img/);
 });
+
+test('tally counts finished statuses for the Live progress line', async () => {
+  const { tally } = await import('../ui/views/live.js');
+  assert.equal(tally([]), '');
+  const html = tally([{ status: 'passed' }, { status: 'failed' }, { status: 'failed' }, { status: 'skipped' }, { status: 'running' }]);
+  assert.match(html, /1 pass/);
+  assert.match(html, /2 fail/);
+  assert.match(html, /1 skip/);
+  assert.doesNotMatch(html, /flaky/);
+});

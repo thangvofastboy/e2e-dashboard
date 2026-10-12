@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.8.2 — 2026-10-12
+
+- **Sửa lỗi chạy test từ dashboard**: chạy test không thấy kết quả. e2e 0.19 gửi kết quả dạng `test.id` và `target.name`, dashboard đọc trường cũ nên mọi test kẹt ở *running* rồi thành *interrupted*, số làn tăng vô lý.
+- **Trang Live**: hiện lỗi của test fail ngay (không cần bấm vào test); dòng tóm tắt `8/8 test · 1 pass · 4 fail · 3 skip`; khi run xong tự chọn test fail đầu tiên; đếm `done/done` thay vì `1/3` khi có setup không được chọn.
+
 ## v0.8.1 — 2026-10-12
 
 - **Logo và favicon**: logo Fastboy trên thanh bên, favicon là phần tam giác của logo.

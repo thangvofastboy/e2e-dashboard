@@ -93,3 +93,24 @@ test('unselected tests (filtered out of the run) do not count as progress', () =
 test('no ETA when nothing is left to run', () => {
   assert.equal(estimateEta({ status: 'running', total: 0, done: 0, lanes: 0, tests: [] }, new Map([['a', 1000]])), null);
 });
+
+test('e2e 0.19 wire result (test.id + target {name}, no testId/targetId) updates status, frees the lane and keeps the error', () => {
+  const live = createLive();
+  live.apply({ type: 'run-started', at: at(0), runId: 'r2', artifactsRoot: '/x' });
+  live.apply(started('A', 1));
+  live.apply({
+    type: 'test-finished', at: at(2),
+    result: { test: { id: 'A', kind: 'test', title: 'A' }, target: { name: 'web', platform: 'web' }, agent: 'default', repeat: 0, selected: true, status: 'failed',
+      attempts: [{ durationMs: 500, error: { code: 'ERROR', message: "ENOENT: no such file, open 'auth.json'", stack: 'x' } }] },
+  });
+  live.apply(started('B', 3));
+  const s = live.snapshot();
+  const a = s.tests.find((t) => t.testId === 'A');
+  assert.equal(a.status, 'failed');
+  assert.deepEqual(a.error, { code: 'ERROR', message: "ENOENT: no such file, open 'auth.json'" });
+  assert.equal(s.tests.find((t) => t.testId === 'B').lane, 0, 'A finished, so B reuses lane 0');
+  assert.equal(s.lanes, 1);
+  live.apply({ type: 'plan', at: at(0), total: 5, files: [] }); // plan counts unselected setups too
+  live.apply({ type: 'run-finished', at: at(9), status: 'failed', exitCode: 1 });
+  assert.equal(live.snapshot().total, live.snapshot().done, 'a finished run shows done/done, not done/plan');
+});
