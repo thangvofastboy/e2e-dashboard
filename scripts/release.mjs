@@ -50,10 +50,16 @@ function main(argv) {
   const version = nextVersion(current, kind);
   const tag = `v${version}`;
   if (out('git', ['tag', '--list', tag])) throw new Error(`tag ${tag} already exists`);
-  sh('npm', ['test']);
   sh('claude', ['plugin', 'validate', '.']);
-  sh('claude', ['plugin', 'test', '.']);
   const files = setVersion(root, version);
+  // test sau khi bump: test CHANGELOG kiểm tra mục đầu khớp version đang release
+  try {
+    sh('npm', ['test']);
+    sh('claude', ['plugin', 'test', '.']);
+  } catch (e) {
+    sh('git', ['checkout', '--', ...files]); // lỗi test thì trả lại file, không để bump dở
+    throw e;
+  }
   sh('git', ['add', ...files]);
   sh('git', ['commit', '-m', `chore: release ${tag}`]);
   sh('git', ['tag', '-a', tag, '-m', tag]);
