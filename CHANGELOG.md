@@ -1,5 +1,44 @@
 # Changelog
 
+## v0.8.8 — 2026-10-12
+
+- **Báo lỗi gốc trên trang Live**: setup fail, hoặc ≥3 test fail cùng một lỗi (thiếu file auth, thiếu `.env`…), hiện banner đỏ ngay đầu trang kèm nguyên văn lỗi — không cần bấm từng test.
+- **`/e2e-dashboard setup` tạo `.env`**: chưa có `.env` thì copy từ `.env.example` (không ghi đè file đã có) và chắc chắn `.env` nằm trong `.gitignore`.
+- **Gantt ngang ở trang Live**: mỗi làn một hàng, thời gian trái → phải, trục có vạch chia tròn (0s, 10s, 1m…), chú thích màu theo trạng thái đang có.
+- **Thanh tỉ lệ thay cho donut**: Run gần nhất (Overview), trang Run, cache và giai đoạn (Cost) dùng thanh 100% chia đoạn — đoạn nhỏ vẫn thấy, rê chuột xem số và %. Trục Y của *Setup + hook theo run* hiện thời gian thay vì mili-giây.
+- **Bảng và list dài cuộn trong khung**: bảng, nhóm lỗi, danh sách fail, timeline step… cao tối đa 70% màn hình, không kéo dài cả trang; tiêu đề bảng dính ở đầu khung.
+- **Live gửi phần thay đổi**: sau bản đầy đủ lúc kết nối, server chỉ gửi test vừa đổi và dòng output mới; step của test đã xong tải khi bấm vào; các trang khác chỉ nhận tiến độ. Run 1000 test × 15 step: tab Live nhận 0.8MB thay vì 321MB, tab khác 0.03MB; CPU server 2.2s thay vì 5.6s, RAM đỉnh 108MB thay vì 248MB. Trang Live không dựng lại cả trang mỗi giây và giữ vị trí cuộn.
+- **RAM server**: cache report giới hạn ~48MB text JSON (LRU) thay vì 400 report bất kể kích thước.
+- **Trang vừa một màn hình (desktop)**: khối dữ liệu chính (bảng, nhóm lỗi, danh sách…) lấp phần còn lại và cuộn bên trong; Overview gộp health score với KPI, chart 4 cột trên màn rộng; Xu hướng, Vòng đời, Cài đặt, Báo cáo dồn gọn. Mobile vẫn cuộn cả trang.
+- **Nút có màu theo tính năng**: chạy = xanh lá, xoá / dừng = đỏ, xem / tải / sao chép = xanh dương, gửi / ticket = xanh ngọc, ghim / khoá / thử lại = cam, AI = tím. Ô nhập và dropdown rộng hơn.
+- **Phóng to toàn màn hình**: nút ở góc mỗi chart, panel và bảng (hiện khi rê chuột), và cạnh tiêu đề để phóng to cả trang; Esc để thoát.
+- **Chú giải**: ⓘ cạnh tiêu đề mỗi trang và cạnh tên chart, rê chuột hoặc Tab tới để đọc. Ví dụ cấu hình JSON ở trang Cài đặt gom vào mục *Cách cấu hình*.
+- **Sửa**: mô tả dưới tiêu đề trang chiếm hết bề ngang.
+
+- **Cỡ chữ lớn hơn** (~10%) và chỉnh được: Nhỏ / Vừa / Lớn / Rất lớn ở trang Cài đặt hệ thống.
+- **Trang Cài đặt hệ thống** (`#/system`): theme, cỡ chữ, ngôn ngữ; xem và sửa trực tiếp `.env`, `.env.local`, `.env.example` (lưu là ghi file, file secret quyền 600 và tự thêm vào `.gitignore`); bảng trạng thái từng key (đã điền / còn giá trị mẫu / chưa có); Linear API key, team, webhook (lưu ở `~/.e2e-dashboard/config.json`, chỉ hiện 4 ký tự cuối); checklist setup và nút *Chạy setup*; model AI và effort.
+- **Tự sửa lỗi dashboard bằng AI** (bật / tắt ở Cài đặt hệ thống, mặc định tắt): lỗi server (API 500, crash) và lỗi giao diện được ghi lại; AI local phân tích (chỉ đọc code); nếu là lỗi của e2e-dashboard thì AI sửa trong git worktree tạm (không chạy được lệnh), dashboard chạy `npm test`, push branch và mở PR draft. Mỗi lỗi một PR, giới hạn PR / ngày.
+- **AI mới**: tự tóm tắt run có test fail (trang Live và Run), *AI giải thích nhóm lỗi*, *AI gợi ý triage* (trạng thái, mức độ, người phụ trách, nút Áp dụng), *Vì sao chậm / tốn token?* trên trang Run.
+- **Chọn model AI và effort** (`--model`, `--effort`) cho mọi tính năng AI; đổi là có hiệu lực ngay.
+- **Hiệu năng**: SLO / quality gate không còn đọc lại hàng trăm report mỗi lần mở Overview (1–2s → vài ms, RAM đỉnh ~730MB → ~290MB); Overview gửi request một đợt; `/app.js` có ETag (304); trang Live chỉ cập nhật phần thay đổi, gantt cập nhật theo từng block.
+- **Sửa**: phân tích AI cấp run (không gắn test) không còn lỗi 500.
+- **Lọc "Chỉ test fail"** ở trang Run, Tests (giữ trong URL `?failed=1` để chia sẻ link) và Live (gantt chỉ hiện block fail, khung step chọn test fail).
+- **Tự sửa lỗi an toàn hơn**: AI chỉ được sửa trong `server/ ui/ reporter/ bin/ test/ support/` (đổi `package.json`, workflow… là bỏ, không chạy test); commit / push không chạy git hook; PR chỉ ghi kết luận ngắn + danh sách file đổi; tối đa 5 lỗi chờ, 20 lượt phân tích / ngày; repo phải đúng là e2e-dashboard; branch không mở được PR thì tự xoá.
+- **Sửa**: `.env` đã bị track không còn bị thêm vào `.gitignore` mỗi lần lưu; lưu cài đặt song song không mất thay đổi, `config.json` hỏng thì báo thay vì ghi đè; trang Live không lặp dòng output khi mở tab giữa run, không dựng lại tiêu đề mỗi snapshot (nút Dừng giữ hover / focus), step của test chạy lại không bị cũ; lưu một mục ở Cài đặt hệ thống không làm mất nội dung đang sửa trong editor env; toast và tooltip hiện cả khi đang phóng to toàn màn hình.
+- **Viết hoa chữ cái đầu** cho nhãn, chú thích, trạng thái và mô tả trên mọi trang (bản dịch tiếng Anh cập nhật theo); dữ liệu (tên test, file, branch, model) giữ nguyên.
+- **.env đã bị commit** được báo riêng trong checklist setup (thêm vào .gitignore không gỡ được secret khỏi lịch sử git).
+- **Thư mục dữ liệu chia lại**: run lưu ở `runs/YYYY/MM/DD/<giờ>_<runId>/`; file trạng thái ở `state/`, file tạm của server ở `runtime/`, chỉ mục ở `cache/`. Bố cục cũ vẫn đọc được.
+- **`/e2e-dashboard doctor [--dry-run]`** (và nút *Chạy doctor* ở Cài đặt hệ thống): chuyển dữ liệu bố cục cũ sang bố cục mới, dọn thư mục tạm, dựng lại chỉ mục, nhắc cập nhật reporter cũ. Không đi theo symlink, không ghi đè. 221 run chuyển trong ~0.35 giây.
+- **Chỉ mục SQLite** (tuỳ chọn, mặc định tắt, bật ở Cài đặt hệ thống; cần Node ≥ 22.13, báo lỗi rõ nếu không đủ; `cache/index.sqlite`, dẫn xuất, xoá là tự dựng lại): lịch sử từng test và đếm SLO đọc từ chỉ mục thay vì parse report. Node không có `node:sqlite` thì chạy bằng file như cũ.
+- **Dọn rác** (trang Tự động & lưu trữ): chọn run cũ hơn 7 / 30 / 90 ngày hoặc theo khoảng ngày, lọc pass / fail, xem trước số run và dung lượng rồi mới xoá; run ghim không bao giờ bị xoá.
+- **Yêu cầu Node.js ≥ 22** (`engines`, checklist setup, lệnh `/e2e-dashboard` báo rõ khi Node cũ).
+- **6 tính năng AI mới**: *Viết test từ ticket* (dán ticket, AI viết `.e2e.ts` theo quy ước project, nút *Lưu thành file*, không ghi đè); *AI chọn test* theo thay đổi code (nút chạy đúng các test AI chọn); *AI đề xuất cho cả suite* đổi `agent.act` sang locator; *AI giải thích khác biệt* ảnh expected / actual / diff; *AI tìm test trùng*; *AI viết ghi chú QA* cho bản phát hành.
+- **Issue Linear viết như người báo lỗi**: đoạn mở đầu kể lại chuyện gì xảy ra, *Các bước tái hiện* đánh số tới bước lỗi, *Mong đợi / Thực tế*, ảnh minh hoạ (ảnh lúc lỗi, actual / diff) tải thẳng lên Linear, chi tiết kỹ thuật để cuối. Nội dung sửa được trước khi gửi; nút *Viết lại cho tự nhiên (AI)* giữ nguyên dữ kiện, ảnh và dòng chống trùng. Tiêu đề cũng được làm sạch như mô tả.
+- **Xem trước và sửa issue Linear trước khi gửi**: hộp thoại mở ở chế độ *Xem trước* (giống trên Linear, ảnh nằm đúng chỗ); *Sửa nội dung* cho sửa cả tiêu đề lẫn mô tả, *Cập nhật xem trước*, *Khôi phục bản gốc*; bản đang sửa được giữ trên trình duyệt (đóng mở lại không mất), gửi xong thì xoá.
+- **Thu gọn menu trái**: nút ở đầu menu thu menu thành dải icon (rê chuột thấy tên trang); nhớ lựa chọn trên trình duyệt.
+- **Chọn trình duyệt khi chạy test** (Chromium / Firefox / WebKit): mặc định Chromium, đổi ở *Tự động & lưu trữ*; chọn riêng từng lần trong hộp thoại *Chạy test*; trình duyệt chưa cài bị khoá kèm lệnh cài (`npx @e2e-dev/web install …`). Dashboard truyền `E2E_BROWSER` cho `e2e run`; `/e2e-dashboard setup` tự thêm `browser: process.env.E2E_BROWSER ?? 'chromium'` vào `web({...})`. Lịch chạy và watch dùng trình duyệt mặc định; trang Run hiện trình duyệt của run.
+- **Sửa sau review**: dọn rác không còn quét toàn bộ lịch sử (chỉ đo / xoá run được chọn, bỏ qua cả run baseline, ngày tính đúng cả hôm đổi giờ); tra run theo id không sắp xếp cả danh sách; ảnh gửi Linear phải nằm thật trong thư mục run; run mới không bị mất khi retention dọn thư mục ngày cùng lúc; project nằm sau symlink vẫn đọc được file trạng thái cũ; chỉ mục SQLite hỏng thì tự dựng lại; bản nháp Linear lưu theo từng run; *Copy cho Claude* gửi đường dẫn ảnh thật; chặn bấm hai lần khi gửi Linear / viết lại; menu thu gọn không làm mất nhóm đã gập; doctor hỏi xác nhận; nội dung ticket giữ lại khi AI lỗi.
+
 ## v0.8.7 — 2026-10-12
 
 - **Helper khoanh vùng hành động (`support/markAction.ts`)**: sau một thao tác của test, vẽ khung đỏ quanh element rồi chụp ảnh, gỡ khung ngay. Ảnh là artifact của attempt, hiện ở tab "Video & ảnh". Tắt bằng `E2E_MARK=0`.
