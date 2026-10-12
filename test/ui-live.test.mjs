@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ganttBlocks } from '../ui/views/live.js';
+import { ganttBlocks, stripAnsi } from '../ui/views/live.js';
 import { historyCells } from '../ui/views/tests.js';
 
 test('ganttBlocks places tests on their lane as % of elapsed run time', () => {
@@ -16,6 +16,13 @@ test('ganttBlocks places tests on their lane as % of elapsed run time', () => {
   assert.deepEqual(blocks.map((b) => [b.key, b.lane, b.left, b.width]), [['a', 0, 0, 50], ['b', 1, 50, 50]]);
   assert.equal(blocks[1].durationMs, 5000);
   assert.deepEqual(ganttBlocks({ startedAt: null, tests: [] }), []);
+});
+
+test('stripAnsi drops colour codes and control chars, keeps newlines and tabs', () => {
+  assert.equal(stripAnsi('\x1b[1m\x1b[41m FAIL \x1b[49m\x1b[22m web\r\n\tline\x07'), ' FAIL  web\n\tline');
+  assert.equal(stripAnsi(undefined), '');
+  assert.equal(stripAnsi('see \x1b]8;;https://x.dev/a\x07trace\x1b]8;;\x07 now'), 'see trace now');
+  assert.equal(stripAnsi('\x1b]8;;https://x.dev\x1b\\link\x1b]8;;\x1b\\'), 'link');
 });
 
 test('historyCells pads to n, oldest first, links each run', () => {

@@ -36,3 +36,10 @@ test('countChips shows a colored icon per non-zero status, numbers escaped', () 
   assert.doesNotMatch(html, /<i>/);
   assert.equal(countChips({}), '—');
 });
+
+test('Fastboy favicon mark keeps only the 3 triangle paths, no wordmark letters', async () => {
+  const { LOGO_SVG, MARK_SVG } = await import('../ui/logo.js');
+  assert.equal((MARK_SVG.match(/<path/g) ?? []).length, 3);
+  assert.ok((LOGO_SVG.match(/<path/g) ?? []).length > 3);
+  assert.match(MARK_SVG, /viewBox="0 0 79 72"/);
+});

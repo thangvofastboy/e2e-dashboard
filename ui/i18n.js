@@ -84,7 +84,14 @@ const PATTERNS = [
   [/^(\d+) điểm so với run trước$/, '$1 points vs previous run'], [/^([+-]?\d+%) so với TB 10 run$/, '$1 vs 10-run average'], [/^(\d+) test · (\d+) lần$/, '$1 tests · $2 times'],
   [/^Xem thêm (\d+) run \(còn (\d+)\)$/, 'Show $1 more runs ($2 left)'], [/^(\d+) bất thường$/, '$1 anomalies'],
   [/^(\d+) test · (\d+) lượt$/, '$1 tests · $2 visits'], [/^Route test đi qua nhưng không thấy trong app \((\d+)\)$/, 'Routes tests visit that are not in the app ($1)'],
+  [/^Hiện thêm (\d+)$/, 'Show $1 more'], [/^làn (\d+) · /, 'lane $1 · '],
 ];
+// chia trang bảng/danh sách (app.js pageItems) và biểu đồ làn ở Live
+Object.assign(EN, {
+  'Hiện tất cả': 'Show all', 'Thu gọn': 'Collapse',
+  'Mỗi cột là một làn, thời gian chạy từ trên xuống. Làn được xếp theo thời gian chạy chồng nhau, không phải số worker thật.':
+    'Each column is a lane, time runs top to bottom. Lanes come from overlapping run times, not the real worker count.',
+});
 
 const ATTRS = ['title', 'aria-label', 'placeholder', 'data-tip'];
 const SKIP = 'code, pre, .md, .ai-body, kbd, textarea, .log, .err, .eg-msg, .hm-label, .hb-label';

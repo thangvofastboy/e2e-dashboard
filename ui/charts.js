@@ -80,10 +80,14 @@ export function calendarHeatmap(days = [], { href = null } = {}) {
     const tag = href && d.runs ? 'a' : 'span';
     return `<${tag} class="cal-cell cal-${level(d)}"${tag === 'a' ? ` href="${escapeHtml(href(d))}"` : ''} data-tip="${escapeHtml(tip)}" aria-label="${escapeHtml(tip)}"></${tag}>`;
   })].join('');
-  const months = [];
+  // Nhãn tháng: bỏ nhãn đầu cửa sổ nếu tháng kế tiếp bắt đầu trong vòng 4 tuần (hai nhãn sẽ đè nhau).
+  const marks = [];
   days.forEach((d, i) => {
-    if (i === 0 || d.date.endsWith('-01')) months.push(`<span style="grid-column:${Math.floor((i + offset) / 7) + 1}">${escapeHtml(d.date.slice(0, 7))}</span>`);
+    if (i === 0 || d.date.endsWith('-01')) marks.push({ col: Math.floor((i + offset) / 7) + 1, label: d.date.slice(0, 7), first: i === 0 });
   });
+  const months = marks
+    .filter((m, k) => !(m.first && marks[k + 1] && marks[k + 1].col - m.col < 4))
+    .map((m) => `<span style="grid-column:${m.col}">${escapeHtml(m.label)}</span>`);
   return `<div class="cal" style="--cal-cols:${cols}"><div class="cal-months">${months.join('')}</div><div class="cal-grid">${cells}</div>
     <div class="cal-legend"><span class="cal-cell cal-1"></span>&lt;85% <span class="cal-cell cal-2"></span>85–95% <span class="cal-cell cal-3"></span>95–98% <span class="cal-cell cal-4"></span>≥98% <span class="cal-cell cal-0"></span>không chạy</div></div>`;
 }

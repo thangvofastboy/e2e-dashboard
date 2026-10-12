@@ -3,6 +3,14 @@ import { openRunDialog } from './run-dialog.js';
 import { icon } from '../icons.js';
 import { fmtDuration, statusBadge, escapeHtml } from '../format.js';
 
+// Output terminal mang mã màu ANSI và ký tự điều khiển: bỏ đi để <pre> không hiện ô vuông / "[1m[41m".
+export function stripAnsi(s) {
+  return String(s ?? '')
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '') // OSC, vd. link terminal ESC]8;;url BEL
+    .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '') // CSI: màu, con trỏ
+    .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '');
+}
+
 export function ganttBlocks(snapshot, now = Date.now()) {
   const t0 = Date.parse(snapshot.startedAt);
   if (Number.isNaN(t0) || !snapshot.tests?.length) return [];
@@ -45,10 +53,12 @@ export async function renderLive(main) {
     const eta = snap.status === 'running' && snap.etaMs != null ? ` · còn khoảng ${fmtDuration(snap.etaMs)}` : '';
     const byLane = Array.from({ length: Math.max(snap.lanes, 1) }, () => []);
     for (const b of ganttBlocks(snap)) byLane[b.lane]?.push(b); // one pass, not one filter per lane
+    const spanMs = Math.max(0, (snap.finishedAt ? Date.parse(snap.finishedAt) : Date.now()) - Date.parse(snap.startedAt));
+    // Làn theo trục ngang (mỗi làn một cột), thời gian chạy từ trên xuống: chiều cao cố định dù có bao nhiêu làn.
     const lanes = byLane.map((blocks, i) =>
-      `<div class="lane"><span class="lane-label">làn ${i + 1}</span><div class="lane-track">${blocks
-        .map((b) => `<button class="block s-${escapeHtml(b.status)}" data-key="${escapeHtml(b.key)}" style="left:${b.left}%;width:${b.width}%" data-tip="${escapeHtml(`${b.title} · ${fmtDuration(b.durationMs)}`)}" aria-label="${escapeHtml(b.title)}"></button>`)
-        .join('')}</div></div>`).join('');
+      `<div class="lane"><div class="lane-track">${blocks
+        .map((b) => `<button class="block s-${escapeHtml(b.status)}" data-key="${escapeHtml(b.key)}" style="top:${b.left}%;height:${b.width}%" data-tip="${escapeHtml(`làn ${i + 1} · ${b.title} · ${fmtDuration(b.durationMs)}`)}" aria-label="${escapeHtml(b.title)}"></button>`)
+        .join('')}</div><span class="lane-label">${i + 1}</span></div>`).join('');
     const running = snap.tests.filter((t) => t.status === 'running');
     const sel = snap.tests.find((t) => t.key === selectedKey) ?? running.at(-1) ?? snap.tests.at(-1);
     const steps = sel
@@ -57,7 +67,7 @@ export async function renderLive(main) {
            .map((s) => `<li class="step">${statusBadge(s.status)} <code>${escapeHtml(s.api)}</code> ${escapeHtml(s.label ?? '')} <span class="muted">${fmtDuration(s.durationMs)}</span>${s.error ? `<div class="err">${escapeHtml(s.error.message ?? '')}</div>` : ''}</li>`)
            .join('') || '<li class="muted">Chưa có step.</li>'}</ol>`
       : '';
-    const out = snap.output.slice(-50).map((o) => escapeHtml(o.text)).join('');
+    const out = snap.output.slice(-50).map((o) => escapeHtml(stripAnsi(o.text))).join('');
     main.style.setProperty('--phase', `-${Math.round(performance.now() % 2400)}ms`); // rebuilt nodes resume their loops (2.4 s = lcm of 0.8 s / 1.2 s)
     const beat = snap.status === 'running' ? `<span class="beat${fresh ? '' : ' idle'}" title="Đang nhận dữ liệu live" aria-hidden="true"></span>` : '';
     fresh = false;
@@ -67,7 +77,8 @@ export async function renderLive(main) {
       <p class="muted">${escapeHtml(snap.done)}/${escapeHtml(snap.total)} test${eta}</p>
       ${snap.status !== 'running' ? `<p class="row-actions"><a class="button" href="#/runs">${icon('list', { size: 14 })}Xem ở Runs</a> <button type="button" data-run-all>${icon('play', { size: 14 })}Chạy lại toàn bộ suite</button></p>` : ''}
       ${snap.error ? `<div class="err">${escapeHtml(snap.error.message ?? '')}</div>` : ''}
-      <section class="panel gantt">${lanes}<p class="muted small">Làn được xếp theo thời gian chạy chồng nhau, không phải số worker thật.</p></section>
+      <section class="panel gantt"><div class="gantt-body"><div class="gantt-axis" aria-hidden="true"><span>0s</span><span>${fmtDuration(spanMs)}</span></div><div class="gantt-lanes">${lanes}</div></div>
+        <p class="muted small">Mỗi cột là một làn, thời gian chạy từ trên xuống. Làn được xếp theo thời gian chạy chồng nhau, không phải số worker thật.</p></section>
       <section class="panel">${steps}</section>
       ${out ? `<section><h2>Output</h2><pre class="log">${out}</pre></section>` : ''}`;
   }

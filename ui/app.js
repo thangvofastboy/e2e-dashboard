@@ -11,6 +11,7 @@ import { renderRoutes } from './views/routes.js';
 import { renderBranches } from './views/branches.js';
 import { renderProjects } from './views/projects.js';
 import { renderDigest } from './views/digest.js';
+import { LOGO_SVG, MARK_SVG } from './logo.js';
 import { renderLocators } from './views/locators.js';
 import { renderModels } from './views/models.js';
 import { renderLint } from './views/lint.js';
@@ -110,9 +111,10 @@ function shell() {
     if (!group) return shown.map(link).join('');
     return `<details class="nav-sec" data-group="${group}" ${folded.has(group) ? '' : 'open'}><summary class="nav-group">${group}</summary>${shown.map(link).join('')}</details>`;
   }).join('');
+  document.querySelector('link[rel="icon"]')?.setAttribute('href', `data:image/svg+xml,${encodeURIComponent(MARK_SVG)}`);
   document.getElementById('app').innerHTML = `
     <aside class="nav">
-      <div class="nav-top"><a class="brand" href="#/"><span class="logo">${icon('flask', { size: 17 })}</span>e2e <span>dashboard</span></a>
+      <div class="nav-top"><a class="brand" href="#/"><span class="logo">${LOGO_SVG}</span>e2e <span>dashboard</span></a>
         <button type="button" class="icon-btn nav-toggle" aria-expanded="false" aria-controls="nav-body" aria-label="Mở menu">${icon('list', { size: 18 })}</button></div>
       <div class="nav-body" id="nav-body">
       ${isExport() ? '' : `<div class="nav-tools"><button type="button" class="nav-search" data-search>${icon('search', { size: 15 })}Tìm kiếm <kbd>Ctrl K</kbd></button><button type="button" class="nav-ask btn-ai" data-ask title="Hỏi AI về bộ test">${icon('sparkles', { size: 15 })}Hỏi AI</button></div>`}
@@ -316,6 +318,41 @@ function boldNumbers(el) {
   }
 }
 
+// Bảng / danh sách dài: chỉ hiện `page` mục đầu + nút "Hiện thêm" / "Hiện tất cả", để trang không dài nhiều màn hình.
+// Filter trong view render lại phần tử mới nên trạng thái mở rộng tự reset.
+// Dòng view chèn thêm sau này (vd. .visual-row ở compare.js) ẩn/hiện theo mục đứng ngay trước nó.
+function pageItems(el, items, page) {
+  el.dataset.paged = '';
+  if (items.length <= page + 5) return; // dư vài mục thì hiện luôn, khỏi bấm
+  let shown = page;
+  const index = new Map(items.map((r, i) => [r, i]));
+  const current = () => (el.tBodies ? [...el.tBodies].flatMap((b) => [...b.rows]) : [...el.children]);
+  const bar = document.createElement('div');
+  bar.className = 'table-more';
+  const sync = () => {
+    let hide = false;
+    for (const r of current()) {
+      if (index.has(r)) hide = index.get(r) >= shown;
+      r.classList.toggle('row-hidden', hide);
+    }
+    const left = items.length - shown;
+    bar.innerHTML = left > 0
+      ? `<span class="muted small">${shown}/${items.length}</span><button type="button" data-more>Hiện thêm ${Math.min(page, left)}</button><button type="button" data-all>Hiện tất cả</button>`
+      : `<span class="muted small">${items.length}</span><button type="button" data-less>Thu gọn</button>`;
+  };
+  bar.addEventListener('click', (e) => {
+    if (e.target.closest('[data-more]')) shown += page;
+    else if (e.target.closest('[data-all]')) shown = items.length;
+    else if (e.target.closest('[data-less]')) {
+      shown = page;
+      el.scrollIntoView({ block: 'start' });
+    } else return;
+    sync();
+  });
+  sync();
+  (el.closest('.table-wrap') ?? el).after(bar);
+}
+
 const FENCE_LANG = { json: 'json', js: 'js', javascript: 'js', ts: 'js', typescript: 'js', tsx: 'js', jsx: 'js', sh: 'shell', bash: 'shell', shell: 'shell', console: 'shell', zsh: 'shell' };
 function enhance(root) {
   // colour code, JSON, commands and logs wherever a view put them (highlight.js escapes everything)
@@ -346,6 +383,10 @@ function enhance(root) {
     t.replaceWith(w);
     w.append(t);
   }
+  // bảng rộng hơn khung: cuộn ngang trong khung (không tràn ra cả trang). Bảng vừa khung giữ overflow visible để <th> dính.
+  for (const w of root.querySelectorAll('.table-wrap.auto-wrap')) w.classList.toggle('scroll-x', w.firstElementChild.scrollWidth > w.clientWidth + 1);
+  for (const t of root.querySelectorAll('table.table:not([data-paged])')) pageItems(t, [...t.tBodies].flatMap((b) => [...b.rows]), 25);
+  for (const u of root.querySelectorAll('ul.life-list:not([data-paged]), ul.eg-tests:not([data-paged])')) pageItems(u, [...u.children], 10);
 }
 
 if (isExport() && !location.hash) location.hash = `#/run/${encodeURIComponent(globalThis.__E2ED_EXPORT__.runId)}`;

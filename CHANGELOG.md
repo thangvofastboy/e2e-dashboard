@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.8.1 — 2026-10-12
+
+- **Logo và favicon**: logo Fastboy trên thanh bên, favicon là phần tam giác của logo.
+- **Trang Live**: làn xếp thành cột theo trục ngang, thời gian chạy từ trên xuống, cuộn ngang khi nhiều làn; output bỏ mã màu ANSI và link terminal (OSC 8).
+- **Bảng và danh sách dài**: Tests, Triage, Vòng đời và Nhóm lỗi chỉ hiện 25 (hoặc 10) dòng đầu, có nút *Hiện thêm / Hiện tất cả / Thu gọn*. Bảng rộng hơn khung thì cuộn trong khung, không kéo cả trang.
+- **Triage**: link *run* thành nút có icon; cột lỗi cắt còn một dòng, rê chuột xem đủ.
+- **Giao diện form**: dropdown và ô chọn ngày/giờ đồng bộ theme sáng/tối; nhãn tháng trên heatmap không đè nhau; mô tả đầu trang rộng hơn.
+- **Tiếng Anh**: dịch các chữ mới (nút chia trang, ghi chú làn ở Live).
+- **Sửa lỗi**: dòng chèn thêm (So sánh) ẩn/hiện theo dòng đứng trước; favicon không lỗi khi trang thiếu thẻ icon; `select` dài không đẩy lệch layout trên màn hình hẹp.
+
 ## v0.8.0 — 2026-10-11
 
 - **Giao diện kiểu báo cáo**: status viết hoa, căn giữa, cùng độ rộng; tiêu đề bảng viết hoa; cột số căn phải in đậm; cột pass rate / fail / flaky tự tô màu đánh giá; số KPI và số quan trọng trong banner nổi bật.

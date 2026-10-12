@@ -21,11 +21,11 @@ export function triageRowHtml(r, statuses) {
   return `<tr data-fp="${escapeHtml(r.fp)}">
     <td>${sel}${r.reopened ? `<div class="small tone-bad">mở lại ×${escapeHtml(r.reopened)}</div>` : ''}</td>
     <td class="wrap"><a href="${escapeHtml(testHref(r.key))}"><strong>${escapeHtml(r.title)}</strong></a> <span class="muted small">[${escapeHtml(r.target ?? '?')}]</span>
-      ${r.error ? `<div class="small muted"><code>${escapeHtml(r.error.code)}</code> ${escapeHtml(r.error.message)}</div>` : ''}</td>
+      ${r.error ? `<div class="small muted clamp-1" title="${escapeHtml(r.error.message)}"><code>${escapeHtml(r.error.code)}</code> ${escapeHtml(r.error.message)}</div>` : ''}</td>
     <td class="small">${r.failingNow ? `<span class="tone-bad">fail ${escapeHtml(r.streak)} run</span><div class="muted">từ ${escapeHtml(fmtRelative(r.since))} · ${escapeHtml(fmtSpan(Date.now() - Date.parse(r.since)))}</div>` : '<span class="tone-good">không còn fail</span>'}</td>
     <td>${ro ? escapeHtml(r.assignee ?? '') : `<input class="tri-input" data-tri="assignee" value="${escapeHtml(r.assignee ?? '')}" placeholder="@ai đó" maxlength="80" aria-label="Người phụ trách">`}${r.owners?.length ? `<div class="muted small">owner: ${escapeHtml(r.owners.join(', '))}</div>` : ''}</td>
     <td>${ro ? escapeHtml(r.note) : `<input class="tri-input wide" data-tri="note" value="${escapeHtml(r.note)}" placeholder="Ghi chú…" maxlength="2000" aria-label="Ghi chú">`}</td>
-    <td class="small">${issue}${r.runId && r.resultId ? ` <a href="${escapeHtml(runHref(r.runId, r.resultId))}">run</a>` : ''}</td></tr>`;
+    <td class="small">${issue}${r.runId && r.resultId ? ` <a class="small-btn run-btn" href="${escapeHtml(runHref(r.runId, r.resultId))}">${icon('terminal', { size: 13 })}Run</a>` : ''}</td></tr>`;
 }
 
 let triageFilter = null;
