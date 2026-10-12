@@ -209,7 +209,7 @@ export function createSelfHeal({ projectRoot, env = process.env, aiFactory = cre
       if (outside.length) return void (await update(fp, { status: 'fix-failed', note: `AI sửa ngoài phạm vi cho phép (${clip(outside.join(', '), 300)}): bỏ` }));
       // 4. commit vào branch local rồi dừng: chưa chạy npm test / push, chờ người dùng xem diff
       const stat = await run('git', ['diff', '--cached', '--stat'], wt).catch(() => '');
-      const diff = await run('git', ['diff', '--cached'], wt).catch(() => '');
+      const diff = await run('git', ['diff', '--cached', '--text'], wt).catch(() => '');
       // diff bị cắt thì người duyệt không thấy hết: không cho duyệt
       if (diff.length > MAX_DIFF) return void (await update(fp, { status: 'fix-failed', note: `Bản sửa quá lớn để duyệt (${diff.length} ký tự, giới hạn ${MAX_DIFF}): bỏ` }));
       await run('git', [...NO_HOOKS, 'commit', '--no-verify', '-m', `fix(auto): ${oneLine(v.summary)}`.slice(0, 120), '-m', `Lỗi ${fp} (${entry.sample.source}), sửa tự động bởi e2e-dashboard self-heal.`], wt);

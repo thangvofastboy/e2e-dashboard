@@ -110,6 +110,7 @@ test('a fix whose diff is too long to review in full is refused, not offered for
   const e = await heal.report(ERR);
   const done = await settle(heal, e.fingerprint, (x) => x?.status === 'fix-failed');
   assert.match(done.note, /quá lớn để duyệt/);
+  assert.ok(calls.some((c) => c === 'git diff --cached --text'), 'diff luôn có nội dung, không để "Binary files differ"');
   assert.equal(done.diff, undefined);
   assert.ok(!calls.some((c) => c.startsWith('npm') || / push /.test(c)));
 });
