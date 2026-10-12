@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.8.7 — 2026-10-12
+
+- **Helper khoanh vùng hành động (`support/markAction.ts`)**: sau một thao tác của test, vẽ khung đỏ quanh element rồi chụp ảnh, gỡ khung ngay. Ảnh là artifact của attempt, hiện ở tab "Video & ảnh". Tắt bằng `E2E_MARK=0`.
+- **Giải phóng ghi chú release**: tag và GitHub Release mang nội dung CHANGELOG của version (đã có từ v0.8.6).
+
 ## v0.8.6 — 2026-10-12
 
 - **Coverage: quét source**: đặt `"coverage": { "source": "<repo app>" }` để quét route (router, `href`, `navigate`) và domain trong code. Domain nhiễu (w3.org, apollographql…) bị bỏ; thêm bằng `"domainIgnore"`.
