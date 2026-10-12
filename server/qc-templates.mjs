@@ -159,6 +159,21 @@ export function renderPrompt(template, vars) {
   return { prompt: attach ? `${out.text}\n\n---\nDữ liệu:\n${vars.evidence}` : out.text, missing: out.missing };
 }
 
+// The same template for the AI: the instructions keep «names» where the blanks are, and the values go in a separate
+// block that is fenced as untrusted data (ai.mjs buildPrompt 'qc-template'), so error text from the app under test
+// cannot be read as instructions.
+export function aiParts(template, vars) {
+  const used = new Set();
+  const instructions = String(template.body).replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k) => {
+    if (!Object.hasOwn(vars, k)) return m;
+    used.add(k);
+    return `«${k}»`;
+  });
+  const evidence = [...used].map((k) => `«${k}»:\n${String(vars[k] ?? '')}`);
+  if (!used.has('evidence') && vars.evidence) evidence.push(`Dữ liệu:\n${vars.evidence}`);
+  return { instructions, evidence };
+}
+
 // For Linear: the AI text must keep the fingerprint line of the draft, or the dashboard's own description is used.
 export function keepFingerprint(text, fingerprintLine) {
   if (!fingerprintLine || text.includes(fingerprintLine)) return text;

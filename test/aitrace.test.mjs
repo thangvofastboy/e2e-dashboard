@@ -65,3 +65,23 @@ test('usageOf reads both AI SDK usage shapes', () => {
   assert.deepEqual(usageOf('{"inputTokens":{"total":7},"outputTokens":{"total":3}}'), { input: 7, output: 3, cached: 0 });
   assert.deepEqual(usageOf('not json'), { input: 0, output: 0, cached: 0 });
 });
+
+test('a hostile ai-trace.json cannot put markup into the page: scope fields are coerced', async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const dir = mkdtempSync(join(tmpdir(), 'e2ed-evil-trace-'));
+  const bad = '<img src=x onerror=alert(1)>';
+  writeFileSync(join(dir, 'ai-trace.json'), JSON.stringify({
+    runs: [{ id: 'r1', started_at: bad, function_id: bad, e2e: { test: bad, testId: 't1', target: bad, agent: bad, attempt: bad, api: 'agent.act', label: bad } }],
+    steps: [{ id: 's1', run_id: 'r1', step_number: bad, model_id: bad, provider: bad, started_at: bad, duration_ms: bad, input: '{}', output: null, usage: JSON.stringify({ inputTokens: bad, outputTokens: bad }), error: null }],
+  }));
+  const v = await aiTraceView(dir);
+  const scope = v.runs[0].scope;
+  assert.equal(scope.attempt, 0, 'a string attempt becomes 0, so "attempt + 1" can never concatenate markup');
+  assert.equal(typeof scope.attempt, 'number');
+  const call = v.runs[0].calls[0];
+  assert.deepEqual([call.n, call.input, call.output, call.durationMs], [0, 0, 0, null], 'numbers stay numbers');
+  const { readFileSync } = await import('node:fs');
+  const ui = readFileSync(new URL('../ui/views/aitrace.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(ui, /attempt \$\{r\.scope\.attempt \+ 1\}/, 'the view does not interpolate the attempt unescaped');
+});

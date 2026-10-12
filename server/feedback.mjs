@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 export const FEEDBACK_REPO = 'thangvofastboy/e2e-dashboard';
 const TYPES = { bug: ['bug', 'Lỗi'], idea: ['enhancement', 'Ý tưởng'], question: ['question', 'Câu hỏi'] };
 // tokens and keys that must never end up in a public issue
-const SECRET = /(ghp_|gho_|ghs_|github_pat_|lin_api_|sk-[A-Za-z0-9_-]{16,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY)/;
+export const SECRET = /(ghp_|gho_|ghs_|github_pat_|lin_api_|sk-[A-Za-z0-9_-]{16,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY)/;
 const WINDOW_MS = 10 * 60_000;
 const MAX_PER_WINDOW = 5;
 const attempts = [];

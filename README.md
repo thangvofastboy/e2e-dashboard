@@ -9,7 +9,7 @@
 ![Node](https://img.shields.io/badge/Node-%E2%89%A5%2022-339933?style=for-the-badge&logo=node.js&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-16a34a?style=for-the-badge)
 ![Build](https://img.shields.io/badge/build-kh%C3%B4ng%20c%E1%BA%A7n-2563eb?style=for-the-badge)
-![Tests](https://img.shields.io/badge/tests-436%20passing-16a34a?style=for-the-badge&logo=checkmarx&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-447%20passing-16a34a?style=for-the-badge&logo=checkmarx&logoColor=white)
 ![AI](https://img.shields.io/badge/AI-claude%20--p-a855f7?style=for-the-badge&logo=anthropic&logoColor=white)
 ![Database](https://img.shields.io/badge/database-kh%C3%B4ng%20c%E1%BA%A7n-8b5cf6?style=for-the-badge)
 
@@ -124,6 +124,7 @@
 | ⭐ | **Chất lượng test** | Điểm 0–100 từng test (thiếu assert, flaky, tốn model, chạy lâu, trùng, quá dài) kèm lý do |
 | 👯 | **Test trùng, tách / gộp** | Phát hiện test cùng tên hoặc cùng các bước, test dài nên tách; mỗi việc có prompt cho Claude Code (dashboard không tự sửa mã test) |
 | 💌 | **Gửi phản hồi** | Form góp ý, báo lỗi về chính dashboard: tạo issue trên GitHub của dự án qua `gh`, chỉ sau khi tick xác nhận công khai |
+| 🧹 | **Dọn rác** | Cài đặt hệ thống → Dọn dẹp: quét 6 nhóm rác (file ghi dở `.tmp-*`, run lưu thiếu file, log lớn, báo cáo xuất cũ, replay cache cũ / mồ côi, thư mục tạm nhập từ GitHub), cho biết số mục và dung lượng từng nhóm, chỉ xoá nhóm bạn chọn sau popup xác nhận |
 | ⚠️ | **Reset All** | Cài đặt hệ thống → Reset: xoá cài đặt, dữ liệu, hoặc cả cấu hình chung của máy. Có popup cảnh báo và phải gõ `RESET`; không có bản sao lưu |
 | 🛡️ | **Xác nhận mọi thao tác nguy hiểm** | Một hộp thoại dùng chung cho mọi thao tác xoá, gỡ, dừng run, ghi đè snapshot, bật tự động; mặc định focus vào *Huỷ*, Esc để thoát |
 | 🗂️ | **Cài đặt chia tab dọc** | Cài đặt hệ thống và Tự động & lưu trữ chia nhóm ở menu dọc, hiện số liệu tổng quan, nút và công tắc lớn rõ ràng |
@@ -590,8 +591,10 @@ Script kiểm tra (`npm test`, `claude plugin validate`, `claude plugin test`), 
 | 🛠️ | Tự sửa lỗi: AI chỉ sửa trong worktree tạm từ `origin/main`, chỉ đổi file trong `server/ ui/ reporter/ bin/ test/ support/`, không có shell. Commit và push chạy không hook. Trạng thái nằm ngoài repo (`~/.e2e-dashboard/selfheal/`). Người duyệt xem đủ diff văn bản trước khi `npm test` và push; diff quá 12 KB thì bỏ |
 | 🔔 | Thông báo desktop truyền tiêu đề/nội dung qua argv hoặc biến môi trường, không qua shell |
 | 🎯 | Bản ghi replay cache chỉ đọc khi tên là hash 64 hex, nằm trong project, không qua symlink, ≤ 1 MiB |
+| 🧹 | Dọn rác chỉ gồm 6 nhóm cố định, server tự quét lại khi dọn (trang không bao giờ gửi đường dẫn), chỉ xoá mục đủ cũ, không đi qua symlink, thư mục tạm của hệ điều hành chỉ khi tên khớp `e2ed-gh-*` và thuộc về bạn |
 | 🧹 | Reset All chỉ xoá đúng các tên trong danh sách cố định của `.e2e-dashboard` (không glob, không theo symlink); không đụng code, file test hay thư mục `.e2e`; cần gõ `RESET`, và bị từ chối khi đang có run |
 | 💌 | Phản hồi gửi bằng `gh issue create` với nội dung qua stdin, repo cố định; từ chối khi chưa tick xác nhận, khi nội dung có dạng token hoặc key, và quá 5 lần trong 10 phút |
+| 🧠 | AI viết nội dung QC (bug report, tự log bug) chạy **không có công cụ nào** (không đọc được `.env` hay mã nguồn); dữ liệu từ app và test nằm trong khối rào ngẫu nhiên tách khỏi chỉ thị, và kết quả có dạng token / khoá bị bỏ |
 | 🤖 | Tự log bug mặc định tắt, chỉ chạy với lỗi do test (không phải hạ tầng), tối đa 5 issue mỗi run và chống trùng theo fingerprint |
 
 ---

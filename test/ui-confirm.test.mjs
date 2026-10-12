@@ -12,7 +12,7 @@ test('no view uses the browser confirm(): every confirmation is the shared dialo
 
 // An endpoint that deletes, removes, stops or switches something dangerous on must be asked about first:
 // the call has to be preceded, within the same handler, by confirmDialog.
-const DANGEROUS = /postJson\((?:'|`)\/api\/(?:projects\/forget|timeline\/remove|quarantine\/remove|run\/stop|storage\/(?:prune|cleanup)|cache\/clear|selfheal\/(?:approve|reject)|qc\/manual'?`?, \{ delete|qc\/templates'?`?, \{ (?:delete|reset)|linear\/detach|runs\/\$\{[^}]+\}\/delete|system\/doctor)/g;
+const DANGEROUS = /postJson\((?:'|`)\/api\/(?:projects\/forget|timeline\/remove|quarantine\/remove|run\/stop|storage\/(?:prune|cleanup)|junk\/clean|cache\/clear|selfheal\/(?:approve|reject)|qc\/manual'?`?, \{ delete|qc\/templates'?`?, \{ (?:delete|reset)|linear\/detach|runs\/\$\{[^}]+\}\/delete|system\/doctor)/g;
 
 test('every dangerous action asks through confirmDialog first', () => {
   const unguarded = [];
@@ -24,7 +24,7 @@ test('every dangerous action asks through confirmDialog first', () => {
       if (!before.includes('confirmDialog(')) unguarded.push(`${f}: ${m[0]}`);
     }
   }
-  assert.ok(seen >= 16, `the pattern still finds the dangerous calls (${seen})`);
+  assert.ok(seen >= 17, `the pattern still finds the dangerous calls (${seen})`);
   assert.deepEqual(unguarded, []);
 });
 

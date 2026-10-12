@@ -12,6 +12,7 @@ import { timingSafeEqual, createHash } from 'node:crypto';
 import { safeJoin, realInside, readConfig, VERSION, DATA_DIR, RUN_ID, RESULT_ID, resultAttempts, isLink } from '../reporter/e2e-dashboard.reporter.mjs';
 import { listRuns, getRun, findRunDir, setFlag, testHistory, getAi, writeAi, listAi, loadHistory, dropCaches } from './store.mjs';
 import { resetPreview, resetAll } from './reset.mjs';
+import { scanJunk, cleanJunk } from './junk.mjs';
 import { flakyTests, compareRuns, groupErrors, costStats, slowSteps, routeMap, branchStats, compareBranches, locatorCandidates, traceToCode, testKey, resultError } from './analytics.mjs';
 import { projectSummaries, forgetProject } from './projects.mjs';
 import { acceptDescription, acceptTitle, placeImages, issueDraft, claudePrompt, linearConfig, createLinear, readIssueLinks, saveIssueLink, parseIssueRef, removeIssueLink, fingerprint as issueFingerprint } from './linear.mjs';
@@ -43,11 +44,11 @@ import { groupReport } from './groups.mjs';
 import { traceMatrix, storyList } from './traceability.mjs';
 import { aiTraceView, aiTraceCall } from './aitrace.mjs';
 import { listCache, clearCache, cacheDir } from './replaycache.mjs';
-import { validateFeedback, buildIssue, rateOk, createIssue } from './feedback.mjs';
+import { validateFeedback, buildIssue, rateOk, createIssue, SECRET } from './feedback.mjs';
 import { commentIfNewBug, signatureOf } from './knownbug.mjs';
 import { findDuplicates, splitCandidates, actionPrompt, latestWithResults } from './dupes.mjs';
 import { analyzeQuality } from './quality.mjs';
-import { readTemplates, findTemplate, saveTemplate, resultVars, runVars, renderPrompt, keepFingerprint, PLACEHOLDERS } from './qc-templates.mjs';
+import { readTemplates, findTemplate, saveTemplate, resultVars, runVars, renderPrompt, aiParts, keepFingerprint, PLACEHOLDERS } from './qc-templates.mjs';
 import { markKnown, readNotes, setNote, readManual, saveManual, manualSummary, bugReport, buildMatrix, bugRows, bugsCsv } from './qc.mjs';
 import { addEvent, removeEvent, timeline, lastCommits, EVENT_KINDS } from './events.mjs';
 import { releaseReport } from './release.mjs';
@@ -229,7 +230,7 @@ const SUITE_EVIDENCE = new Set(['ticket-test', 'select-tests', 'locator-batch', 
 const DRAFT_DIR = /^(?!.*(?:^|\/)\.)(?!.*\.\.)[\w./ -]{1,150}$/;
 const historyTable = async (root, n) => (await indexedTestHistory(root, n).catch(() => null)) ?? testHistory(root, n);
 
-export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER, ai = NO_AI, env = process.env, linearFetch, github = createGithub({ projectRoot }), ghImport = importFromGithub, automation = null, tracking = null, selfHeal = null }) {
+export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER, ai = NO_AI, qcAi = null, env = process.env, linearFetch, github = createGithub({ projectRoot }), ghImport = importFromGithub, automation = null, tracking = null, selfHeal = null }) {
   let avgByKey = new Map();
   const refreshAverages = () =>
     historyTable(projectRoot, 10)
@@ -562,6 +563,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         });
       }
       if (p === '/api/cache') return send(res, 200, await cacheView(projectRoot));
+      if (p === '/api/junk') return send(res, 200, await scanJunk(projectRoot, { testIds: await currentTestIds(projectRoot) }));
       if (p === '/api/reset/preview') return send(res, 200, await resetPreview(projectRoot, { env }));
       if (p === '/api/qc/notes') return send(res, 200, await readNotes(projectRoot));
       if (p === '/api/qc/quality') return send(res, 200, analyzeQuality(await loadHistory(projectRoot, Math.min(runCount(url), 30))));
@@ -1096,6 +1098,14 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         if (out.error === 'busy') return send(res, 409, { error: 'busy' });
         return send(res, 503, { error: out.error === 'e2e-missing' ? 'Project chưa cài e2e (node_modules/e2e) — chạy npm install rồi thử lại.' : out.error });
       }
+      if (p === '/api/junk/clean') {
+        const b = await readBody(req);
+        try {
+          return send(res, 200, await cleanJunk(projectRoot, b.categories, { testIds: await currentTestIds(projectRoot) }));
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+      }
       if (p === '/api/reset') {
         const b = await readBody(req);
         if (b.confirm !== 'RESET') return send(res, 400, { error: 'Gõ đúng RESET để xác nhận' });
@@ -1147,12 +1157,15 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         res.on('close', () => !res.writableEnded && ac.abort());
         let final = null;
         let error = null;
-        await ai.run({ signal: ac.signal, prompt: `${prompt}\n\nChỉ trả về nội dung cuối cùng, không thêm lời dẫn.`, onEvent: (e) => {
+        // dữ liệu từ app / test đi qua khối không tin cậy, và AI không có công cụ nào (không đọc được .env hay mã nguồn)
+        const { instructions, evidence } = aiParts(tpl, vars);
+        await (qcAi ?? ai).run({ signal: ac.signal, prompt: buildPrompt('qc-template', { instructions, evidence, language: readConfig(projectRoot).ai?.language }), onEvent: (e) => {
           if (e.type === 'done' && !e.isError) final = e.result;
           if (e.type === 'error') error = e.message;
         } });
         if (!final) return send(res, 502, { error: error ?? 'AI không trả lời' });
         let text = final.trim().replace(/^```(?:markdown|md)?\n([\s\S]*)\n```$/, '$1');
+        if (SECRET.test(text)) return send(res, 502, { error: 'AI trả về nội dung có dạng token hoặc khoá bí mật: đã bỏ. Kiểm tra dữ liệu của test.' });
         if (typeof b.fingerprintLine === 'string') text = keepFingerprint(text, b.fingerprintLine.slice(0, 300));
         return send(res, 200, { text, missing });
       }

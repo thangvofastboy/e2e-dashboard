@@ -30,7 +30,7 @@ const SYS_TABS = [
   ['integrations', 'Tích hợp', 'bolt', 'Linear, webhook'],
   ['ai', 'AI & tự sửa lỗi', 'sparkles', 'Model, effort, PR tự động'],
   ['about', 'Hệ thống', 'cpu', 'Phiên bản, dữ liệu, SQLite'],
-  ['reset', 'Reset', 'recycle', 'Xoá cài đặt hoặc dữ liệu'],
+  ['reset', 'Dọn dẹp', 'recycle', 'Dọn rác, reset dữ liệu'],
 ];
 
 function appearanceHtml() {
@@ -132,6 +132,19 @@ function healHtml(h, cfg, aiCfg) {
   </section>`;
 }
 
+// Dọn rác: mỗi nhóm có số mục và dung lượng; chỉ nhóm được chọn mới bị xoá, sau khi xác nhận.
+function junkHtml(j) {
+  if (!j) return '';
+  const rows = j.categories.map((c) => `<label class="set-row reset-row"><span class="set-text"><strong>${escapeHtml(c.label)} <span class="muted small">${c.count} mục · ${fmtBytes(c.bytes)}</span></strong><span class="muted small">${escapeHtml(c.desc)}</span></span><span class="set-ctl"><span class="switch"><input type="checkbox" name="junkCat" value="${escapeHtml(c.id)}"${c.count ? ' checked' : ' disabled'}><span class="track"></span><span class="sr-only">${escapeHtml(c.label)}</span></span></span></label>`).join('');
+  const found = j.categories.filter((c) => c.count).length;
+  return `<section class="panel"><h2>${icon('recycle', { size: 18 })} Dọn rác</h2>
+    <p class="muted">Xoá những thứ dashboard hoặc một lần chạy bị ngắt để lại mà không ai dùng nữa. Không đụng tới run, cài đặt hay mã của project.</p>
+    ${sysStats(sysStat('Có thể giải phóng', fmtBytes(j.bytes), j.bytes ? 'warn' : 'good'), sysStat('Nhóm có rác', `${found}/${j.categories.length}`, found ? 'warn' : 'good'))}
+    <form data-junk-form>${rows}
+      <div class="form-row"><button type="button" class="btn-stop" data-junk-open${found ? '' : ' disabled'}>${icon('recycle', { size: 14 })}Dọn rác…</button><button type="button" data-junk-rescan>${icon('rerun', { size: 14 })}Quét lại</button>${found ? '' : '<span class="muted small">Không có rác.</span>'}</div>
+    </form></section>`;
+}
+
 const RESET_SCOPES = {
   settings: 'Cài đặt',
   data: 'Dữ liệu',
@@ -219,6 +232,7 @@ export async function renderSystem(main) {
   let d = await getJson('/api/system');
   let heal = await getJson('/api/selfheal').catch(() => ({ errors: [] }));
   let resetInfo = await getJson('/api/reset/preview').catch(() => null);
+  let junkInfo = await getJson('/api/junk').catch(() => null);
   let editing = null; // file env đang mở
   const urlTab = () => new URLSearchParams(location.hash.split('?')[1] ?? '').get('tab');
   let tab = SYS_TABS.some(([k]) => k === urlTab()) ? urlTab() : 'appearance';
@@ -227,7 +241,7 @@ export async function renderSystem(main) {
     return todo ? `<span class="sys-badge" title="Cần xem">${todo}</span>` : '';
   };
   const draw = () => {
-    const panes = { appearance: appearanceHtml(), project: setupHtml(d.setup) + envHtml(d.env), integrations: userHtml(d.user), ai: healHtml(heal, d.user.selfHeal, d.user.ai), about: infoHtml(d), reset: resetHtml(resetInfo) };
+    const panes = { appearance: appearanceHtml(), project: setupHtml(d.setup) + envHtml(d.env), integrations: userHtml(d.user), ai: healHtml(heal, d.user.selfHeal, d.user.ai), about: infoHtml(d), reset: junkHtml(junkInfo) + resetHtml(resetInfo) };
     main.innerHTML = `${pageHead('Cài đặt hệ thống', 'settings', 'Giao diện, biến môi trường của project, key của dashboard và tình trạng setup.')}
       <div class="sys">
         <div class="sys-nav" role="tablist" aria-orientation="vertical" aria-label="Nhóm cài đặt">${SYS_TABS.map(([k, label, ic, sub]) => `<button type="button" role="tab" id="sys-tab-${k}" data-sys-tab="${k}" aria-selected="${k === tab}" aria-controls="sys-pane-${k}" tabindex="${k === tab ? 0 : -1}"><span class="sys-nav-ic">${icon(ic, { size: 20 })}</span><span class="sys-nav-t"><strong>${label}</strong><span class="small">${sub}</span></span>${badge(k)}</button>`).join('')}</div>
@@ -245,7 +259,7 @@ export async function renderSystem(main) {
     replaceParams({ tab: k === 'appearance' ? '' : k });
   };
   const reload = async () => {
-    [d, heal] = await Promise.all([getJson('/api/system'), getJson('/api/selfheal').catch(() => heal)]);
+    [d, heal, junkInfo] = await Promise.all([getJson('/api/system'), getJson('/api/selfheal').catch(() => heal), getJson('/api/junk').catch(() => junkInfo)]);
     const ta = main.querySelector('.env-text');
     const keep = editing && ta ? { name: editing, value: ta.value, saved: ta.dataset.saved } : null;
     draw();
@@ -285,6 +299,10 @@ export async function renderSystem(main) {
 
   main.addEventListener('change', async (e) => {
     const t = e.target;
+    if (t.name === 'junkCat') {
+      main.querySelector('[data-junk-open]').disabled = !main.querySelector('[name=junkCat]:checked');
+      return;
+    }
     if (t.name === 'resetScope') {
       main.querySelector('[data-reset-open]').disabled = !main.querySelector('[name=resetScope]:checked');
       return;
@@ -374,6 +392,17 @@ export async function renderSystem(main) {
         b.disabled = true;
         await postJson('/api/selfheal/reject', { fingerprint: b.dataset.healReject });
         toast('Đã bỏ bản sửa');
+        await reload();
+      } else if ('junkRescan' in b.dataset) {
+        await reload();
+        toast('Đã quét lại');
+      } else if ('junkOpen' in b.dataset) {
+        const cats = [...main.querySelectorAll('[name=junkCat]:checked')].map((x) => x.value);
+        const lines = junkInfo.categories.filter((c) => cats.includes(c.id)).map((c) => `${c.label}: ${c.count} mục, ${fmtBytes(c.bytes)}`);
+        if (!lines.length) return;
+        if (!(await confirmDialog({ title: 'Dọn rác', message: 'Xoá vĩnh viễn các mục sau? Không ảnh hưởng run, cài đặt hay mã của project.', items: lines, confirmLabel: 'Dọn rác' }))) return;
+        const r = await postJson('/api/junk/clean', { categories: cats });
+        toast(`Đã giải phóng ${fmtBytes(r.freed)}`);
         await reload();
       } else if ('resetOpen' in b.dataset) {
         const scopes = [...main.querySelectorAll('[name=resetScope]:checked')].map((x) => x.value);

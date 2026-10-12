@@ -33,7 +33,7 @@ export async function renderAiTrace(el, runId, testId) {
   }
   const t = data.totals;
   el.innerHTML = `<p class="small muted">${t.calls} lần gọi model · ${fmtTokens(t.input)} → ${fmtTokens(t.output)} tok${t.cached ? ` (${fmtTokens(t.cached)} cache)` : ''} · ${fmtDuration(t.durationMs)}${t.errors ? ` · ${t.errors} lỗi` : ''}</p>
-    ${data.runs.map((r) => `<div class="ai-run"><h3>${escapeHtml(r.name ?? r.scope?.api ?? 'run')}${r.scope?.attempt ? ` <span class="tag">attempt ${r.scope.attempt + 1}</span>` : ''}</h3>${r.calls.map(callHtml).join('')}</div>`).join('')}`;
+    ${data.runs.map((r) => `<div class="ai-run"><h3>${escapeHtml(r.name ?? r.scope?.api ?? 'run')}${Number.isInteger(r.scope?.attempt) && r.scope.attempt > 0 ? ` <span class="tag">attempt ${escapeHtml(String(r.scope.attempt + 1))}</span>` : ''}</h3>${r.calls.map(callHtml).join('')}</div>`).join('')}`;
   el.querySelectorAll('details[data-call]').forEach((d) =>
     d.addEventListener('toggle', async () => {
       if (!d.open || d.dataset.loaded) return;

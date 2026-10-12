@@ -4,7 +4,9 @@
 import { basename } from 'node:path';
 import { getRun } from './store.mjs';
 import { issueDraft, createLinear, linearConfig, saveIssueLink, placeImages, acceptTitle } from './linear.mjs';
-import { readTemplates, findTemplate, resultVars, renderPrompt, keepFingerprint } from './qc-templates.mjs';
+import { readTemplates, findTemplate, resultVars, aiParts, keepFingerprint } from './qc-templates.mjs';
+import { buildPrompt } from './ai.mjs';
+import { SECRET } from './feedback.mjs';
 import { readNotes, errorOf, markKnown } from './qc.mjs';
 import { testKey } from './analytics.mjs';
 import { commentIfNewBug, signatureOf } from './knownbug.mjs';
@@ -23,14 +25,15 @@ export function bugCandidates(report) {
 // Prompt text of one bug, through the template; the AI reply must keep the draft's fingerprint line.
 async function describe({ ai, template, vars, fingerprintLine, fallback }) {
   if (!ai || !template) return { description: fallback, aiUsed: false };
-  const { prompt } = renderPrompt(template, vars);
+  // nội dung này được đăng lên Linear mà không ai duyệt: dữ liệu từ app đi qua khối không tin cậy, AI không có công cụ nào
+  const { instructions, evidence } = aiParts(template, vars);
   let final = null;
   try {
-    await ai.run({ prompt: `${prompt}\n\nChỉ trả về nội dung cuối cùng, không thêm lời dẫn.`, onEvent: (e) => { if (e.type === 'done' && !e.isError) final = e.result; } });
+    await ai.run({ prompt: buildPrompt('qc-template', { instructions, evidence }), onEvent: (e) => { if (e.type === 'done' && !e.isError) final = e.result; } });
   } catch {
     return { description: fallback, aiUsed: false };
   }
-  if (!final) return { description: fallback, aiUsed: false };
+  if (!final || SECRET.test(final)) return { description: fallback, aiUsed: false }; // rỗng, hoặc có dạng token / khoá: dùng bản nháp tất định
   const text = keepFingerprint(final.trim().replace(/^```(?:markdown|md)?\n([\s\S]*)\n```$/, '$1'), fingerprintLine);
   return { description: text, aiUsed: true };
 }

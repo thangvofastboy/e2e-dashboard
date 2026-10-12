@@ -18,7 +18,7 @@ import { readCodeowners, ownersOf } from './owners.mjs';
 import { readQuarantine, quarantineFlags } from './quarantine.mjs';
 import { registerProject } from './projects.mjs';
 import { createRunner } from './runner.mjs';
-import { createAi } from './ai.mjs';
+import { createAi, AI_NO_TOOLS_ARGS } from './ai.mjs';
 import { annotateRun, loadHistory, getRun } from './store.mjs';
 import { anomalies } from './insights.mjs';
 import { createApp } from './app.mjs';
@@ -133,6 +133,8 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
   let last = null; // shown in /api/info so a skipped report (bad schema, unsafe path) is not silent
   // a report written after this server started is a finished run: tell the desktop (M3)
   const ai = createAi({ projectRoot, settings: () => aiPrefs(process.env, readConfig(projectRoot)) });
+  // viết nội dung QC theo mẫu (kể cả tự log bug): không có công cụ nào
+  const qcAi = createAi({ projectRoot, args: AI_NO_TOOLS_ARGS, settings: () => aiPrefs(process.env, readConfig(projectRoot)) });
   void syncIndex(projectRoot).catch(() => {}); // chỉ mục SQLite: dựng / bổ sung nền lúc khởi động
   const onArchive = async (r) => {
     last = r;
@@ -147,7 +149,7 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
         // tóm tắt AI cho run có test không pass (tắt: "ai": { "autoSummary": false } trong ~/.e2e-dashboard/config.json)
         if (meta.status !== 'passed' && readUserConfig().ai?.autoSummary !== false) void summarizeRun({ projectRoot, ai, runId: meta.runId, language: cfg.ai?.language }).catch(() => {});
         // tự log bug lên Linear (mặc định tắt: "ai": { "autoBugLog": true }); lỗi không làm hỏng việc khác
-        if (meta.status !== 'passed' && readUserConfig().ai?.autoBugLog === true) void autoLogBugs({ projectRoot, runId: meta.runId, ai, cfg }).then((r) => { const made = r.rows?.filter((x) => x.status === 'created') ?? []; if (made.length) console.log(`[e2e-dashboard] đã tạo ${made.length} issue Linear: ${made.map((x) => x.issue).join(', ')}`); }).catch((e) => console.error(`[e2e-dashboard] tự log bug lỗi: ${e.message}`));
+        if (meta.status !== 'passed' && readUserConfig().ai?.autoBugLog === true) void autoLogBugs({ projectRoot, runId: meta.runId, ai: qcAi, cfg }).then((r) => { const made = r.rows?.filter((x) => x.status === 'created') ?? []; if (made.length) console.log(`[e2e-dashboard] đã tạo ${made.length} issue Linear: ${made.map((x) => x.issue).join(', ')}`); }).catch((e) => console.error(`[e2e-dashboard] tự log bug lỗi: ${e.message}`));
         if (meta.status !== 'passed' || meta.summary?.flaky || found.length) {
           const m = runMessage(meta, basename(projectRoot));
           const hooks = await webhookConfig().catch(() => []);
@@ -213,6 +215,7 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
     automation,
     projectRoot, token, uiDir, live, lastArchive: () => last, runner,
     ai,
+    qcAi,
     onEvent: (e) => {
       if (e?.type === 'run-started' && e.artifactsRoot) watcher.retarget(outputFromArtifactsRoot(e.artifactsRoot), e.artifactsRoot);
     },

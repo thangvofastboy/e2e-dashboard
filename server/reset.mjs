@@ -2,7 +2,7 @@
 // Chỉ xoá đúng các tên trong danh sách dưới đây trong <project>/.e2e-dashboard (không glob, không đi qua symlink),
 // và tuỳ chọn file cấu hình chung của máy. Không bao giờ đụng vào file của project hay thư mục kết quả .e2e.
 import { rm, lstat, readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, dirname, relative, sep } from 'node:path';
 import { DATA_DIR, dataPath, legacyDataPath, isLink, listRunDirs } from '../reporter/e2e-dashboard.reporter.mjs';
 import { homeDir } from './projects.mjs';
 
@@ -15,7 +15,7 @@ const DATA = { files: ['triage.json', 'issues.json', 'events.json', 'quarantine.
 
 const MAX_WALK = 200_000;
 
-async function sizeOf(path) {
+export async function sizeOf(path) {
   let bytes = 0;
   let seen = 0;
   const walk = async (p) => {
@@ -28,6 +28,19 @@ async function sizeOf(path) {
   return bytes;
 }
 
+// Every directory from <root>/.e2e-dashboard down to the target's parent must be a real directory: a repo can plant
+// `.e2e-dashboard/state -> ~/` and a check on the leaf alone would delete files there.
+export function underRealDirs(root, path) {
+  const dataDir = join(root, DATA_DIR);
+  if (isLink(dataDir)) return false;
+  let cur = dataDir;
+  for (const part of relative(dataDir, dirname(path)).split(sep).filter(Boolean)) {
+    cur = join(cur, part);
+    if (isLink(cur)) return false;
+  }
+  return true;
+}
+
 // Every place a name can live: the current layout (state/…) and the pre-0.8.8 one (.e2e-dashboard/…).
 const locations = (root, name) => [...new Set([dataPath(root, name), legacyDataPath(root, name)])];
 
@@ -36,7 +49,8 @@ async function inspect(root, name, kind) {
   for (const path of locations(root, name)) {
     const st = await lstat(path).catch(() => null);
     if (!st) continue;
-    found.push({ name, kind, path, symlink: st.isSymbolicLink(), bytes: st.isSymbolicLink() ? 0 : await sizeOf(path) });
+    const linked = st.isSymbolicLink() || !underRealDirs(root, path);
+    found.push({ name, kind, path, symlink: linked, bytes: linked ? 0 : await sizeOf(path) });
   }
   return found;
 }
@@ -73,7 +87,7 @@ export async function resetAll(root, scopes, { env = process.env } = {}) {
   if (isLink(join(root, DATA_DIR))) throw new Error('.e2e-dashboard là symlink: từ chối xoá');
   for (const scope of scopes.filter((s) => s !== 'global')) {
     for (const t of await targets(root, scope)) {
-      if (t.symlink) {
+      if (t.symlink || !underRealDirs(root, t.path)) { // checked again just before deleting
         skipped.push({ path: t.path, why: 'symlink' });
         continue;
       }

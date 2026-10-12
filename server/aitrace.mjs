@@ -78,7 +78,9 @@ export async function aiTraceView(dir, { testId = null } = {}) {
       totals.durationMs += c.durationMs ?? 0;
       if (c.error) totals.errors++;
     }
-    runs.push({ id: String(r.id), name: r.function_id ?? null, startedAt: r.started_at ?? null, scope: r.e2e ? { test: r.e2e.test, testId: r.e2e.testId, target: r.e2e.target, agent: r.e2e.agent, attempt: r.e2e.attempt, api: r.e2e.api ?? null, label: r.e2e.label ?? null } : null, calls });
+    // the file comes from a run (a repo, a CI artifact): every field is coerced, so the page never receives markup in a number
+    const str = (v, n = 200) => (v == null ? null : clip(String(v), n));
+    runs.push({ id: String(r.id), name: str(r.function_id), startedAt: str(r.started_at, 40), scope: r.e2e ? { test: str(r.e2e.test), testId: str(r.e2e.testId), target: str(r.e2e.target, 80), agent: str(r.e2e.agent, 80), attempt: Number.isInteger(r.e2e.attempt) && r.e2e.attempt >= 0 ? r.e2e.attempt : 0, api: str(r.e2e.api, 80), label: str(r.e2e.label) } : null, calls });
   }
   return { runs, totals };
 }

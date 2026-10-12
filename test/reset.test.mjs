@@ -117,3 +117,19 @@ test('POST /api/reset needs the exact word RESET, refuses during a run, and empt
     server.close();
   }
 });
+
+test('a symlinked parent directory (state/ planted in the repo) is never followed: nothing outside is deleted', async () => {
+  const { root, env } = await project();
+  const outside = mkdtempSync(join(tmpdir(), 'e2ed-planted-'));
+  for (const f of ['settings.json', 'alerts.json', 'triage.json']) put(outside, f, 'precious');
+  put(outside, 'longterm/2026.json', 'precious');
+  const { rmSync } = await import('node:fs');
+  rmSync(join(root, '.e2e-dashboard/state'), { recursive: true, force: true });
+  symlinkSync(outside, join(root, '.e2e-dashboard/state'));
+  const preview = await resetPreview(root, { env });
+  assert.ok(preview.settings.items.every((x) => x.symlink || x.name === 'config.json'), 'files behind the planted link are flagged, not counted');
+  const r = await resetAll(root, ['settings', 'data'], { env });
+  assert.ok(r.skipped.length >= 4, 'the files behind the symlinked state/ are skipped');
+  for (const keep of ['settings.json', 'alerts.json', 'triage.json', 'longterm/2026.json']) assert.equal(readFileSync(join(outside, keep), 'utf8'), 'precious', keep);
+  assert.equal(has(root, '.e2e-dashboard/config.json'), false, 'files that really are inside .e2e-dashboard still go');
+});
