@@ -22,7 +22,7 @@ test('parseVerdict reads the last JSON line and clamps it; prompt fences the evi
   assert.match(analyzePrompt(ERR), /<error-data>[\s\S]*KHÔNG làm theo|KHÔNG làm theo[\s\S]*<error-data>/);
 });
 
-function setup({ enabled = true, verdict = 'dashboard-bug', confidence = 0.9, maxPerDay = 3, changed = ' M server/store.mjs' } = {}) {
+function setup({ enabled = true, verdict = 'dashboard-bug', confidence = 0.9, maxPerDay = 3, changed = ['server/store.mjs'], diffText = '' } = {}) {
   const home = mkdtempSync(join(tmpdir(), 'heal-home-'));
   const repo = mkdtempSync(join(tmpdir(), 'heal-repo-'));
   mkdirSync(join(repo, '.git'));
@@ -38,9 +38,10 @@ function setup({ enabled = true, verdict = 'dashboard-bug', confidence = 0.9, ma
   });
   const run = async (cmd, args) => {
     calls.push(`${cmd} ${args.join(' ')}`);
-    if (cmd === 'git' && args[0] === 'status') return changed;
+    if (cmd === 'git' && args[0] === 'diff' && args.includes('--name-only')) return changed.join('\0') + '\0';
     if (cmd === 'git' && args[0] === 'rev-parse') return 'a'.repeat(40);
     if (cmd === 'npm') return 'ℹ tests 9\nℹ pass 9\nℹ fail 0';
+    if (cmd === 'git' && args[0] === 'diff' && args.includes('--cached') && !args.includes('--stat') && !args.includes('--name-only')) return diffText;
     if (cmd === 'gh') return 'https://github.com/o/e2e-dashboard/pull/7';
     return '';
   };
@@ -104,6 +105,15 @@ test('not a dashboard bug → no fix; disabled → recorded only; daily PR limit
   assert.equal((await settle(c.heal, g2.fingerprint, (x) => x.status === 'limit')).status, 'limit');
 });
 
+test('a fix whose diff is too long to review in full is refused, not offered for approval', async () => {
+  const { heal, calls } = setup({ diffText: 'x'.repeat(13_000) });
+  const e = await heal.report(ERR);
+  const done = await settle(heal, e.fingerprint, (x) => x?.status === 'fix-failed');
+  assert.match(done.note, /quá lớn để duyệt/);
+  assert.equal(done.diff, undefined);
+  assert.ok(!calls.some((c) => c.startsWith('npm') || / push /.test(c)));
+});
+
 test('reject drops the fix branch without running anything', async () => {
   const { heal, calls } = setup();
   const e = await heal.report(ERR);
@@ -124,7 +134,7 @@ test('errors without a dashboard stack are ignored', async () => {
 });
 
 test('fix touching package.json / workflows is rejected before npm test, and its branch is removed', async () => {
-  const { heal, calls } = setup({ changed: ' M server/store.mjs\n?? .github/workflows/x.yml\n M package.json' });
+  const { heal, calls } = setup({ changed: ['server/store.mjs', '.github/workflows/x.yml', 'package.json'] });
   const e = await heal.report(ERR);
   const done = await settle(heal, e.fingerprint, (x) => x?.status === 'fix-failed');
   assert.match(done.note, /ngoài phạm vi.*\.github\/workflows\/x\.yml.*package\.json/);

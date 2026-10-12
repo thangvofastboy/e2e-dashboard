@@ -201,18 +201,21 @@ export function createSelfHeal({ projectRoot, env = process.env, aiFactory = cre
       await run('git', ['worktree', 'add', '-b', branch, wt, 'origin/main'], cfg.repo);
       const fixer = aiFactory({ projectRoot: wt, maxConcurrent: 1, args: AI_FIX_ARGS, timeoutMs: 600_000, settings });
       const f = await ask(fixer, fixPrompt(entry.sample, v));
-      const changed = (await run('git', ['status', '--porcelain', '--untracked-files=all'], wt)).split('\n').filter(Boolean).map((l) => l.slice(3).replace(/^"|"$/g, '').split(' -> ').pop());
+      // tên file lấy từ index sau git add -A, dạng -z: không phụ thuộc định dạng status, không bị trim mất khoảng trắng đầu
+      await run('git', ['add', '-A'], wt);
+      const changed = (await run('git', ['diff', '--cached', '--name-only', '--no-renames', '-z'], wt)).split('\0').filter(Boolean);
       if (!changed.length) return void (await update(fp, { status: 'fix-failed', note: f.error ?? 'AI không thay đổi file nào' }));
       const outside = changed.filter((x) => !ALLOWED_PATH.test(x) || x.includes('..'));
       if (outside.length) return void (await update(fp, { status: 'fix-failed', note: `AI sửa ngoài phạm vi cho phép (${clip(outside.join(', '), 300)}): bỏ` }));
       // 4. commit vào branch local rồi dừng: chưa chạy npm test / push, chờ người dùng xem diff
-      await run('git', ['add', '-A', '--', ...changed], wt);
       const stat = await run('git', ['diff', '--cached', '--stat'], wt).catch(() => '');
       const diff = await run('git', ['diff', '--cached'], wt).catch(() => '');
+      // diff bị cắt thì người duyệt không thấy hết: không cho duyệt
+      if (diff.length > MAX_DIFF) return void (await update(fp, { status: 'fix-failed', note: `Bản sửa quá lớn để duyệt (${diff.length} ký tự, giới hạn ${MAX_DIFF}): bỏ` }));
       await run('git', [...NO_HOOKS, 'commit', '--no-verify', '-m', `fix(auto): ${oneLine(v.summary)}`.slice(0, 120), '-m', `Lỗi ${fp} (${entry.sample.source}), sửa tự động bởi e2e-dashboard self-heal.`], wt);
       const commit = await run('git', ['rev-parse', 'HEAD'], wt);
       kept = true;
-      await update(fp, { status: 'awaiting-review', branch, commit, diffStat: clip(stat, 1500), diff: clip(diff, MAX_DIFF), diffClipped: diff.length > MAX_DIFF, note: null });
+      await update(fp, { status: 'awaiting-review', branch, commit, diffStat: clip(stat, 1500), diff, note: null });
     } finally {
       await run('git', ['worktree', 'remove', '--force', wt], cfg.repo).catch(() => {});
       await rm(wt, { recursive: true, force: true });
