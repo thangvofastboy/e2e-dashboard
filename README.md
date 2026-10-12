@@ -9,7 +9,7 @@
 ![Node](https://img.shields.io/badge/Node-%E2%89%A5%2022-339933?style=for-the-badge&logo=node.js&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-16a34a?style=for-the-badge)
 ![Build](https://img.shields.io/badge/build-kh%C3%B4ng%20c%E1%BA%A7n-2563eb?style=for-the-badge)
-![Tests](https://img.shields.io/badge/tests-447%20passing-16a34a?style=for-the-badge&logo=checkmarx&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-450%20passing-16a34a?style=for-the-badge&logo=checkmarx&logoColor=white)
 ![AI](https://img.shields.io/badge/AI-claude%20--p-a855f7?style=for-the-badge&logo=anthropic&logoColor=white)
 ![Database](https://img.shields.io/badge/database-kh%C3%B4ng%20c%E1%BA%A7n-8b5cf6?style=for-the-badge)
 
@@ -121,6 +121,8 @@
 | 🤖 | **Tự log bug (mặc định tắt)** | Công tắc ở Cài đặt → AI: run có test fail do app thì AI soạn và tạo issue Linear (chống trùng); known bug fail lại với lỗi khác thì comment lỗi mới vào issue đó, mỗi dạng lỗi một lần. Có nút bấm tay tương ứng ở Run detail |
 | 📋 | **Test thủ công** | Ca QC chạy tay có trạng thái, người test, lịch sử; thống kê gộp với test tự động |
 | 🧮 | **Ma trận build** | Test × build (branch@commit): thấy build nào làm test đổi kết quả; xuất danh sách bug ra CSV |
+| ✅ | **QC xác nhận** | Known bug mà run mới nhất đã pass nằm trong hàng đợi *Chờ xác nhận* (*Đã sửa* gỡ known bug, *Chưa đúng* giữ lại); **waiver có hạn** (bắt buộc lý do, tối đa 365 ngày) bỏ qua một test fail khỏi cổng chất lượng đến hết hạn; **nhật ký thay đổi** ghi mọi lần đổi ghi chú, known bug, waiver |
+| ⭐ | **Bộ lọc đã lưu** | Nút ngôi sao cạnh tiêu đề mỗi trang: lưu trang kèm bộ lọc đang chọn với một cái tên, mở lại bằng một cú bấm (lưu trong trình duyệt) |
 | ⭐ | **Chất lượng test** | Điểm 0–100 từng test (thiếu assert, flaky, tốn model, chạy lâu, trùng, quá dài) kèm lý do |
 | 👯 | **Test trùng, tách / gộp** | Phát hiện test cùng tên hoặc cùng các bước, test dài nên tách; mỗi việc có prompt cho Claude Code (dashboard không tự sửa mã test) |
 | 💌 | **Gửi phản hồi** | Form góp ý, báo lỗi về chính dashboard: tạo issue trên GitHub của dự án qua `gh`, chỉ sau khi tick xác nhận công khai |

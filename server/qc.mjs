@@ -5,6 +5,8 @@ import { readState, writeState, serial } from './jsonstate.mjs';
 import { testKey } from './analytics.mjs';
 
 const NOTES = 'qc-notes.json';
+const AUDIT = 'qc-audit.json';
+const AUDIT_MAX = 500;
 const MANUAL = 'qc-manual.json';
 const MANUAL_STATUSES = ['not-run', 'pass', 'fail', 'blocked'];
 const FAILED = new Set(['failed', 'timed-out', 'interrupted']);
@@ -23,22 +25,56 @@ export async function readNotes(root) {
   return s && typeof s === 'object' && !Array.isArray(s) ? s : {};
 }
 
-// `note` and `known` are each optional; an empty pair removes the entry.
-export async function setNote(root, key, body = {}) {
+// Who changed what: the last AUDIT_MAX changes of notes, known-bug links, waivers and verifications, newest last.
+export async function readAudit(root) {
+  const s = await readState(root, AUDIT, null);
+  return Array.isArray(s) ? s : [];
+}
+const logAudit = (root, entries) => serial(`${root}:qc-audit`, async () => {
+  if (entries.length) await writeState(root, AUDIT, [...(await readAudit(root)), ...entries].slice(-AUDIT_MAX));
+});
+
+const DAY = 86_400_000;
+const isDay = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`));
+// A waiver is active through the end of its `until` day (UTC).
+export const waiverActive = (w, now = Date.now()) => Boolean(w?.until) && Date.parse(`${w.until}T00:00:00Z`) + DAY > now;
+
+// `note`, `known`, `waiver` ({until: 'YYYY-MM-DD', reason} or null) and `ack` (run id QC already looked at) are each
+// optional; an entry with no note, known bug or waiver is removed. Every change is logged in the audit trail.
+export async function setNote(root, key, body = {}, { now = Date.now() } = {}) {
   const k = clip(key, 300);
   if (!k) throw new Error('thiếu key của test');
   if (body.known != null && !KNOWN.test(String(body.known).trim())) throw new Error('mã ticket chỉ gồm chữ, số, . # / -');
+  let waiver;
+  if (body.waiver !== undefined) {
+    waiver = null;
+    if (body.waiver) {
+      const until = String(body.waiver.until ?? '');
+      const reason = clip(body.waiver.reason, 300).trim();
+      if (!isDay(until) || Date.parse(`${until}T00:00:00Z`) + DAY <= now) throw new Error('ngày hết hạn waiver phải là ngày hôm nay hoặc sau đó (YYYY-MM-DD)');
+      if (Date.parse(`${until}T00:00:00Z`) > now + 365 * DAY) throw new Error('waiver tối đa 365 ngày');
+      if (reason.length < 5) throw new Error('waiver cần lý do (ít nhất 5 ký tự)');
+      waiver = { until, reason };
+    }
+  }
   return serial(`${root}:qc-notes`, async () => {
     const all = await readNotes(root);
     const prev = all[k] ?? {};
     const note = body.note !== undefined ? clip(body.note, 2000).trim() : (prev.note ?? '');
     const known = body.known !== undefined ? (clip(body.known, 40).trim() || null) : (prev.known ?? null);
+    const w = waiver !== undefined ? waiver : (prev.waiver ?? null);
+    const ack = body.ack !== undefined ? (clip(body.ack, 80) || null) : (prev.ack ?? null);
     // error shapes already reported on the known issue: a failure with another shape is a new bug (knownbug.mjs)
     const incoming = Array.isArray(body.seen) ? body.seen.map((x) => clip(x, 40)).filter(Boolean) : [];
     const seen = known ? [...new Set([...(prev.known === known ? (prev.seen ?? []) : []), ...incoming])].slice(-20) : [];
-    if (!note && !known) delete all[k];
-    else all[k] = { note, known, ...(seen.length ? { seen } : {}), updatedAt: new Date().toISOString() };
+    const at = new Date(now).toISOString();
+    const text = (v) => (v && typeof v === 'object' ? `${v.until} · ${v.reason}` : (v ?? null));
+    const changes = [['note', prev.note || null, note || null], ['known', prev.known ?? null, known], ['waiver', text(prev.waiver), text(w)], ['ack', prev.ack ?? null, ack]]
+      .filter(([, a, b]) => a !== b).map(([field, from, to]) => ({ at, key: k, field, from: from == null ? null : clip(from, 200), to: to == null ? null : clip(to, 200) }));
+    if (!note && !known && !w) delete all[k];
+    else all[k] = { note, known, ...(w ? { waiver: w } : {}), ...(ack ? { ack } : {}), ...(seen.length ? { seen } : {}), updatedAt: at };
     await writeState(root, NOTES, all);
+    await logAudit(root, changes.filter((c) => c.field !== 'ack' || c.to));
     return all[k] ?? null;
   });
 }
@@ -51,9 +87,27 @@ export async function markKnown(root, result, issue, sig = null) {
   return setNote(root, testKey(result), { known: id, ...(sig ? { seen: [sig] } : {}) }).catch(() => null);
 }
 
-// Keys of tests that have a known bug: the gate does not count them as new failures.
-export function knownKeys(notes) {
-  return new Set(Object.entries(notes).filter(([, v]) => v?.known).map(([k]) => k));
+// Keys of tests that have a known bug or an active waiver: the gate does not count them as new failures.
+export function knownKeys(notes, now = Date.now()) {
+  return new Set(Object.entries(notes).filter(([, v]) => v?.known || waiverActive(v?.waiver, now)).map(([k]) => k));
+}
+
+// Known bugs that look fixed: the newest run containing the test passes it and QC has not looked at that run yet.
+// `history` is newest first. Confirming clears the known bug; "not fixed" acks the run so it stays out of the queue
+// until a newer run passes again.
+export function verifyQueue(history, notes) {
+  const out = [];
+  for (const [key, n] of Object.entries(notes)) {
+    if (!n?.known) continue;
+    for (const { meta, report } of history) {
+      if (meta.kind === 'explore') continue;
+      const r = (report.run.results ?? []).find((x) => x.selected !== false && testKey(x) === key);
+      if (!r) continue;
+      if (r.status === 'passed' && meta.runId !== n.ack) out.push({ key, title: titleOf(r), known: n.known, runId: meta.runId, startedAt: meta.startedAt, note: n.note ?? '' });
+      break;
+    }
+  }
+  return out.sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)));
 }
 
 // ---------------------------------------------------------------- manual test cases

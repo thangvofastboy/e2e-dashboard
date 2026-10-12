@@ -50,7 +50,7 @@ import { commentIfNewBug, signatureOf } from './knownbug.mjs';
 import { findDuplicates, splitCandidates, actionPrompt, latestWithResults } from './dupes.mjs';
 import { analyzeQuality } from './quality.mjs';
 import { readTemplates, findTemplate, saveTemplate, resultVars, runVars, renderPrompt, aiParts, keepFingerprint, PLACEHOLDERS } from './qc-templates.mjs';
-import { markKnown, readNotes, setNote, readManual, saveManual, manualSummary, bugReport, buildMatrix, bugRows, bugsCsv } from './qc.mjs';
+import { markKnown, readNotes, setNote, readAudit, verifyQueue, waiverActive, titleOf as resultTitle, readManual, saveManual, manualSummary, bugReport, buildMatrix, bugRows, bugsCsv } from './qc.mjs';
 import { addEvent, removeEvent, timeline, lastCommits, EVENT_KINDS } from './events.mjs';
 import { releaseReport } from './release.mjs';
 import { alertRules, readAlerts, describeRule } from './alerts.mjs';
@@ -579,6 +579,15 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         if (!latest) return send(res, 200, { runId: null, groups: [] });
         const groups = [...findDuplicates(latest.report), ...splitCandidates(latest.report)].map((g) => ({ ...g, prompt: actionPrompt(g) }));
         return send(res, 200, { runId: latest.meta.runId, groups });
+      }
+      if (p === '/api/qc/audit') return send(res, 200, { items: (await readAudit(projectRoot)).slice(-200).reverse() });
+      if (p === '/api/qc/verify') {
+        const history = await loadHistory(projectRoot, 30);
+        const notes = await readNotes(projectRoot);
+        const latest = latestWithResults(history);
+        const failing = (latest?.report.run.results ?? []).filter((r) => ['failed', 'timed-out'].includes(r.status)).map((r) => ({ key: testKey(r), title: resultTitle(r) }));
+        const waivers = Object.entries(notes).filter(([, n]) => n.waiver).map(([key, n]) => ({ key, ...n.waiver, active: waiverActive(n.waiver) }));
+        return send(res, 200, { runId: latest?.meta.runId ?? null, queue: verifyQueue(history, notes), failing, waivers });
       }
       if (p === '/api/qc/templates') return send(res, 200, { templates: await readTemplates(projectRoot), placeholders: PLACEHOLDERS });
       if (p === '/api/qc/results') {
