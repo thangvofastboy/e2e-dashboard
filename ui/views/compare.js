@@ -89,7 +89,7 @@ export async function renderCompare(main, route) {
         <div class="panel"><div class="muted small">Run B</div>${pick(cmp.head.runId, 'b')}<div><a href="${runHref(cmp.head.runId)}">${statusBadge(cmp.head.status)}</a> ${fmtDuration(cmp.head.durationMs)}</div></div>
         <div class="panel cmp-deltas"><div><span class="muted">Pass rate</span> ${deltaCell(d.passRate, fmtPoints, false)}</div><div><span class="muted">Thời gian</span> ${deltaCell(d.durationMs, (v) => fmtSignedMs(v, fmtDuration))}</div><div><span class="muted">Token</span> ${deltaCell(d.tokens, (v) => `${v > 0 ? '+' : '−'}${fmtTokens(Math.abs(v))}`)}</div>${d.costUsd != null ? `<div><span class="muted">Chi phí</span> ${deltaCell(d.costUsd, (v) => `${v > 0 ? '+' : '−'}${fmtUsd(Math.abs(v))}`)}</div>` : ''}</div>
       </section>
-      <div class="filters">${chips}<label class="pill"><input type="checkbox" data-show-all ${show === 'all' ? 'checked' : ''}> Hiện cả test không đổi</label></div>
+      <div class="filters">${chips}<label class="pill switch"><input type="checkbox" data-show-all ${show === 'all' ? 'checked' : ''}><span class="track"></span><span>Hiện cả test không đổi</span></label></div>
       ${rows.length ? `<table class="table cmp"><thead><tr><th>Thay đổi</th><th>Test</th><th>A</th><th>B</th><th class="num">Thời gian</th><th class="num">Δ</th><th></th></tr></thead><tbody>${rows.map(compareRowHtml).join('')}</tbody></table>` : '<p class="muted">Hai run giống nhau.</p>'}`;
     main.querySelector('[data-show-all]').addEventListener('change', (e) => {
       show = e.target.checked ? 'all' : 'changed';

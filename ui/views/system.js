@@ -51,7 +51,7 @@ function userHtml(u) {
     <h3 class="small">Webhook (Slack / Discord / JSON)</h3>
     ${hooks ? `<ul class="hook-list">${hooks}</ul>` : '<p class="muted small">Chưa có webhook.</p>'}
     <form class="form-row" data-hook-add><input type="url" name="url" placeholder="https://hooks.slack.com/…" required aria-label="URL webhook">
-      ${u.events.map((e) => `<label class="small"><input type="checkbox" name="ev" value="${escapeHtml(e)}" checked> ${escapeHtml(e)}</label>`).join('')}
+      ${u.events.map((e) => `<label class="switch small"><input type="checkbox" name="ev" value="${escapeHtml(e)}" checked><span class="track"></span><span>${escapeHtml(e)}</span></label>`).join('')}
       <button type="submit">${icon('send', { size: 14 })}Thêm webhook</button></form>
   </section>`;
 }
@@ -81,7 +81,7 @@ function healHtml(h, cfg, aiCfg) {
       ${['awaiting-review', 'testing'].includes(x.status) ? '' : `<button type="button" class="small-btn" data-heal-retry="${escapeHtml(x.fingerprint)}">${icon('recycle', { size: 13 })}Phân tích lại</button>`}</div>
       <code class="heal-msg">${escapeHtml(x.sample?.message ?? '')}</code>
       ${x.verdict ? `<p class="small">${icon('sparkles', { size: 13 })} ${escapeHtml(x.verdict.summary)} <span class="muted">(${escapeHtml(x.verdict.verdict)}, ${Math.round(x.verdict.confidence * 100)}%)</span></p>` : ''}
-      ${x.status === 'awaiting-review' ? `<details class="heal-diff" open><summary class="small">Diff AI đề xuất (branch <code>${escapeHtml(x.branch)}</code>)${x.diffClipped ? ' · đã cắt bớt' : ''}</summary>
+      ${x.status === 'awaiting-review' ? `<details class="heal-diff" open><summary class="small">Diff AI đề xuất (branch <code>${escapeHtml(x.branch)}</code>)</summary>
         <pre class="small">${escapeHtml(x.diff ?? x.diffStat ?? '')}</pre>
         <div class="form-row"><button type="button" class="primary" data-heal-approve="${escapeHtml(x.fingerprint)}">${icon('check', { size: 14 })}Chạy test & tạo PR</button>
         <button type="button" class="btn-stop" data-heal-reject="${escapeHtml(x.fingerprint)}">${icon('x', { size: 14 })}Bỏ bản sửa</button></div></details>` : ''}
@@ -95,11 +95,11 @@ function healHtml(h, cfg, aiCfg) {
       <button type="submit">${icon('check', { size: 14 })}Lưu</button></form>
     <div class="form-row"><span class="form-label">Effort</span>${seg('effort', [['', 'Mặc định'], ...aiCfg.efforts.map((e) => [e, e === 'xhigh' ? 'XHigh' : cap(e)])], aiCfg.effort, 'Effort')}</div>
     <p class="muted small">Effort cao hơn: suy luận kỹ hơn nhưng chậm và tốn token hơn. Gợi ý: <code>medium</code> cho tóm tắt / triage, <code>high</code> trở lên cho tự sửa lỗi.</p>
-    <form data-ai-form class="form-row"><label class="small"><input type="checkbox" name="autoSummary"${aiCfg.autoSummary ? ' checked' : ''}> Tự tóm tắt run có test fail bằng AI (hiện ở trang Live và Run)</label></form>
+    <form data-ai-form class="form-row"><label class="switch small"><input type="checkbox" name="autoSummary"${aiCfg.autoSummary ? ' checked' : ''}><span class="track"></span><span>Tự tóm tắt run có test fail bằng AI (hiện ở trang Live và Run)</span></label></form>
     <h3 class="small">Tự sửa lỗi dashboard</h3>
     <p class="muted small">Lỗi server (API 500, crash) và lỗi giao diện được ghi lại. Khi bật: AI local (<code>claude</code>) đọc code để xem có phải lỗi của e2e-dashboard không; nếu phải, AI sửa trên branch riêng (git worktree tạm, không đụng thư mục làm việc của bạn, AI không chạy được lệnh) rồi <strong>dừng chờ bạn duyệt diff</strong>. Chỉ khi bạn bấm "Chạy test & tạo PR" dashboard mới chạy <code>npm test</code>, push và mở <strong>PR draft</strong>. Mỗi lỗi một PR.</p>
     <form data-heal-form>
-      <div class="form-row"><label class="small"><input type="checkbox" name="enabled"${cfg.enabled ? ' checked' : ''}> Bật tự phân tích, sửa và tạo PR</label></div>
+      <div class="form-row"><label class="switch small"><input type="checkbox" name="enabled"${cfg.enabled ? ' checked' : ''}><span class="track"></span><span>Bật tự phân tích, sửa và tạo PR</span></label></div>
       <div class="form-row"><span class="form-label">Repo e2e-dashboard</span><input name="repo" value="${escapeHtml(cfg.repo)}" placeholder="/home/…/e2e-dashboard" aria-label="Đường dẫn repo e2e-dashboard" style="flex:1"></div>
       <div class="form-row"><span class="form-label">PR tối đa / ngày</span><input type="number" name="maxPerDay" min="1" max="20" value="${escapeHtml(cfg.maxPerDay)}" aria-label="PR tối đa mỗi ngày"><button type="submit">${icon('check', { size: 14 })}Lưu</button></div>
     </form>
@@ -116,7 +116,7 @@ function infoHtml(d) {
       <tr><td>Project</td><td><code>${escapeHtml(d.projectRoot)}</code></td></tr>
       <tr><td>Dữ liệu dashboard</td><td><code>${escapeHtml(d.dataDir)}</code></td></tr>
     </tbody></table>
-    <form class="form-row" data-sqlite><label class="small"><input type="checkbox" name="sqlite"${d.sqlite ? ' checked' : ''}${!d.sqlite && !d.sqliteSupport.ok ? ' disabled' : ''}> Dùng chỉ mục SQLite (nhanh hơn khi lịch sử lớn; mặc định tắt)</label></form>
+    <form class="form-row" data-sqlite><label class="switch small"><input type="checkbox" name="sqlite"${d.sqlite ? ' checked' : ''}${!d.sqlite && !d.sqliteSupport.ok ? ' disabled' : ''}><span class="track"></span><span>Dùng chỉ mục SQLite (nhanh hơn khi lịch sử lớn; mặc định tắt)</label></form>
     ${d.sqliteSupport.ok ? '' : `<p class="small tone-warn">${icon('alert', { size: 13 })} ${escapeHtml(d.sqliteSupport.reason)}</p>`}
     <p class="small"><a href="#/settings">${icon('gauge', { size: 13 })} Số worker, watch, lịch chạy, dung lượng → Tự động & lưu trữ</a></p>
   </section>`;

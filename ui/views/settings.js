@@ -43,7 +43,7 @@ export async function renderSettings(main) {
       ${prefs ? workersPanelHtml(prefs) : ''}
       <section class="panel"><h2>${icon('eye', { size: 15 })} Chế độ watch</h2>
         <p class="muted small">Lưu một file <code>*.e2e.ts</code> là dashboard tự chạy lại đúng file đó (bỏ qua test đang cách ly), xem ở trang Live.</p>
-        <label class="pill"><input type="checkbox" data-watch ${auto.watch.enabled ? 'checked' : ''}> Bật watch</label>
+        <label class="pill switch"><input type="checkbox" data-watch ${auto.watch.enabled ? 'checked' : ''}><span class="track"></span><span>Bật watch</span></label>
         ${auto.watch.last ? `<p class="muted small">Lần gần nhất: ${escapeHtml(auto.watch.last.files.join(', '))} · ${auto.watch.last.ok ? 'đã chạy' : `không chạy được (${escapeHtml(auto.watch.last.error ?? '')})`}</p>` : ''}</section>
       <section class="panel"><h2>${icon('clock', { size: 15 })} Lịch chạy</h2>
         ${s?.times?.length ? `<p>Hằng ngày lúc <strong>${s.times.map(escapeHtml).join(', ')}</strong> · lần tới ${escapeHtml(new Date(s.next).toLocaleString('vi-VN'))}</p>` : '<p class="muted">Chưa đặt lịch.</p>'}
@@ -169,7 +169,7 @@ export function workersPanelHtml(p) {
   const isAuto = p.workers == null;
   return `<section class="panel"><h2>${icon('cpu', { size: 15 })} Chạy test: worker và trình duyệt</h2>
     <form class="row" data-workers>
-      <label class="pill"><input type="checkbox" name="auto" ${isAuto ? 'checked' : ''}> Tự động theo máy (${escapeHtml(p.autoWorkers)} worker)</label>
+      <label class="pill switch"><input type="checkbox" name="auto" ${isAuto ? 'checked' : ''}><span class="track"></span><span>Tự động theo máy (${escapeHtml(p.autoWorkers)} worker)</span></label>
       <label>Số worker <input type="number" name="workers" min="1" max="1024" required value="${escapeHtml(p.workers ?? p.autoWorkers)}" ${isAuto ? 'disabled' : ''}></label>
       <button type="submit">${icon('check', { size: 14 })}Lưu</button>
     </form>

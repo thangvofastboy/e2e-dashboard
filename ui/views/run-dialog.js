@@ -21,10 +21,10 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
       <label>Repeat each <input type="number" name="repeatEach" min="1" max="50" placeholder="1"${Number.isInteger(repeatEach) ? ` value="${repeatEach}"` : ''}></label>
       <label title="Trình duyệt chạy lần này (mặc định đặt ở Tự động & lưu trữ)">Trình duyệt <select name="browser" aria-label="Trình duyệt">${['chromium', 'firefox', 'webkit'].map((b) => `<option value="${b}">${b === 'webkit' ? 'WebKit' : b.charAt(0).toUpperCase() + b.slice(1)}</option>`).join('')}</select></label>
       <label title="Số test chạy song song. Để trống = tự động theo máy">Workers <input type="number" name="workers" min="1" max="1024" placeholder="tự động"></label>
-      <label class="pill"><input type="checkbox" name="noCache"> --no-cache</label>
+      <label class="pill switch"><input type="checkbox" name="noCache"><span class="track"></span><span>--no-cache</span></label>
     </div>
     <p class="small tone-warn" data-browser-note hidden></p>
-    <label class="pill" data-q-wrap hidden><input type="checkbox" name="excludeQuarantined" checked> Bỏ qua <span data-q-count></span> test đang cách ly</label>
+    <label class="pill switch" data-q-wrap hidden><input type="checkbox" name="excludeQuarantined" checked><span class="track"></span><span>Bỏ qua <span data-q-count></span> test đang cách ly</span></label>
     <p class="err" hidden></p>
     <footer><button type="button" data-close>Huỷ</button><button type="submit" class="primary">${icon('play', { size: 14 })}Chạy</button></footer>
   </form>`;
