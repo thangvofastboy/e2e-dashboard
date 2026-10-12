@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.8.6 — 2026-10-12
+
+- **Coverage: quét source**: đặt `"coverage": { "source": "<repo app>" }` để quét route (router, `href`, `navigate`) và domain trong code. Domain nhiễu (w3.org, apollographql…) bị bỏ; thêm bằng `"domainIgnore"`.
+- **Coverage: bỏ qua**: nút *Bỏ qua* trên từng route và domain; mục đã bỏ qua không hiện nữa. Mục *Đã bỏ qua* ở cuối trang có nút *Xoá khỏi danh sách*. Lưu ở `.e2e-dashboard/coverage-ignore.json`.
+- **Giao diện**: tên "e2e dashboard" trên thanh bên luôn một dòng; cột dài trong bảng Coverage xuống dòng thay vì tràn ngang.
+
 ## v0.8.5 — 2026-10-12
 
 - **Nút Dừng run**: bấm Dừng khi dashboard đã khởi động lại (token đổi) không còn báo sai "run không do dashboard khởi động". Trang Live hiện banner *mất kết nối* và ẩn nút Dừng; mở lại link từ `/e2e-dashboard`.

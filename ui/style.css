@@ -89,8 +89,11 @@ h2 { font-size: 15px; margin: 0; }
 .brand:hover { text-decoration: none; }
 .brand span { font-weight: 400; color: var(--muted); }
 /* logo Fastboy giữ màu thương hiệu: nền trắng để đọc được cả theme tối */
-.logo { display: grid; place-items: center; background: #fff; border-radius: 8px; padding: 4px 8px; }
-.logo svg { height: 20px; width: auto; display: block; }
+.logo { display: grid; place-items: center; background: #fff; border-radius: 6px; padding: 3px 5px; }
+.logo svg { height: 18px; width: auto; display: block; }
+/* tên "e2e dashboard" luôn một dòng trong thanh bên 216px; font rộng hơn thì "dashboard" cắt bằng … */
+.brand { white-space: nowrap; min-width: 0; gap: 8px; font-size: 15px; }
+.brand > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .nav nav { display: flex; flex-direction: column; gap: 3px; }
 .nav nav a { display: flex; align-items: center; gap: 10px; padding: 7px 9px; border-radius: 10px; color: var(--text-primary); min-height: 40px; }
 .nav nav a:hover { background: var(--surface-2); text-decoration: none; }

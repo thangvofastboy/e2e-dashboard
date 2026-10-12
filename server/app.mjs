@@ -1,7 +1,7 @@
 import { readFile, stat, lstat } from 'node:fs/promises';
 import { createReadStream, readFileSync } from 'node:fs';
 import { pipeline } from 'node:stream';
-import { join, extname, basename, relative } from 'node:path';
+import { join, extname, basename, relative, resolve } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
 import { safeJoin, realInside, readConfig, VERSION, RUN_ID, RESULT_ID, resultAttempts } from '../reporter/e2e-dashboard.reporter.mjs';
 import { listRuns, getRun, findRunDir, setFlag, testHistory, getAi, writeAi, listAi, loadHistory } from './store.mjs';
@@ -12,6 +12,8 @@ import { healthScore } from '../ui/health.js';
 import { search, anomalies, lintAgentSteps, LINT_RULES, modelStats, bisectPlan, flakyEvidence, testDetail, appErrors, setupTiming } from './insights.mjs';
 import { changedFiles, impactedTests } from './impact.mjs';
 import { appRoutes, coverageGaps } from './coverage.mjs';
+import { scanSource } from './sourcescan.mjs';
+import { readIgnored, changeIgnored } from './coverageignore.mjs';
 import { runGate, sloConfig, sloHistory } from './gate.mjs';
 import { environmentBreakdown, sloStatus } from './insights.mjs';
 import { csvRuns, csvTests, csvFlaky } from './csv.mjs';
@@ -289,8 +291,16 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       if (p === '/api/automation') return send(res, 200, { ...(automation?.state() ?? { schedule: null, watch: { enabled: false, supported: false } }), webhooks: (await webhookConfig(env)).map((w) => ({ host: new URL(w.url).host, events: w.events })) });
       if (p === '/api/coverage') {
         const cfg = readConfig(projectRoot);
+        const manual = await readIgnored(projectRoot); // bấm "Bỏ qua" trên trang Coverage
+        const ignoreRoutes = [...(Array.isArray(cfg.coverage?.ignore) ? cfg.coverage.ignore : []), ...manual.routes];
+        const ignoreDomains = [...(Array.isArray(cfg.coverage?.domainIgnore) ? cfg.coverage.domainIgnore : []), ...manual.domains];
+        // "coverage.source": đường dẫn repo app (tương đối với project hoặc tuyệt đối); bỏ trống thì không quét source
+        const srcDir = typeof cfg.coverage?.source === 'string' && cfg.coverage.source ? resolve(projectRoot, cfg.coverage.source) : null;
+        const scan = srcDir ? await scanSource(srcDir, { ignore: ignoreDomains }) : { routes: new Map(), domains: [], files: 0 };
         const routes = await appRoutes(projectRoot, Array.isArray(cfg.coverage?.routes) ? cfg.coverage.routes : []);
-        return send(res, 200, coverageGaps(routes, routeMap(await loadHistory(projectRoot, runCount(url))), { ignore: Array.isArray(cfg.coverage?.ignore) ? cfg.coverage.ignore : [] }));
+        for (const [r, src] of scan.routes) if (!routes.has(r)) routes.set(r, `source:${src}`);
+        const gaps = coverageGaps(routes, routeMap(await loadHistory(projectRoot, runCount(url))), { ignore: ignoreRoutes });
+        return send(res, 200, { ...gaps, domains: scan.domains.filter((d) => !manual.domains.includes(d.host)), sourceFiles: scan.files, source: srcDir ? cfg.coverage.source : null, ignored: manual });
       }
       if (p === '/api/environment') return send(res, 200, environmentBreakdown(await loadHistory(projectRoot, runCount(url))));
       if (p === '/api/slo') {
@@ -621,6 +631,10 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       if (p === '/api/settings') {
         const { workers } = await readBody(req);
         return send(res, 200, { ...(await writeSettings(projectRoot, { workers })), autoWorkers: autoWorkers() });
+      }
+      if (p === '/api/coverage/ignore') {
+        const { kind, value, remove } = await readBody(req);
+        return send(res, 200, await changeIgnored(projectRoot, { kind, value, remove: Boolean(remove) }));
       }
       if (p === '/api/watch') {
         const { enabled } = await readBody(req);
