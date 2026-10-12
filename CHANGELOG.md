@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.8.9 — 2026-10-12
+
+- **Tự sửa lỗi chờ bạn duyệt**: AI sửa xong chỉ commit vào branch local rồi dừng ở trạng thái *Chờ bạn duyệt*, kèm diff ngay trên trang Cài đặt hệ thống. Chỉ khi bấm **Chạy test & tạo PR** dashboard mới chạy `npm test`, push và mở PR draft, trên đúng commit bạn đã xem. **Bỏ bản sửa** xoá branch. Trước đây code AI viết được chạy (`npm test`) ngay mà chưa ai đọc.
+- **Trạng thái tự sửa lỗi nằm ngoài repo**: danh sách lỗi và file crash chuyển sang `~/.e2e-dashboard/selfheal/`. Một repo lạ không còn cài sẵn được "lỗi" trong `.e2e-dashboard/` để đưa vào AI và bước sửa code. File `selfheal.json` cũ trong project không còn được đọc.
+
 ## v0.8.8 — 2026-10-12
 
 - **Báo lỗi gốc trên trang Live**: setup fail, hoặc ≥3 test fail cùng một lỗi (thiếu file auth, thiếu `.env`…), hiện banner đỏ ngay đầu trang kèm nguyên văn lỗi — không cần bấm từng test.
