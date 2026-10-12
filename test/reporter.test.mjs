@@ -1,3 +1,4 @@
+import { listRunDirsSync } from '../reporter/e2e-dashboard.reporter.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
@@ -50,7 +51,7 @@ test('archives the finished run and returns a dashboard row', async () => {
   const r = createReporter({ env: {}, fetchImpl: async () => ({ ok: true }) });
   r.onEvent(started(root));
   const rows = await r.onRunFinished(finished(root), new AbortController().signal);
-  assert.equal(readdirSync(join(root, '.e2e-dashboard/runs')).length, 1);
+  assert.equal(listRunDirsSync(join(root, '.e2e-dashboard/runs')).length, 1);
   assert.equal(rows[0].label, 'Dashboard');
   assert.match(rows[0].text, /^http:\/\/127\.0\.0\.1:4477\/#\/run\//);
 });

@@ -13,6 +13,9 @@ export const AI_ARGS = [
   '--restricted', '--tools', 'Read,Grep,Glob', '--allowedTools', 'Read,Grep,Glob',
   '--strict-mcp-config', '--permission-mode', 'dontAsk', '--disable-slash-commands',
 ];
+// Tự sửa lỗi dashboard (server/selfheal.mjs): thêm Edit / Write trong git worktree tạm, vẫn KHÔNG có Bash —
+// test, commit, push và PR do dashboard tự chạy, AI không chạy được lệnh nào.
+export const AI_FIX_ARGS = AI_ARGS.map((a) => (a === 'Read,Grep,Glob' ? 'Read,Grep,Glob,Edit,Write' : a));
 const MAX_TEXT = 4000; // per untrusted field: keeps the prompt bounded
 
 export function cacheKey(action, runId, resultId = '') {
@@ -107,6 +110,181 @@ Trả lời theo khung:
 ## Nhóm lỗi
 (gom các test fail có chung nguyên nhân)
 ## Ưu tiên xử lý
+`;
+  }
+  // Các action dưới nhận bằng chứng đã soạn sẵn ở app.mjs (mảng dòng), luôn nằm trong khối dữ liệu không tin cậy.
+  const lines = (evidence ?? []).map((l) => clip(l)).join('\n') || '(không có)';
+  if (action === 'run-summary') {
+    return `${FRAME(language, fence)}
+
+Nhiệm vụ: tóm tắt run vừa chạy cho người đang theo dõi, đọc trong 10 giây.
+
+<${fence}>
+${lines}
+Commit liên quan:
+${commitText}
+</${fence}>
+
+Trả lời 3–5 gạch đầu dòng, không tiêu đề: kết quả chung; test mới đỏ so với run trước (nếu có); nguyên nhân chung khả nghi; việc nên làm trước.
+`;
+  }
+  if (action === 'explain-group') {
+    return `${FRAME(language, fence)}
+
+Nhiệm vụ: nhiều test fail cùng một dạng lỗi. Giải thích nhóm lỗi này; đọc code test (Read / Grep) khi cần.
+
+<${fence}>
+${lines}
+</${fence}>
+
+Trả lời theo khung:
+## Nguyên nhân chung
+## Do app hay do test
+(kết luận + độ chắc chắn + bằng chứng)
+## Cách sửa
+(cụ thể, theo thứ tự nên làm)
+`;
+  }
+  if (action === 'why-slow') {
+    return `${FRAME(language, fence)}
+
+Nhiệm vụ: run này chậm hơn / tốn token hơn bình thường. Chỉ ra phần gây ra và cách giảm. Số liệu so với trung bình lịch sử của chính từng test.
+
+<${fence}>
+${lines}
+</${fence}>
+
+Trả lời theo khung:
+## Chậm / tốn ở đâu
+## Vì sao
+(replay cache không dùng được, step agent mơ hồ, chờ mạng, test mới…)
+## Cách giảm
+(đổi agent.act thành locator cố định, sửa nguyên nhân cache miss, tách test…)
+`;
+  }
+  if (action === 'triage-suggest') {
+    return `${FRAME(language, fence)}
+
+Nhiệm vụ: gợi ý triage cho từng test fail bên dưới (mỗi test có mã fp).
+Trạng thái: new (chưa rõ), investigating (cần xem ngay), known (lỗi đã biết, ví dụ môi trường / dữ liệu), ignored (không cần xử lý).
+Mức độ: high (chặn luồng chính / nhiều test), medium, low. Người phụ trách: chọn trong danh sách owner của test nếu có, không thì null.
+
+<${fence}>
+${lines}
+</${fence}>
+
+Giải thích ngắn nếu cần, rồi KẾT THÚC bằng đúng một dòng JSON (mảng, mỗi test một phần tử):
+[{"fp":"…","status":"investigating","severity":"high","assignee":null,"reason":"một câu"}]
+`;
+  }
+  if (action === 'ticket-test') {
+    return `${FRAME(language, fence)}
+
+Nhiệm vụ: viết nháp MỘT file test e2e (runner \`e2e\`, file \`*.e2e.ts\`) cho yêu cầu trong ticket dưới đây.
+Trước khi viết: đọc e2e.config.* và 2–3 file .e2e.ts gần thư mục đích (Read / Grep / Glob) để theo đúng quy ước của project: import, cách đăng nhập / session, cách đặt tên, agent.act / agent.assert, locator.
+Chỉ dùng hành vi có trong ticket; chỗ nào ticket không nói rõ thì để \`// TODO:\` thay vì đoán.
+
+<${fence}>
+${lines}
+</${fence}>
+
+Trả lời: một đoạn giải thích ngắn, rồi đúng MỘT khối \`\`\`ts chứa toàn bộ file, rồi KẾT THÚC bằng một dòng:
+PATH: <đường dẫn file đề xuất, trong thư mục test của project, đuôi .e2e.ts>
+`;
+  }
+  if (action === 'select-tests') {
+    return `${FRAME(language, fence)}
+
+Nhiệm vụ: chọn các test e2e cần chạy cho thay đổi code bên dưới (đọc file đổi bằng Read khi cần). Ưu tiên test đi qua màn / API / module bị đổi; bỏ test không liên quan. Ít mà đủ: thà thêm một test liên quan còn hơn bỏ sót luồng chính.
+
+<${fence}>
+${lines}
+</${fence}>
+
+Giải thích ngắn theo nhóm, rồi KẾT THÚC bằng đúng một dòng JSON (mảng, key lấy đúng từ danh sách test):
+[{"key":"…","reason":"một câu"}]
+`;
+  }
+  if (action === 'locator-batch') {
+    return `${FRAME(language, fence)}
+
+Nhiệm vụ: các bước agent.act dưới đây replay ổn định từ cache — nên đổi thành locator cố định để không gọi model nữa. Đọc file test (Read) và đề xuất thay đổi cho cả suite.
+
+<${fence}>
+${lines}
+</${fence}>
+
+Trả lời theo khung:
+## Ưu tiên
+(bước nào đổi trước: ổn định nhất, tốn token nhất)
+## Đề xuất theo file
+(mỗi file: đoạn code cũ → code mới dạng \`\`\`ts, giữ nguyên ý nghĩa test)
+## Lưu ý
+(bước nên giữ agent.act vì giao diện hay đổi)
+`;
+  }
+  if (action === 'duplicate-tests') {
+    return `${FRAME(language, fence)}
+
+Nhiệm vụ: tìm test trùng hoặc thừa — đi cùng luồng, kiểm tra cùng điều — dựa trên các bước và route của run gần nhất (đọc code test khi cần).
+
+<${fence}>
+${lines}
+</${fence}>
+
+Trả lời theo khung:
+## Nhóm trùng
+(mỗi nhóm: các test, phần trùng, đề xuất gộp / bỏ / tách)
+## Test có thể bỏ
+## Lợi ích
+(thời gian, token tiết kiệm ước tính)
+`;
+  }
+  if (action === 'release-notes') {
+    return `${FRAME(language, fence)}
+
+Nhiệm vụ: viết ghi chú chất lượng (QA notes) cho bản phát hành, cho PM / lead đọc trong một phút.
+
+<${fence}>
+${lines}
+</${fence}>
+
+Trả lời theo khung:
+## Kết luận
+(nên phát hành / phát hành có điều kiện / chưa nên — một câu lý do)
+## Rủi ro
+## Thay đổi chất lượng so với bản trước
+## Việc cần làm trước khi phát hành
+`;
+  }
+  if (action === 'explain-visual') {
+    return `${FRAME(language, fence)}
+
+Nhiệm vụ: so sánh ảnh chụp màn hình. Đọc các file ảnh bằng Read (đường dẫn trong khối dữ liệu): ảnh mẫu (expected), ảnh thực tế (actual) và ảnh diff nếu có.
+
+<${fence}>
+${lines}
+</${fence}>
+
+Trả lời theo khung:
+## Khác ở đâu
+(mô tả cụ thể vùng / phần tử khác)
+## Lỗi thật hay thay đổi có chủ đích
+(kết luận + độ chắc chắn; thay đổi có chủ đích thì cập nhật ảnh mẫu)
+## Nên làm gì
+`;
+  }
+  if (action === 'linear-rewrite') {
+    return `${FRAME(language, fence)}
+
+Nhiệm vụ: viết lại nội dung báo lỗi dưới đây cho tự nhiên, như một QA viết cho dev đọc: câu ngắn, rõ, không sáo rỗng, không lặp ý, không thêm thông tin không có trong bản gốc.
+Giữ nguyên: các bước tái hiện đánh số (được sửa câu chữ cho dễ hiểu), phần Mong đợi / Thực tế, mọi dòng ảnh dạng ![…](e2ed-image:N) — giữ y nguyên, khối code lỗi, phần chi tiết kỹ thuật, và dòng cuối có fingerprint — giữ y nguyên từng ký tự.
+
+<${fence}>
+${lines}
+</${fence}>
+
+Chỉ trả về nội dung mới (Markdown), không giải thích gì thêm.
 `;
   }
   if (action === 'route-test') {
@@ -250,7 +428,11 @@ export function commitsBetween(cwd, from, to) {
     execFile('git', ['log', '--oneline', '-n', '30', `${from}..${to}`], { cwd, timeout: 5000 }, (err, out) => ok(err ? [] : out.trim().split('\n').filter(Boolean))));
 }
 
-export function createAi({ projectRoot, spawnImpl = nodeSpawn, maxConcurrent = 2, maxQueue = 8, timeoutMs = 300_000, model }) {
+export const AI_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+export const validModel = (m) => typeof m === 'string' && /^[\w.:][\w.:[\]-]{0,79}$/.test(m);
+
+// settings(): { model, effort } đọc lại mỗi lần chạy (trang Cài đặt hệ thống đổi là có hiệu lực ngay)
+export function createAi({ projectRoot, spawnImpl = nodeSpawn, maxConcurrent = 2, maxQueue = 8, timeoutMs = 300_000, model, settings = () => ({}), args: baseArgs = AI_ARGS }) {
   let active = 0;
   const queue = [];
   const next = () => {
@@ -259,7 +441,8 @@ export function createAi({ projectRoot, spawnImpl = nodeSpawn, maxConcurrent = 2
 
   function runOne({ prompt, resume, onEvent, signal }) {
     return new Promise((done) => {
-      const args = [...AI_ARGS, ...(model ? ['--model', model] : []), ...(resume ? ['--resume', resume] : [])];
+      const pick = { model, ...settings() };
+      const args = [...baseArgs, ...(validModel(pick.model) ? ['--model', pick.model] : []), ...(AI_EFFORTS.includes(pick.effort) ? ['--effort', pick.effort] : []), ...(resume ? ['--resume', resume] : [])];
       const child = spawnImpl('claude', args, { cwd: projectRoot, stdio: ['pipe', 'pipe', 'pipe'] });
       let buf = '';
       let stderr = '';

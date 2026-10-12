@@ -1,3 +1,4 @@
+import { listRunDirsSync } from '../reporter/e2e-dashboard.reporter.mjs';
 import './_home.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -160,7 +161,7 @@ test('changelog parses versions; the repo ships one for the current version', as
 
 test('listRuns reuses parsed meta until the file changes', async () => {
   const root = await project([run({ results: [result({})] })]);
-  const dir = readdirSync(join(root, '.e2e-dashboard/runs'))[0];
+  const dir = listRunDirsSync(join(root, '.e2e-dashboard/runs'))[0];
   const p = join(root, '.e2e-dashboard/runs', dir, 'meta.json');
   assert.equal((await listRuns(root))[0].pinned, false);
   writeFileSync(p, JSON.stringify({ ...JSON.parse(readFileSync(p, 'utf8')), pinned: true }));

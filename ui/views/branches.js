@@ -37,7 +37,7 @@ export async function renderBranches(main, route) {
   const cmp = await getJson(`/api/branches/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`);
   const diff = cmp.rows.filter((r) => r.delta !== 0);
   const only = (side) => cmp.rows.filter((r) => !r[side === 'a' ? 'b' : 'a']).length;
-  out.innerHTML = `<p>${cmp.latest ? `Run mới nhất: <a href="${compareHref(cmp.latest.base, cmp.latest.head)}">so sánh chi tiết ${icon('arrow', { size: 13 })}</a> · pass rate ${escapeHtml(fmtPoints(cmp.latest.deltas.passRate))}` : ''}
+  out.innerHTML = `<p>${cmp.latest ? `Run mới nhất: <a href="${compareHref(cmp.latest.base, cmp.latest.head)}">So sánh chi tiết ${icon('arrow', { size: 13 })}</a> · pass rate ${escapeHtml(fmtPoints(cmp.latest.deltas.passRate))}` : ''}
       ${only('a') ? ` · ${only('a')} test chỉ có ở ${escapeHtml(a)}` : ''}${only('b') ? ` · ${only('b')} test chỉ có ở ${escapeHtml(b)}` : ''}</p>
     ${diff.length ? `<table class="table"><thead><tr><th>Test</th><th>${escapeHtml(a)}</th><th>${escapeHtml(b)}</th><th class="num">Chênh</th></tr></thead><tbody>${diff
       .map((r) => `<tr><td>${escapeHtml(r.title)} <span class="muted small">${escapeHtml(r.target)}</span></td>

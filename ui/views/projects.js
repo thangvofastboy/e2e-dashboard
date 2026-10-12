@@ -9,7 +9,7 @@ const HEALTH_ICON = { good: 'check', warn: 'alert', bad: 'x' };
 export function projectCardHtml(p) {
   const h = p.health;
   const open = p.current
-    ? '<span class="chip tone-info">đang xem</span>'
+    ? '<span class="chip tone-info">Đang xem</span>'
     : p.url
       ? `<a class="button" href="${escapeHtml(p.url)}" target="_blank" rel="noopener">${icon('external', { size: 14 })}Mở dashboard</a>`
       : `<button type="button" data-copy-cmd="${escapeHtml(`cd '${p.root.replace(/'/g, "'\\''")}' && claude /e2e-dashboard`)}">${icon('copy', { size: 14 })}Lệnh mở</button>`;

@@ -1,3 +1,4 @@
+import { listRunDirsSync } from '../reporter/e2e-dashboard.reporter.mjs';
 import './_home.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -126,7 +127,7 @@ test('CI import from a file or a gh artifact; team folder push and pull', async 
   writeFileSync(join(ci, 'out/.e2e/report.json'), JSON.stringify(h.report));
   const a = tmp();
   assert.equal((await importReport(a, join(ci, 'out/.e2e'))).status, 'archived');
-  assert.equal(JSON.parse(readFileSync(join(a, '.e2e-dashboard/runs', readdirSync(join(a, '.e2e-dashboard/runs'))[0], 'meta.json'), 'utf8')).source, 'ci');
+  assert.equal(JSON.parse(readFileSync(join(a, '.e2e-dashboard/runs', listRunDirsSync(join(a, '.e2e-dashboard/runs'))[0], 'meta.json'), 'utf8')).source, 'ci');
   assert.equal((await importReport(a, join(ci, 'nope'))).status, 'skipped');
 
   const calls = [];
@@ -158,7 +159,7 @@ test('CI import from a file or a gh artifact; team folder push and pull', async 
   const pulled = await sharePull(bProject, team, { by: 'ana' });
   assert.equal(pulled.pulled, 2);
   assert.equal(pulled.skipped, 1);
-  const metas = readdirSync(join(bProject, '.e2e-dashboard/runs')).map((d) => JSON.parse(readFileSync(join(bProject, '.e2e-dashboard/runs', d, 'meta.json'), 'utf8')));
+  const metas = listRunDirsSync(join(bProject, '.e2e-dashboard/runs')).map((d) => JSON.parse(readFileSync(join(bProject, '.e2e-dashboard/runs', d, 'meta.json'), 'utf8')));
   assert.ok(metas.every((m) => m.source === 'shared' && m.sharedBy === 'ana'));
   assert.equal((await sharePull(bProject, team)).pulled, 0);
 });
@@ -234,7 +235,7 @@ test('API: search, anomalies, lint, models, bisect, owners, quarantine, why-flak
     assert.equal(why.status, 200);
     assert.match(prompts.at(-1), /Lịch sử \(mới → cũ\):\n- .*\[failed\] main@b{10}.*E: boom\n- .*\[passed\] main@a{10}/);
     const draft = await post('/api/linear/draft', { runId: runs[1].meta.runId, resultId });
-    assert.match(JSON.parse(draft.text).draft.description, /Owners \(CODEOWNERS\):\*\* @qa/);
+    assert.match(JSON.parse(draft.text).draft.description, /Phụ trách \(CODEOWNERS\): @qa/);
     const pr = JSON.parse((await post('/api/github/pr', { a: runs[0].meta.runId, b: runs[1].meta.runId })).text);
     assert.equal(pr.pr.number, 3);
     assert.equal(posted.length, 0, 'preview does not post');

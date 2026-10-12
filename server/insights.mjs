@@ -419,21 +419,18 @@ export function sloStatus(history, { target = 0.95, days = 7, now = Date.now() }
   let executed = 0;
   let failed = 0;
   const daily = new Map();
-  for (const { meta, report } of history) {
+  for (const { meta, report, counts } of history) {
     const t = Date.parse(meta.startedAt);
     if (!(t >= from && t <= now)) continue;
     const day = dayKey(t);
     if (!daily.has(day)) daily.set(day, { day, executed: 0, failed: 0 });
     const d = daily.get(day);
-    for (const r of results(report)) {
-      if (r.status === 'skipped') continue;
-      executed++;
-      d.executed++;
-      if (FAIL.has(r.status)) {
-        failed++;
-        d.failed++;
-      }
-    }
+    // counts: số đếm sẵn (gate.mjs sloHistory) thay cho cả report
+    const c = counts ?? results(report).reduce((a, r) => (r.status === 'skipped' ? a : { executed: a.executed + 1, failed: a.failed + (FAIL.has(r.status) ? 1 : 0) }), { executed: 0, failed: 0 });
+    executed += c.executed;
+    failed += c.failed;
+    d.executed += c.executed;
+    d.failed += c.failed;
   }
   const allowed = executed * (1 - target);
   const actual = executed ? 1 - failed / executed : null;

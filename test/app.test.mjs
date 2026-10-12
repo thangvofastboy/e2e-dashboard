@@ -100,6 +100,68 @@ test('events posted by the reporter reach SSE clients', async () => {
   assert.match(text, /^data: /m);
 });
 
+test('live frames drop steps of finished tests (fetched via /api/live/test) and keep 50 output lines; lite is progress only', async () => {
+  const post = (e) => fetch(`${base}/api/events`, { method: 'POST', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify(e) });
+  const id = (n) => ({ testId: n, target: 'web', agent: 'default', repeat: 0 });
+  await post({ type: 'run-started', at: '2026-07-24T12:00:00.000Z', runId: 'slim-1' });
+  for (const n of ['done', 'busy']) {
+    await post({ type: 'test-started', ...id(n), title: n, at: '2026-07-24T12:00:01.000Z' });
+    await post({ type: 'step', ...id(n), progress: { phase: 'start', api: 'agent.act', label: 'x', identity: { stepId: 's1' } } });
+  }
+  await post({ type: 'test-finished', at: '2026-07-24T12:00:02.000Z', result: { testId: 'done', targetId: 'web', status: 'passed', attempts: [] } });
+  for (let i = 0; i < 80; i++) await post({ type: 'output', stream: 'stdout', text: `l${i}` });
+  const first = async (path) => {
+    const res = await fetch(`${base}${path}`, { headers: auth });
+    const reader = res.body.getReader();
+    let text = '';
+    while (!text.includes('\n\n')) text += new TextDecoder().decode((await reader.read()).value);
+    await reader.cancel();
+    return JSON.parse(text.slice(6, text.indexOf('\n\n')));
+  };
+  const full = await first('/api/live');
+  const t = Object.fromEntries(full.tests.map((x) => [x.title, x]));
+  assert.equal(t.done.steps, undefined);
+  assert.equal(t.done.stepCount, 1);
+  assert.equal(t.busy.steps.length, 1);
+  assert.equal(full.output.length, 50);
+  const lite = await first('/api/live?lite=1');
+  assert.deepEqual(Object.keys(lite).sort(), ['done', 'runId', 'runStatus', 'startedAt', 'status', 'total']);
+  const one = await (await fetch(`${base}/api/live/test?key=${encodeURIComponent(t.done.key)}`, { headers: auth })).json();
+  assert.equal(one.steps[0].api, 'agent.act');
+});
+
+test('run-level AI actions (why-slow, run-summary) stream instead of failing without a resultId', async () => {
+  for (const action of ['why-slow', 'run-summary']) {
+    const res = await fetch(`${base}/api/ai/${action}`, { method: 'POST', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify({ runId }) });
+    assert.equal(res.status, 200, action);
+    assert.match(await res.text(), /^data: /m, action);
+  }
+  const bad = await fetch(`${base}/api/ai/explain-group`, { method: 'POST', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify({ runId, groupId: '../x' }) });
+  assert.equal(bad.status, 400);
+});
+
+test('suite AI actions validate input; drafts save once inside the project only', async () => {
+  const post = (path, body) => fetch(`${base}${path}`, { method: 'POST', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  assert.equal((await post('/api/ai/ticket-test', { ticket: 'short' })).status, 400);
+  assert.equal((await post('/api/ai/select-tests', { base: 'main' })).status, 400); // không phải repo git
+  assert.equal((await post('/api/tests/draft', { path: '../evil.e2e.ts', content: 'x' })).status, 400);
+  const ok = await post('/api/tests/draft', { path: 'TestCases/x/new.e2e.ts', content: 'test("x", () => {});' });
+  assert.equal(ok.status, 200);
+  assert.equal((await ok.json()).saved, 'TestCases/x/new.e2e.ts');
+  assert.equal((await post('/api/tests/draft', { path: 'TestCases/x/new.e2e.ts', content: 'y' })).status, 409); // không ghi đè
+  const dup = await post('/api/ai/duplicate-tests', {});
+  assert.equal(dup.status, 200); // có run: stream (AI giả trả lỗi "chưa sẵn sàng")
+  assert.match(await dup.text(), /^data: /m);
+});
+
+test('run API rejects an unknown browser; settings keep chromium by default', async () => {
+  const r = await fetch(`${base}/api/run`, { method: 'POST', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify({ browser: 'netscape' }) });
+  assert.equal(r.status, 400);
+  const s = await (await fetch(`${base}/api/settings`, { headers: auth })).json();
+  assert.equal(s.browser, 'chromium');
+  assert.deepEqual(Object.keys(s.browsers.installed).sort(), ['chromium', 'firefox', 'webkit']);
+});
+
 test('serves the UI bundle', async () => {
   const res = await fetch(`${base}/app.js`, { headers: auth });
   assert.equal(res.status, 200);

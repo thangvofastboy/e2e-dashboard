@@ -19,9 +19,11 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
     <div class="row">
       <label>Retries <input type="number" name="retries" min="0" max="10" placeholder="theo config"></label>
       <label>Repeat each <input type="number" name="repeatEach" min="1" max="50" placeholder="1"${Number.isInteger(repeatEach) ? ` value="${repeatEach}"` : ''}></label>
+      <label title="Trình duyệt chạy lần này (mặc định đặt ở Tự động & lưu trữ)">Trình duyệt <select name="browser" aria-label="Trình duyệt">${['chromium', 'firefox', 'webkit'].map((b) => `<option value="${b}">${b === 'webkit' ? 'WebKit' : b.charAt(0).toUpperCase() + b.slice(1)}</option>`).join('')}</select></label>
       <label title="Số test chạy song song. Để trống = tự động theo máy">Workers <input type="number" name="workers" min="1" max="1024" placeholder="tự động"></label>
       <label class="pill"><input type="checkbox" name="noCache"> --no-cache</label>
     </div>
+    <p class="small tone-warn" data-browser-note hidden></p>
     <label class="pill" data-q-wrap hidden><input type="checkbox" name="excludeQuarantined" checked> Bỏ qua <span data-q-count></span> test đang cách ly</label>
     <p class="err" hidden></p>
     <footer><button type="button" data-close>Huỷ</button><button type="submit" class="primary">${icon('play', { size: 14 })}Chạy</button></footer>
@@ -42,6 +44,7 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
       ...(fd.get('retries') !== '' ? { retries: Number(fd.get('retries')) } : {}),
       ...(fd.get('repeatEach') !== '' ? { repeatEach: Number(fd.get('repeatEach')) } : {}),
       noCache: fd.get('noCache') === 'on',
+      browser: fd.get('browser') || 'chromium',
       // trống = tự động cho lần này (null); chưa tải được Settings thì không gửi để server dùng mặc định
       ...(fd.get('workers') !== '' ? { workers: Number(fd.get('workers')) } : settingsLoaded ? { workers: null } : {}),
       ...(fd.get('excludeQuarantined') === 'on' && !dlg.querySelector('[data-q-wrap]').hidden ? { excludeQuarantined: true } : {}),
@@ -62,8 +65,21 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
   let settingsLoaded = false;
   getJson('/api/settings').then((s) => {
     const input = form.elements.workers;
-    input.placeholder = `tự động (${s.autoWorkers})`;
+    input.placeholder = `Tự động (${s.autoWorkers})`;
     if (s.workers && input.value === '') input.value = String(s.workers);
+    const sel = form.elements.browser;
+    sel.value = s.browser ?? 'chromium';
+    for (const o of sel.options) {
+      if (s.browsers?.installed?.[o.value] === false) {
+        o.disabled = true; // chưa cài: chạy sẽ lỗi ngay
+        o.textContent += ' (chưa cài)';
+      }
+    }
+    const note = dlg.querySelector('[data-browser-note]');
+    if (s.browsers && !s.browsers.configReadsBrowser) {
+      note.hidden = false;
+      note.textContent = 'e2e.config chưa đọc E2E_BROWSER: chọn trình duyệt ở đây chưa có tác dụng. Chạy /e2e-dashboard setup để bật.';
+    }
     settingsLoaded = true;
   }).catch(() => {});
   getJson('/api/quarantine').then((q) => {

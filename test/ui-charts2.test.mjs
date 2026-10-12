@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lineChart, donutChart, sparkline, heatmap, hbarChart } from '../ui/charts.js';
+import { lineChart, shareBar, sparkline, heatmap, hbarChart } from '../ui/charts.js';
 
 test('area option adds a gradient fill with a unique id per chart', () => {
   const a = lineChart({ points: [{ label: 'a', value: 1 }, { label: 'b', value: 2 }], area: true });
@@ -10,12 +10,15 @@ test('area option adds a gradient fill with a unique id per chart', () => {
   assert.match(a, new RegExp(`<path class="area" d="[^"]+" fill="url\\(#${id(a)}\\)"`));
 });
 
-test('donut draws one arc per non-zero segment with tooltips and a center label', () => {
-  const svg = donutChart({ segments: [{ key: 'passed', value: 39 }, { key: 'failed', value: 3 }, { key: 'flaky', value: 0 }], center: '93%', ariaLabel: 'kết quả' });
-  assert.equal((svg.match(/<circle class="arc s-/g) ?? []).length, 2);
-  assert.match(svg, /data-tip="39 passed"/);
-  assert.match(svg, />93%</);
-  assert.match(donutChart({ segments: [] }), /Chưa có dữ liệu/);
+test('shareBar draws one segment per non-zero value, sized by value, with tooltips and a headline', () => {
+  const html = shareBar({ segments: [{ key: 'passed', value: 39 }, { key: 'failed', value: 3 }, { key: 'flaky', value: 0 }], center: '93%', centerLabel: 'pass rate', ariaLabel: 'kết quả' });
+  assert.equal((html.match(/class="share-seg/g) ?? []).length, 2);
+  assert.match(html, /flex-grow:39/);
+  assert.match(html, /data-tip="3 [^"]*· 7%"/);
+  assert.match(html, /<b>93%<\/b>/);
+  assert.match(html, /aria-label="kết quả: 39 [^"]*, 3 /);
+  assert.doesNotMatch(shareBar({ segments: [{ key: '<x>', value: 1, label: '<img>' }] }), /<img|<x>/);
+  assert.match(shareBar({ segments: [] }), /Chưa có dữ liệu/);
 });
 
 test('sparkline skips nulls and needs two points', () => {

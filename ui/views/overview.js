@@ -1,8 +1,8 @@
 import { getJson, isExport } from '../api.js';
 import { openImportDialog } from './actions.js';
 import { sloPanel } from './quality.js';
-import { lineChart, stackedBarChart, legend, donutChart, sparkline, heatmap, hbarChart } from '../charts.js';
-import { fmtDuration, fmtTokens, fmtRelative, statusBadge, countChips, escapeHtml, STATUS } from '../format.js';
+import { lineChart, stackedBarChart, legend, shareBar, sparkline, heatmap, hbarChart } from '../charts.js';
+import { fmtDuration, fmtTokens, fmtRelative, statusBadge, countChips, escapeHtml, STATUS, cap } from '../format.js';
 import { runHref, compareHref } from '../router.js';
 import { passRate, kpis, mergeThresholds } from '../health.js';
 import { icon } from '../icons.js';
@@ -32,8 +32,8 @@ export function runTable(metas, { selectable = false, selected = new Set() } = {
       <td class="num">${fmtDuration(m.durationMs)}</td>
       <td class="num">${fmtTokens((m.tokens?.input ?? 0) + (m.tokens?.output ?? 0))}</td>
       <td>${gitCell(m.git)}</td>
-      <td class="muted">${escapeHtml(m.source)}</td>
-      <td>${m.pinned ? `<span class="btn-pin">${icon('pin', { size: 14, label: 'đã ghim' })}</span>` : ''}${m.baseline ? `<span class="btn-star">${icon('star', { size: 14, label: 'baseline' })}</span>` : ''}</td>
+      <td class="muted">${escapeHtml(cap(m.source))}</td>
+      <td>${m.pinned ? `<span class="btn-pin">${icon('pin', { size: 14, label: 'Đã ghim' })}</span>` : ''}${m.baseline ? `<span class="btn-star">${icon('star', { size: 14, label: 'baseline' })}</span>` : ''}</td>
     </tr>`)
     .join('');
   return `<table class="table"><thead><tr>${selectable ? '<th><span class="sr-only">Chọn</span></th>' : ''}<th>Status</th><th>Bắt đầu</th><th>Kết quả</th><th class="num">Thời gian</th><th class="num">Token</th><th>Git</th><th>Nguồn</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
@@ -65,7 +65,7 @@ function cardView(c) {
     case 'tokens':
       return { icon: 'coins', label: 'Token / run', value: fmtTokens(c.value), sub: trend(c.delta, `${signedPct(c.delta ?? 0)} so với TB 10 run`), spark: c.series };
     default:
-      return { icon: 'recycle', label: 'Replay cache', value: c.value == null ? '—' : pct(c.value * 100), sub: c.value == null ? 'chưa có agent step' : c.health === 'good' ? 'ít gọi model, chạy nhanh' : 'nhiều step phải gọi model', bar: c.value };
+      return { icon: 'recycle', label: 'Replay cache', value: c.value == null ? '—' : pct(c.value * 100), sub: c.value == null ? 'Chưa có agent step' : c.health === 'good' ? 'Ít gọi model, chạy nhanh' : 'Nhiều step phải gọi model', bar: c.value };
   }
 }
 
@@ -158,22 +158,22 @@ export function runMarkers(chron, events) {
 }
 
 export async function renderOverview(main) {
-  const [allMetas, info, tests, health] = await Promise.all([
+  // một đợt: mọi request chạy song song (trước là hai đợt, đợt sau chờ đợt đầu); slo đã có trong /api/gate
+  const live = !isExport();
+  const [allMetas, info, tests, health, anomalies, gate, alerts, timeline, triage] = await Promise.all([
     getJson('/api/runs'),
     getJson('/api/info').catch(() => null),
     getJson('/api/tests').catch(() => []),
-    isExport() ? null : getJson('/api/health').then((r) => r.health).catch(() => null),
+    live ? getJson('/api/health').then((r) => r.health).catch(() => null) : null,
+    live ? getJson('/api/anomalies').then((r) => r.anomalies).catch(() => []) : [],
+    live ? getJson('/api/gate').catch(() => null) : null,
+    live ? getJson('/api/alerts').catch(() => null) : null,
+    live ? getJson('/api/timeline?days=60').catch(() => null) : null,
+    live ? getJson('/api/triage').catch(() => null) : null,
   ]);
+  const slo = gate?.slo ?? null;
   // explore runs have no tests: they would read as "0/0 pass" in the KPIs and charts
   const metas = allMetas.filter((m) => m.kind !== 'explore');
-  const [anomalies, slo, gate, alerts, timeline, triage] = isExport() ? [[], null, null, null, null, null] : await Promise.all([
-    getJson('/api/anomalies').then((r) => r.anomalies).catch(() => []),
-    getJson('/api/slo').catch(() => null),
-    getJson('/api/gate').catch(() => null),
-    getJson('/api/alerts').catch(() => null),
-    getJson('/api/timeline?days=60').catch(() => null),
-    getJson('/api/triage').catch(() => null),
-  ]);
   if (!metas.length) {
     main.innerHTML = EMPTY_RUNS;
     return;
@@ -188,18 +188,17 @@ export async function renderOverview(main) {
   const slow = tests.filter((x) => x.avgDurationMs).sort((a, b) => b.avgDurationMs - a.avgDurationMs).slice(0, 6);
   main.innerHTML = `
     <h1>Overview</h1>
-    ${healthPanel(health)}
     ${alerts?.active?.length ? `<a class="banner tone-bad" href="#/settings">${icon('bolt', { size: 15 })}<strong>${alerts.active.length} cảnh báo đang bật:</strong> ${escapeHtml(alerts.active.slice(0, 2).map((x) => x.title).join(' · '))}${alerts.active.length > 2 ? '…' : ''}</a>` : ''}
     ${triage?.untriaged ? `<a class="banner tone-warn" href="#/triage">${icon('ticket', { size: 15 })}${escapeHtml(triage.untriaged)} test fail chưa ai nhận: mở Triage</a>` : ''}
     ${sloPanel(slo, gate)}
     ${anomalies.length ? `<section class="panel anomalies"><strong>${icon('zap', { size: 15 })} Run gần nhất có ${anomalies.length} bất thường</strong> <span class="muted small">chậm hoặc tốn hơn hẳn lịch sử của chính test (TB + 2σ)</span><ul>${anomalies.slice(0, 5).map((a) => `<li><a href="${runHref(a.runId, a.resultId)}">${escapeHtml(a.title)}</a>: ${escapeHtml(a.label)} ${escapeHtml(a.metric === 'durationMs' ? fmtDuration(a.value) : a.metric === 'tokens' ? fmtTokens(a.value) : a.value)} <span class="muted">(TB ${escapeHtml(a.metric === 'durationMs' ? fmtDuration(a.mean) : a.metric === 'tokens' ? fmtTokens(a.mean) : a.mean)})</span></li>`).join('')}</ul></section>` : ''}
-    <section class="kpis">${cards.map(kpiCard).join('')}</section>
+    <div class="ov-top">${healthPanel(health)}<section class="kpis">${cards.map(kpiCard).join('')}</section></div>
     ${thresholdsPanel(cards, t)}
     <section class="charts">
       <figure><figcaption>${icon('activity')}Pass rate theo run</figcaption>
         ${lineChart({ points: chron.map((m) => ({ label: when(m), value: passRate(m) == null ? null : passRate(m) * 100 })), yMax: 100, yFormat: pct, ariaLabel: 'Pass rate theo run', area: true, markers: runMarkers(chron, timeline?.events ?? []) })}</figure>
       <figure><figcaption>${icon('gauge')}Run gần nhất</figcaption>
-        <div class="donut-wrap">${donutChart({ segments: RUN_KEYS.map((k) => ({ key: k, value: latest.summary?.[k] ?? 0 })), center: rate == null ? '—' : pct(rate * 100), ariaLabel: 'Kết quả run gần nhất' })}
+        <div class="share-wrap">${shareBar({ segments: RUN_KEYS.map((k) => ({ key: k, value: latest.summary?.[k] ?? 0 })), center: rate == null ? '—' : pct(rate * 100), centerLabel: 'Pass rate', ariaLabel: 'Kết quả run gần nhất' })}
         <div>${statusBadge(latest.status)}<p class="muted small">${escapeHtml(fmtRelative(latest.startedAt))} · ${fmtDuration(latest.durationMs)}</p>${legend(RUN_KEYS.filter((k) => latest.summary?.[k]))}</div></div></figure>
       <figure><figcaption>${icon('table')}Kết quả theo run</figcaption>
         ${stackedBarChart({ bars: chron.map((m) => ({ label: when(m), segments: m.summary ?? {} })), keys: RUN_KEYS, ariaLabel: 'Kết quả theo run' })}
@@ -212,7 +211,7 @@ export async function renderOverview(main) {
         ${hbarChart({ items: slow.map((x) => ({ label: x.title, value: x.avgDurationMs, tone: 'info' })), format: fmtDuration })}</figure>
       ${tests.length ? `<figure class="wide"><figcaption>${icon('grid')}Test × 10 run gần nhất (cũ → mới)</figcaption>${testsHeatmap(tests)}${legend(['passed', 'flaky', 'failed', 'skipped'])}</figure>` : ''}
     </section>
-    <section><div class="section-head"><h2>Run gần đây</h2><a href="#/runs">Xem tất cả →</a></div>${runTable(metas.slice(0, 10))}</section>`;
+    <section class="fill-me"><div class="section-head"><h2>Run gần đây</h2><a href="#/runs">Xem tất cả →</a></div>${runTable(metas.slice(0, 30))}</section>`;
   const panel = main.querySelector('#thresholds');
   main.querySelectorAll('[data-th]').forEach((b) =>
     b.addEventListener('click', () => {

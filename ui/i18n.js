@@ -21,8 +21,8 @@ const EN = {
   'Health score': 'Health score', 'Pass rate (TB 10 run)': 'Pass rate (avg of 10 runs)', 'Độ ổn định (ít flaky)': 'Stability (few flaky)', 'Thời gian so với TB': 'Duration vs average',
   'Token so với TB': 'Tokens vs average', 'Replay cache': 'Replay cache', 'Thời gian chạy': 'Run duration', 'Token / run': 'Tokens / run', 'Pass rate theo run': 'Pass rate by run',
   'Kết quả theo run': 'Results by run', 'Token theo run': 'Tokens by run', 'Test chậm nhất (trung bình)': 'Slowest tests (average)', 'Run gần đây': 'Recent runs', 'Xem tất cả →': 'See all →',
-  'Cách tính trạng thái': 'How status is computed', 'so với 10 run gần nhất': 'vs the last 10 runs', 'ít gọi model, chạy nhanh': 'few model calls, fast', 'nhiều step phải gọi model': 'many steps call the model',
-  'chưa có agent step': 'no agent steps yet', 'Cổng chất lượng': 'Quality gate',
+  'Cách tính trạng thái': 'How status is computed', 'so với 10 run gần nhất': 'vs the last 10 runs', 'Ít gọi model, chạy nhanh': 'Few model calls, fast', 'nhiều step phải gọi model': 'many steps call the model', 'Nhiều step phải gọi model': 'Many steps call the model',
+  'chưa có agent step': 'no agent steps yet', 'Chưa có agent step': 'No agent steps yet', 'Cổng chất lượng': 'Quality gate',
   // runs & run
   'Runs': 'Runs', 'So sánh 2 run': 'Compare 2 runs', 'Chọn đúng 2 run để so sánh.': 'Pick exactly 2 runs to compare.', 'Run cũ hơn là A.': 'The older run is A.', 'Chọn để so sánh': 'Select to compare',
   'Nhập từ GitHub Actions': 'Import from GitHub Actions', 'Phân tích run': 'Analyze run', 'Phân tích lỗi': 'Analyze failure', 'Ghim': 'Pin', 'Đã ghim': 'Pinned', 'Bỏ ghim': 'Unpin',
@@ -46,12 +46,12 @@ const EN = {
   'Không có test flaky': 'No flaky tests', 'Không có lỗi nào': 'No errors', 'Lỗi phía app': 'App-side errors', 'Không có lỗi app nào': 'No app errors', 'Lint câu lệnh agent': 'Agent instruction lint',
   'Không có cảnh báo': 'No warnings', 'Copy code': 'Copy code', 'Nhờ AI viết lại': 'Ask AI to rewrite', 'Xem run': 'View run', 'Chưa có step nào đủ ổn định': 'No step is stable enough yet',
   'Chưa có dữ liệu model': 'No model data yet', 'Lỗi theo môi trường': 'Failures by environment', 'Hệ điều hành': 'Operating system', 'Trình duyệt': 'Browser', 'Phiên bản e2e': 'e2e version', 'Giờ chạy': 'Hour of run',
-  'Route có test': 'Routes with tests', 'Chưa có test': 'No tests yet', 'chưa có test': 'no test yet', 'Viết test': 'Write a test', 'trang không test nào mở tới': 'pages no test opens',
+  'Route có test': 'Routes with tests', 'Chưa có test': 'No tests yet', 'chưa có test': 'no test yet', 'Viết test': 'Write a test', 'Trang không test nào mở tới': 'Pages no test opens',
   // cost
   'Token / run (TB)': 'Tokens / run (avg)', 'Model call': 'Model calls', 'Chi phí / run (TB)': 'Cost / run (avg)', 'Chi phí theo run': 'Cost by run', 'Kết quả cache của agent.act': 'agent.act cache outcomes',
   'Vì sao không replay được': 'Why replay missed', 'Test tốn token nhất (TB / run)': 'Most token-hungry tests (avg / run)', 'Token theo vai trò model': 'Tokens by model role', 'Step chậm nhất (trung bình)': 'Slowest steps (average)',
-  'Thời gian theo giai đoạn': 'Time by phase', 'Setup + hook theo run': 'Setup + hooks by run', 'thân test': 'test body', 'chạy lại từ cache': 'replayed from cache', 'agent tiếp quản': 'agent took over',
-  'không có cache': 'no cache', 'tắt cache': 'cache off',
+  'Thời gian theo giai đoạn': 'Time by phase', 'Setup + hook theo run': 'Setup + hooks by run', 'Thân test': 'Test body', 'Chạy lại từ cache': 'Replayed from cache', 'Agent tiếp quản': 'Agent took over',
+  'Không có cache': 'No cache', 'Tắt cache': 'Cache off',
   // projects / digest / settings / report
   'Projects': 'Projects', 'Mở dashboard': 'Open dashboard', 'Lệnh mở': 'Open command', 'Bỏ khỏi danh sách': 'Remove from list', 'Chưa có project nào': 'No projects yet', 'Copy Markdown': 'Copy Markdown',
   'Tải .md': 'Download .md', 'Chế độ watch': 'Watch mode', 'Bật watch': 'Enable watch', 'Lịch chạy': 'Schedule', 'Chưa đặt lịch.': 'No schedule set.', 'Chưa có webhook.': 'No webhooks.', 'Gửi thử': 'Send a test',

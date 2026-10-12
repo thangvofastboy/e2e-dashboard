@@ -1,3 +1,4 @@
+import { listRunDirsSync } from '../reporter/e2e-dashboard.reporter.mjs';
 // Regression tests for the deferred minor findings (M1–M8) and the ETA formula from spec §4.4.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -61,7 +62,7 @@ test('M6: archive stops and leaves nothing behind once the signal aborts', async
   const signal = { get aborted() { return ++checks > 1; } };
   const res = await archive(root, { source: 'reporter', report: fixture(), signal });
   assert.deepEqual(res, { status: 'skipped', reason: 'aborted' });
-  assert.deepEqual(readdirSync(join(root, '.e2e-dashboard/runs')), []);
+  assert.deepEqual(listRunDirsSync(join(root, '.e2e-dashboard/runs')), []);
 });
 
 test('M7: live subscribers share one EventSource', async () => {

@@ -1,5 +1,6 @@
 // Release readiness (M7): the runs at a git tag against the previous tag, with a verdict.
-import { getJson } from '../api.js';
+import { getJson, isExport } from '../api.js';
+import { openAiPanel } from './ai-panel.js';
 import { pageHead, emptyBox, fmtPct, fmtPoints } from '../analysis.js';
 import { CHANGES } from './compare.js';
 import { escapeHtml, statusBadge } from '../format.js';
@@ -24,7 +25,8 @@ export async function renderRelease(main) {
   }
   const opt = (sel) => d.tags.map((t) => `<option value="${escapeHtml(t.name)}" ${t.name === sel ? 'selected' : ''}>${escapeHtml(t.name)} · ${escapeHtml(t.date.slice(0, 10))}</option>`).join('');
   const tools = `<label>Từ <select data-rel="from"><option value="">(tag trước)</option>${opt(d.from?.name)}</select></label><label>Đến <select data-rel="to">${opt(d.to?.name)}</select></label>
-    <button type="button" class="primary no-print" data-print>${icon('download', { size: 14 })}In / Lưu PDF</button>`;
+    <button type="button" class="primary no-print" data-print>${icon('download', { size: 14 })}In / Lưu PDF</button>
+    ${isExport() || d.error || !d.to ? '' : `<button type="button" class="btn-ai no-print" data-ai-release>${icon('sparkles', { size: 14 })}AI viết ghi chú QA</button>`}`;
   if (d.error === 'unknown-tag') {
     main.innerHTML = `${head(tools)}${emptyBox('Không thấy tag này', '')}`;
   } else {
@@ -45,6 +47,7 @@ export async function renderRelease(main) {
       <p class="muted small">Tạo lúc ${escapeHtml(new Date().toLocaleString('vi-VN'))} · e2e-dashboard</p></div>`;
   }
   main.querySelector('[data-print]')?.addEventListener('click', () => window.print());
+  main.querySelector('[data-ai-release]')?.addEventListener('click', () => openAiPanel({ action: 'release-notes', runId: null, title: `Ghi chú QA · ${d.to?.name ?? ''}`, extra: { from: d.from?.name ?? '', to: d.to?.name ?? '' } }));
   main.querySelectorAll('[data-rel]').forEach((s) => s.addEventListener('change', () => {
     releaseSel = { ...releaseSel, [s.dataset.rel]: s.value };
     renderRelease(main);

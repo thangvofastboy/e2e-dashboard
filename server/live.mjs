@@ -1,5 +1,12 @@
 // In-memory state of the current run, built from e2e reporter events.
+// Subscribers get messages, not snapshots: `full` (after run-started) then `patch` — only the tests changed and the
+// output lines added since the last message. Re-sending the whole state each time grew with the suite (≈ n² bytes per run).
 const MAX_OUTPUT = 500;
+const OUTPUT_SENT = 50; // the Live view shows the last 50 lines
+
+// test as sent to the browser: steps only while running (the view shows them live); finished tests send a count and
+// the view fetches /api/live/test when one is opened
+const slimTest = ({ steps, ...t }) => (t.status === 'running' ? { ...t, steps: steps.map((x) => ({ ...x })) } : { ...t, stepCount: steps.length });
 
 const empty = () => ({
   runId: null, status: 'idle', runStatus: null, startedAt: null, finishedAt: null, artifactsRoot: null,
@@ -12,6 +19,10 @@ export function createLive({ throttleMs = 250 } = {}) {
   let busy = []; // lane index -> true while a test runs there
   const subs = new Set();
   let timer = null;
+  let reset = true; // next message is `full`
+  const dirty = new Set(); // keys changed since the last message
+  let newOut = 0; // output lines added since the last message
+  let outSeq = 0; // số thứ tự dòng output: tab mới kết nối nhận `full` rồi patch kế tiếp có thể gửi lại dòng đã có
 
   const keyOf = (testId, target, agent, repeat) => `${testId}|${target}|${agent ?? 'default'}|${repeat ?? 0}`;
   const takeLane = () => {
@@ -22,11 +33,25 @@ export function createLive({ throttleMs = 250 } = {}) {
     return i;
   };
 
+  const runFields = () => ({
+    runId: state.runId, status: state.status, runStatus: state.runStatus, startedAt: state.startedAt, finishedAt: state.finishedAt,
+    artifactsRoot: state.artifactsRoot, total: state.total, done: state.done, lanes: state.lanes, error: state.error,
+  });
+  const full = () => ({ kind: 'full', ...runFields(), tests: state.tests.map(slimTest), output: state.output.slice(-OUTPUT_SENT) });
   const notify = () => {
     clearTimeout(timer);
     timer = null;
-    const snap = structuredClone(state);
-    for (const fn of subs) fn(snap);
+    const msg = reset
+      ? full()
+      : {
+          kind: 'patch', ...runFields(),
+          tests: [...dirty].map((k) => byKey.get(k)).filter(Boolean).map(slimTest),
+          output: newOut ? state.output.slice(-Math.min(newOut, OUTPUT_SENT)) : [],
+        };
+    reset = false;
+    dirty.clear();
+    newOut = 0;
+    for (const fn of subs) fn(msg);
   };
   const schedule = () => {
     if (!timer) timer = setTimeout(notify, throttleMs);
@@ -39,6 +64,9 @@ export function createLive({ throttleMs = 250 } = {}) {
         state = { ...empty(), runId: e.runId ?? null, status: 'running', startedAt: e.at, artifactsRoot: e.artifactsRoot ?? null };
         byKey = new Map();
         busy = [];
+        reset = true;
+        dirty.clear();
+        newOut = 0;
         break;
       case 'plan':
         state.total = e.total ?? 0;
@@ -55,12 +83,14 @@ export function createLive({ throttleMs = 250 } = {}) {
         };
         byKey.set(key, t);
         state.tests.push(t);
+        dirty.add(key);
         break;
       }
       case 'step': {
         const t = byKey.get(keyOf(e.testId, e.target, e.agent, e.repeat));
         const p = e.progress;
         if (!t || !p) return;
+        dirty.add(t.key);
         const stepId = p.identity?.stepId ?? `${p.api}:${t.steps.length}`;
         let s = t.steps.find((x) => x.stepId === stepId);
         if (p.phase === 'start') {
@@ -93,10 +123,12 @@ export function createLive({ throttleMs = 250 } = {}) {
           durationMs: (r.attempts ?? []).reduce((sum, a) => sum + (a.durationMs ?? 0), 0) || Math.max(0, Date.parse(e.at) - Date.parse(t.startedAt)) || 0,
         });
         busy[t.lane] = false;
+        dirty.add(t.key);
         break;
       }
       case 'output':
-        state.output.push({ pair: e.pair ?? null, stream: e.stream, text: e.text });
+        state.output.push({ seq: ++outSeq, pair: e.pair ?? null, stream: e.stream, text: e.text });
+        newOut += 1;
         if (state.output.length > MAX_OUTPUT) state.output.splice(0, state.output.length - MAX_OUTPUT);
         break;
       case 'run-error':
@@ -122,6 +154,9 @@ export function createLive({ throttleMs = 250 } = {}) {
   return {
     apply,
     snapshot: () => structuredClone(state),
+    full, // message for a new subscriber: the patches that follow apply on top of it
+    view: () => state, // read-only, for the ETA (no clone)
+    test: (key) => (byKey.has(key) ? structuredClone(byKey.get(key)) : null),
     subscribe(fn) {
       subs.add(fn);
       return () => subs.delete(fn);

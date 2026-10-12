@@ -1,6 +1,7 @@
 // Starts and stops `e2e run` for the dashboard (spec §4.5). One run per project at a time:
 // e2e overwrites report.json, so two concurrent runs would clobber each other.
 import { spawn as nodeSpawn } from 'node:child_process';
+import { validBrowser } from './browsers.mjs';
 import { readFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 
@@ -94,7 +95,9 @@ export function createRunner({ projectRoot, live, spawnImpl = nodeSpawn, onExit 
       if (!bin) return { ok: false, error: 'e2e-missing' };
       const before = beforeStart();
       const detached = process.platform !== 'win32'; // own process group, so Stop reaches e2e and its browsers
-      const proc = spawnImpl(process.execPath, [bin, ...args.slice(1)], { cwd: projectRoot, detached, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, FORCE_COLOR: '0' } });
+      // trình duyệt: config đọc E2E_BROWSER (web({ browser: process.env.E2E_BROWSER ?? 'chromium' }))
+      const env = { ...process.env, FORCE_COLOR: '0', ...(validBrowser(opts.browser) ? { E2E_BROWSER: opts.browser } : {}) };
+      const proc = spawnImpl(process.execPath, [bin, ...args.slice(1)], { cwd: projectRoot, detached, stdio: ['ignore', 'pipe', 'pipe'], env });
       child = proc;
       // Without the reporter this is all the Live page gets; with it, the reporter's own run-started replaces it.
       live.apply({ type: 'run-started', at: now(), runId: null });
@@ -108,7 +111,7 @@ export function createRunner({ projectRoot, live, spawnImpl = nodeSpawn, onExit 
         if (error) live.apply({ type: 'run-error', at: now(), error: { message: error.message } });
         // the reporter's own run-finished carries the real verdict (blocked, interrupted…): keep it
         if (live.snapshot().status === 'running') live.apply({ type: 'run-finished', at: now(), status: exitCode === 0 ? 'passed' : 'failed', exitCode });
-        onExit({ exitCode, rerunOf: opts.rerunOf ?? null, before });
+        onExit({ exitCode, rerunOf: opts.rerunOf ?? null, before, browser: validBrowser(opts.browser) ? opts.browser : null });
       };
       proc.on('close', (code) => done(code));
       proc.on('error', (e) => done(null, e));

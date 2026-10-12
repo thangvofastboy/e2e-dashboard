@@ -65,6 +65,9 @@ export function matrix(rows) {
   return { targets, rows: [...byTest.values()] };
 }
 
+// "Chỉ test fail": fail thật ở lần chạy cuối (flaky = pass sau khi thử lại, không tính)
+export const isFailed = (status) => ['failed', 'timed-out', 'interrupted', 'error'].includes(status);
+
 export function isFailure(status) {
   return ['failed', 'timed-out', 'interrupted', 'flaky'].includes(status);
 }

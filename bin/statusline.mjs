@@ -7,6 +7,7 @@
 import { readFileSync, readdirSync, existsSync, lstatSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { listRunDirsSync } from '../reporter/e2e-dashboard.reporter.mjs';
 
 const CONFIGS = ['e2e.config.ts', 'e2e.config.mts', 'e2e.config.js', 'e2e.config.mjs'];
 const DATA = '.e2e-dashboard';
@@ -62,14 +63,14 @@ export function statusText(cwd, { now = Date.now(), color = true } = {}) {
   if (!root) return '';
   const paint = (code, s) => (color ? `\x1b[${code}m${s}\x1b[0m` : s);
   const data = join(root, DATA);
-  const live = readJson(join(data, 'live.json'));
+  const live = readJson(join(data, 'runtime', 'live.json')) ?? readJson(join(data, 'live.json'));
   const server = readJson(join(data, 'server.json'));
   if (live?.status === 'running' && Number.isInteger(server?.pid) && alive(server.pid)) {
     return `🧪 ${paint('36', `▶ e2e ${n(live.done)}/${n(live.total) || '?'}`)}`;
   }
   let names = [];
   try {
-    names = readdirSync(join(data, 'runs')).filter((x) => !x.startsWith('.')).sort().reverse().slice(0, 10);
+    names = listRunDirsSync(join(data, 'runs')).slice(0, 10); // runs/YYYY/MM/DD/… và bố cục cũ
   } catch {
     return '🧪 e2e: chưa có run';
   }

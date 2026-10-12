@@ -56,3 +56,50 @@ test('tally shows how many workers are running now and the peak reached', async 
   assert.match(tally([{ status: 'passed' }], 4), /tối đa 4 worker/);
   assert.doesNotMatch(tally([{ status: 'running' }], 1), /tối đa/);
 });
+
+test('blockers surfaces failed setups and errors repeated in ≥3 tests', async () => {
+  const { blockers } = await import('../ui/views/live.js');
+  const f = (key, file, message) => ({ key, file, title: key, status: 'failed', error: { message } });
+  const tests = [
+    f('setup::a', 'tests/auth.setup.e2e.ts', 'no auth file'),
+    ...[1, 2, 3].map((i) => f(`t${i}`, 'x.e2e.ts', 'ENOENT ticket')),
+    f('t9', 'y.e2e.ts', 'one-off'),
+    { key: 'p', status: 'passed', error: null },
+  ];
+  const b = blockers(tests);
+  assert.deepEqual(b.map((g) => [g.message, g.count, g.setups.length]), [['no auth file', 1, 1], ['ENOENT ticket', 3, 0]]);
+  assert.deepEqual(blockers([f('t1', 'x.e2e.ts', 'one-off')]), []);
+});
+
+test('axisTicks picks a round step with at most 7 ticks', async () => {
+  const { axisTicks } = await import('../ui/views/live.js');
+  assert.deepEqual(axisTicks(0), [{ pct: 0, label: '0s' }]);
+  const t = axisTicks(25_000);
+  assert.deepEqual(t.map((x) => x.pct), [0, 20, 40, 60, 80, 100]);
+  assert.deepEqual(t.map((x) => x.label), ['0s', '5s', '10s', '15s', '20s', '25s']);
+  assert.equal(axisTicks(600_000).at(-1).label, '10m');
+  assert.ok(axisTicks(3_600_000 * 5).length <= 7);
+});
+
+test('applyLive: full replaces, patch upserts tests in place and appends output (last 50)', async () => {
+  const { applyLive } = await import('../ui/api.js');
+  let s = applyLive(null, { kind: 'full', status: 'running', done: 0, tests: [{ key: 'a', status: 'running' }], output: [{ text: 'o0' }] });
+  s = applyLive(s, { kind: 'patch', status: 'running', done: 1, tests: [{ key: 'a', status: 'passed' }, { key: 'b', status: 'running' }], output: Array.from({ length: 60 }, (_, i) => ({ text: `p${i}` })) });
+  assert.deepEqual(s.tests.map((t) => `${t.key}:${t.status}`), ['a:passed', 'b:running']);
+  assert.equal(s.done, 1);
+  assert.equal(s.output.length, 50);
+  assert.equal(s.output.at(-1).text, 'p59');
+  const same = applyLive(s, { kind: 'patch', status: 'finished', tests: [], output: [] });
+  assert.equal(same.output, s.output);
+  assert.equal(same.status, 'finished');
+  assert.deepEqual(applyLive(s, { kind: 'full', status: 'running', tests: [], output: [] }).tests, []);
+  assert.deepEqual(applyLive(s, { status: 'idle', done: 0 }).tests, []); // lite
+});
+
+test('applyLive drops output lines the client already has (full then overlapping patch)', async () => {
+  const { applyLive } = await import('../ui/api.js');
+  let s = applyLive(null, { kind: 'full', tests: [], output: [{ seq: 1, text: 'a' }, { seq: 2, text: 'b' }] });
+  s = applyLive(s, { kind: 'patch', tests: [], output: [{ seq: 2, text: 'b' }, { seq: 3, text: 'c' }] });
+  assert.deepEqual(s.output.map((o) => o.text), ['a', 'b', 'c']);
+  assert.deepEqual(applyLive(s, { kind: 'patch' }).output.length, 3); // patch thiếu tests / output không lỗi
+});

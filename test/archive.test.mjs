@@ -1,3 +1,4 @@
+import { listRunDirsSync } from '../reporter/e2e-dashboard.reporter.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs';
@@ -23,7 +24,7 @@ function makeProject(mutate = (r) => r) {
   return { root, report };
 }
 
-const runs = (root) => readdirSync(join(root, '.e2e-dashboard/runs')).filter((n) => !n.startsWith('.'));
+const runs = (root) => listRunDirsSync(join(root, '.e2e-dashboard/runs')).filter((n) => !n.startsWith('.'));
 const failFirst = (r) => { r.run.results[0].status = 'failed'; return r; };
 
 test('archives report from disk with artifacts and trace of non-passed results', async () => {

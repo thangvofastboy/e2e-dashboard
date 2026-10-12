@@ -39,10 +39,10 @@ export async function renderLifecycle(main) {
       ${card(`Bỏ (${d.days} ngày)`, `−${d.removed.length}`, d.removed.length ? 'warn' : 'muted')}
       ${card('Đổi tên', d.renamed.length, 'muted')}
       ${card('Luôn fail', d.alwaysFailing.length, d.alwaysFailing.length ? 'bad' : 'good', '≥ 3 run, chưa pass lần nào')}</section>
-    <section class="panel"><h2>Số test theo ngày (180 ngày)</h2>${lineChart({ points: sizes, ariaLabel: 'Số test theo ngày', yFormat: (v) => String(Math.round(v)), area: true })}</section>
     <div class="two-col">
+      <section class="panel"><h2>Số test theo ngày (180 ngày)</h2>${lineChart({ points: sizes, ariaLabel: 'Số test theo ngày', yFormat: (v) => String(Math.round(v)), area: true })}</section>
       <section class="panel"><h2>${icon('up', { size: 15 })} Test mới</h2>${lifeListHtml(d.added, (t) => `<span class="muted small">từ ${escapeHtml(day(t.firstSeen))}</span>`)}</section>
-      <section class="panel"><h2>${icon('down', { size: 15 })} Test bị bỏ</h2>${lifeListHtml(d.removed, (t) => `<span class="muted small">lần cuối ${escapeHtml(day(t.lastSeen))}</span>`)}</section>
+      <section class="panel"><h2>${icon('down', { size: 15 })} Test bị bỏ</h2>${lifeListHtml(d.removed, (t) => `<span class="muted small">Lần cuối ${escapeHtml(day(t.lastSeen))}</span>`)}</section>
       <section class="panel"><h2>${icon('arrow', { size: 15 })} Đổi tên</h2>${lifeListHtml(d.renamed, (t) => `<span class="muted small">trước là “${escapeHtml(t.from)}”</span>`)}</section>
       <section class="panel"><h2>${icon('alert', { size: 15 })} Luôn fail</h2>${lifeListHtml(d.alwaysFailing, (t) => `<span class="muted small">${escapeHtml(t.runs)} run</span>`)}</section>
     </div>

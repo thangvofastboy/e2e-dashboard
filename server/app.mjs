@@ -1,13 +1,19 @@
-import { readFile, stat, lstat } from 'node:fs/promises';
-import { createReadStream, readFileSync } from 'node:fs';
+import { readFile, readdir, stat, lstat, rm, mkdir, writeFile } from 'node:fs/promises';
+import { installedBrowsers, configSupport, validBrowser } from './browsers.mjs';
+import { findConfig as findConfigPath } from '../bin/project.mjs';
+import { indexedTestHistory, syncIndex, sqliteSupport, closeIndex, indexPath } from './runindex.mjs';
+import { runSummaryEvidence, whySlowEvidence, groupEvidence, triageEvidence, parseTriage, summaryState, testFiles, ticketEvidence, DRAFT_PATH, selectTestsEvidence, locatorBatchEvidence, duplicateEvidence, releaseEvidence, visualEvidence } from './aiextra.mjs';
+import { envSummary, readEnvFile, writeEnvFile, userSummary, writeUser, setupStatus } from './system.mjs';
+import { createReadStream, readFileSync, existsSync } from 'node:fs';
 import { pipeline } from 'node:stream';
-import { join, extname, basename, relative, resolve } from 'node:path';
-import { timingSafeEqual } from 'node:crypto';
-import { safeJoin, realInside, readConfig, VERSION, RUN_ID, RESULT_ID, resultAttempts } from '../reporter/e2e-dashboard.reporter.mjs';
+import { join, extname, basename, relative, resolve, dirname } from 'node:path';
+import { platform, release } from 'node:os';
+import { timingSafeEqual, createHash } from 'node:crypto';
+import { safeJoin, realInside, readConfig, VERSION, DATA_DIR, RUN_ID, RESULT_ID, resultAttempts, isLink } from '../reporter/e2e-dashboard.reporter.mjs';
 import { listRuns, getRun, findRunDir, setFlag, testHistory, getAi, writeAi, listAi, loadHistory } from './store.mjs';
 import { flakyTests, compareRuns, groupErrors, costStats, slowSteps, routeMap, branchStats, compareBranches, locatorCandidates, traceToCode, testKey } from './analytics.mjs';
 import { projectSummaries, forgetProject } from './projects.mjs';
-import { issueDraft, claudePrompt, linearConfig, createLinear, readIssueLinks, saveIssueLink } from './linear.mjs';
+import { acceptDescription, acceptTitle, placeImages, issueDraft, claudePrompt, linearConfig, createLinear, readIssueLinks, saveIssueLink } from './linear.mjs';
 import { healthScore } from '../ui/health.js';
 import { search, anomalies, lintAgentSteps, LINT_RULES, modelStats, bisectPlan, flakyEvidence, testDetail, appErrors, setupTiming } from './insights.mjs';
 import { changedFiles, impactedTests } from './impact.mjs';
@@ -18,7 +24,7 @@ import { runGate, sloConfig, sloHistory } from './gate.mjs';
 import { environmentBreakdown, sloStatus } from './insights.mjs';
 import { csvRuns, csvTests, csvFlaky } from './csv.mjs';
 import { readChangelog } from './changelog.mjs';
-import { storageUsage, pruneVideos, deleteRun } from './storage.mjs';
+import { cleanupRuns, storageUsage, pruneVideos, deleteRun } from './storage.mjs';
 import { webhookConfig, sendWebhooks } from './webhook.mjs';
 import { readCodeowners, ownersOf } from './owners.mjs';
 import { readQuarantine, addQuarantine, removeQuarantine, quarantineFlags } from './quarantine.mjs';
@@ -96,7 +102,7 @@ async function serveFile(req, res, path) {
   pipeline(createReadStream(path), res, () => {});
 }
 
-function reporterStatus(projectRoot) {
+export function reporterStatus(projectRoot) {
   try {
     const src = readFileSync(join(projectRoot, 'e2e-dashboard.reporter.mjs'), 'utf8');
     return { installed: true, version: src.match(/VERSION = '([^']+)'/)?.[1] ?? null, latest: VERSION };
@@ -119,7 +125,8 @@ async function commitsFor(projectRoot, run, action, resultId) {
   const metas = await listRuns(projectRoot);
   const i = metas.findIndex((m) => m.runId === run.meta.runId);
   const older = metas.slice(i + 1, i + 21);
-  if (action === 'analyze-run') return commitsBetween(projectRoot, older[0]?.git?.commit, to);
+  // phân tích cả run (không gắn test nào): commit giữa run trước và run này
+  if (action === 'analyze-run' || !resultId) return commitsBetween(projectRoot, older[0]?.git?.commit, to);
   const r = (run.report.run.results ?? []).find((x) => x.id === resultId);
   const ids = new Set(older.map((m) => m.runId));
   for (const { meta: m, report } of (await loadHistory(projectRoot, i + 21)).filter((h) => ids.has(h.meta.runId))) {
@@ -172,23 +179,49 @@ async function askContext(projectRoot) {
 
 const IDLE_RUNNER = { start: () => ({ ok: false, error: 'unavailable' }), stop: () => false, state: () => ({ running: false, pid: null }) };
 
-export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER, ai = NO_AI, env = process.env, linearFetch, github = createGithub({ projectRoot }), ghImport = importFromGithub, automation = null, tracking = null }) {
+// lịch sử từng test: từ chỉ mục SQLite khi có, không thì parse report như cũ
+const SUITE_AI = new Set(['ask', 'followup', 'route-test', 'ticket-test', 'select-tests', 'locator-batch', 'duplicate-tests', 'release-notes']);
+const SUITE_EVIDENCE = new Set(['ticket-test', 'select-tests', 'locator-batch', 'duplicate-tests', 'release-notes']);
+const DRAFT_DIR = /^(?!.*(?:^|\/)\.)(?!.*\.\.)[\w./ -]{1,150}$/;
+const historyTable = async (root, n) => (await indexedTestHistory(root, n).catch(() => null)) ?? testHistory(root, n);
+
+export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER, ai = NO_AI, env = process.env, linearFetch, github = createGithub({ projectRoot }), ghImport = importFromGithub, automation = null, tracking = null, selfHeal = null }) {
   let avgByKey = new Map();
   const refreshAverages = () =>
-    testHistory(projectRoot, 10)
+    historyTable(projectRoot, 10)
       .then((rows) => {
         avgByKey = new Map(rows.filter((r) => r.avgDurationMs != null).map((r) => [r.key, r.avgDurationMs]));
       })
       .catch(() => {});
   refreshAverages();
-  const withEta = (s) => ({ ...s, etaMs: estimateEta(s, avgByKey) });
 
   // one ETA + JSON.stringify per live snapshot, shared by every open tab
   const frames = new WeakMap();
-  const sseFrame = (s) => {
-    if (!frames.has(s)) frames.set(s, `data: ${JSON.stringify(withEta(s))}\n\n`);
-    return frames.get(s);
+  // live sends `full` once then `patch`es (server/live.mjs); every tab shares the same JSON per message
+  const sseFrame = (msg) => {
+    if (!frames.has(msg)) frames.set(msg, `data: ${JSON.stringify({ ...msg, etaMs: estimateEta(live.view(), avgByKey) })}\n\n`);
+    return frames.get(msg);
   };
+  // badge "Đang chạy" ở các trang khác chỉ cần tiến độ
+  const liteFrame = (s) => `data: ${JSON.stringify({ runId: s.runId, status: s.status, runStatus: s.runStatus, startedAt: s.startedAt, done: s.done, total: s.total })}\n\n`;
+
+  const triageMemo = { key: null, value: null };
+  const assets = new Map(); // path -> { sig, body, etag }
+  async function uiSig() {
+    const names = await readdir(uiDir, { recursive: true });
+    let sig = 0;
+    for (const n of names) sig = Math.max(sig, (await stat(join(uiDir, n))).mtimeMs);
+    return sig;
+  }
+  async function uiAsset(path) {
+    const sig = await uiSig();
+    const hit = assets.get(path);
+    if (hit?.sig === sig) return hit;
+    const body = path === '/app.js' ? await bundleUi(uiDir) : await readFile(join(uiDir, 'style.css'), 'utf8');
+    const a = { sig, body, etag: `"${createHash('sha1').update(body).digest('base64url')}"` };
+    assets.set(path, a);
+    return a;
+  }
 
   async function route(req, res) {
     const url = new URL(req.url, 'http://local');
@@ -210,16 +243,44 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
     const ui = { 'content-security-policy': UI_CSP, 'cache-control': 'no-store' };
     if (req.method === 'GET') {
       if (p === '/') return send(res, 200, await readFile(join(uiDir, 'index.html'), 'utf8'), { ...ui, 'content-type': 'text/html; charset=utf-8' });
-      if (p === '/app.js') return send(res, 200, await bundleUi(uiDir), { ...ui, 'content-type': 'text/javascript; charset=utf-8' });
-      if (p === '/style.css') return send(res, 200, await readFile(join(uiDir, 'style.css'), 'utf8'), { ...ui, 'content-type': 'text/css; charset=utf-8' });
-      if (p === '/api/settings') return send(res, 200, { ...(await readSettings(projectRoot)), autoWorkers: autoWorkers() });
+      if (p === '/app.js' || p === '/style.css') {
+        // bundle / đọc một lần cho tới khi file trong ui/ đổi; ETag để trình duyệt nhận 304 thay vì tải lại ~320KB
+        const a = await uiAsset(p);
+        if (req.headers['if-none-match'] === a.etag) {
+          res.writeHead(304, { etag: a.etag, 'cache-control': 'no-cache' });
+          return res.end();
+        }
+        return send(res, 200, a.body, { ...ui, 'cache-control': 'no-cache', etag: a.etag, 'content-type': `text/${p === '/app.js' ? 'javascript' : 'css'}; charset=utf-8` });
+      }
+      if (p === '/api/system') {
+        return send(res, 200, {
+          version: VERSION, node: process.version, platform: `${platform()} ${release()}`, projectRoot, dataDir: join(projectRoot, DATA_DIR),
+          sqlite: (await readSettings(projectRoot)).sqlite, sqliteSupport: sqliteSupport(),
+          env: await envSummary(projectRoot), user: await userSummary(env), setup: await setupStatus(projectRoot, { reporter: reporterStatus(projectRoot) }),
+        });
+      }
+      if (p === '/api/system/envfile') return send(res, 200, await readEnvFile(projectRoot, url.searchParams.get('name') ?? ''));
+      if (p === '/api/ai/summary') {
+        const runId = url.searchParams.get('runId') ?? '';
+        if (!RUN_ID.test(runId)) return send(res, 400, { error: 'invalid runId' });
+        return send(res, 200, { state: summaryState(runId), saved: await getAi(projectRoot, runId, cacheKey('run-summary', runId)) });
+      }
+      if (p === '/api/selfheal') return send(res, 200, { config: selfHeal?.config() ?? null, errors: (await selfHeal?.list()) ?? [] });
+      if (p === '/api/settings') return send(res, 200, { ...(await readSettings(projectRoot)), autoWorkers: autoWorkers(), browsers: { installed: installedBrowsers(env), configReadsBrowser: configSupport(findConfigPath(projectRoot)) } });
       if (p === '/api/info') return send(res, 200, { version: VERSION, pid: process.pid, project: basename(projectRoot), reporter: reporterStatus(projectRoot), lastArchive: lastArchive(), thresholds: readConfig(projectRoot).thresholds ?? null, runner: runner.state() });
       if (p === '/api/runs') return send(res, 200, await listRuns(projectRoot));
-      if (p === '/api/tests') return send(res, 200, await testHistory(projectRoot, 10));
+      if (p === '/api/tests') return send(res, 200, await historyTable(projectRoot, 10));
+      if (p === '/api/live/test') return send(res, 200, live.test(url.searchParams.get('key') ?? '') ?? { steps: [] });
       if (p === '/api/live') {
         res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
-        const write = (s) => res.write(sseFrame(s));
-        write(live.snapshot());
+        let last = '';
+        const lite = url.searchParams.has('lite');
+        const write = (s) => {
+          if (!lite) return res.write(sseFrame(s)); // patch: never dedupe (two equal patches = two equal output lines)
+          const f = liteFrame(s);
+          if (f !== last) res.write((last = f));
+        };
+        write(live.full());
         const off = live.subscribe(write);
         const beat = setInterval(() => res.write(': ping\n\n'), 15_000);
         req.on('close', () => {
@@ -288,6 +349,11 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return send(res, 200, { base, files, tests: impactedTests(await loadHistory(projectRoot, 10), files) });
       }
       if (p === '/api/storage') return send(res, 200, await storageUsage(projectRoot));
+      if (p === '/api/storage/cleanup') {
+        // xem trước: GET ?from=&to=&olderThanDays=&status=
+        const q = Object.fromEntries(url.searchParams);
+        return send(res, 200, await cleanupRuns(projectRoot, { ...q, olderThanDays: q.olderThanDays ? Number(q.olderThanDays) : null }, { preview: true }));
+      }
       if (p === '/api/automation') return send(res, 200, { ...(automation?.state() ?? { schedule: null, watch: { enabled: false, supported: false } }), webhooks: (await webhookConfig(env)).map((w) => ({ host: new URL(w.url).host, events: w.events })) });
       if (p === '/api/coverage') {
         const cfg = readConfig(projectRoot);
@@ -479,11 +545,11 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return res.end();
       }
       if (p.startsWith('/api/ai/')) {
-        const action = /^\/api\/ai\/(analyze-failure|analyze-run|suggest-locator|why-flaky|explore-to-test|route-test|ask|followup)$/.exec(p)?.[1];
+        const action = /^\/api\/ai\/(analyze-failure|analyze-run|suggest-locator|why-flaky|explore-to-test|route-test|ask|followup|run-summary|why-slow|explain-group|ticket-test|select-tests|locator-batch|duplicate-tests|release-notes|explain-visual)$/.exec(p)?.[1];
         if (!action) return send(res, 404, { error: 'unknown action' });
         const body = await readBody(req);
         // a question about the whole suite, or a follow-up in an existing session, needs no run
-        const run = action === 'ask' || action === 'followup' || action === 'route-test' ? { meta: { runId: null }, report: null, dir: projectRoot } : await getRun(projectRoot, body.runId);
+        const run = SUITE_AI.has(action) ? { meta: { runId: null }, report: null, dir: projectRoot } : await getRun(projectRoot, body.runId);
         if (!run) return send(res, 404, { error: 'run not found' });
         const ac = new AbortController();
         res.on('close', () => !res.writableEnded && ac.abort()); // tab closed → never start or keep claude
@@ -498,13 +564,42 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         } else if (action === 'ask') {
           if (typeof body.question !== 'string' || !body.question.trim() || body.question.length > 4000) return send(res, 400, { error: 'invalid question' });
           prompt = buildPrompt('ask', { context: await askContext(projectRoot), question: body.question, language: readConfig(projectRoot).ai?.language });
+        } else if (SUITE_EVIDENCE.has(action)) {
+          // tính năng AI cấp cả suite: bằng chứng soạn ở aiextra.mjs, không gắn run nào, không cache
+          let evidence = null;
+          if (action === 'ticket-test') {
+            if (typeof body.ticket !== 'string' || body.ticket.trim().length < 10 || body.ticket.length > 8000) return send(res, 400, { error: 'Dán nội dung ticket (10–8000 ký tự)' });
+            const folder = typeof body.folder === 'string' && DRAFT_DIR.test(body.folder) ? body.folder : null;
+            evidence = ticketEvidence(body.ticket, folder, await testFiles(projectRoot));
+          } else if (action === 'select-tests') {
+            const base = typeof body.base === 'string' && /^[\w./-]{1,100}$/.test(body.base) ? body.base : 'main';
+            const files = await changedFiles(projectRoot, base).catch(() => null);
+            if (!files?.length) return send(res, 400, { error: files ? `Không có file nào đổi so với ${base}` : 'Không đọc được git diff (không phải repo git, hoặc không có nhánh này)' });
+            evidence = selectTestsEvidence(base, files, await historyTable(projectRoot, 10));
+          } else if (action === 'locator-batch') {
+            const cfg = readConfig(projectRoot);
+            const cands = [];
+            for (const c of locatorCandidates(await loadHistory(projectRoot, runCount(url))).slice(0, 25)) {
+              const entry = c.entry ? await readCacheEntry(projectRoot, c.entry, cfg) : null;
+              cands.push({ ...c, suggestion: entry ? traceToCode(entry) : null });
+            }
+            if (!cands.length) return send(res, 400, { error: 'Chưa có bước agent.act nào replay đủ ổn định để đổi sang locator' });
+            evidence = locatorBatchEvidence(cands);
+          } else if (action === 'duplicate-tests') {
+            evidence = duplicateEvidence(await loadHistory(projectRoot, 1));
+          } else if (action === 'release-notes') {
+            const tag = (v) => (typeof v === 'string' && /^[\w./-]{1,100}$/.test(v) ? v : null);
+            evidence = releaseEvidence(await releaseReport(projectRoot, { from: tag(body.from), to: tag(body.to), slo: sloConfig(readConfig(projectRoot)).target }));
+          }
+          if (!evidence) return send(res, 400, { error: 'Chưa đủ dữ liệu cho phân tích này' });
+          prompt = buildPrompt(action, { evidence, language: readConfig(projectRoot).ai?.language });
         } else if (action === 'followup') {
           const ok = typeof body.sessionId === 'string' && /^[\w-]{1,100}$/.test(body.sessionId) && typeof body.question === 'string' && body.question.trim() && body.question.length <= 4000;
           if (!ok) return send(res, 400, { error: 'invalid follow-up' });
           prompt = body.question;
           resume = body.sessionId;
         } else {
-          const perResult = action === 'analyze-failure' || action === 'suggest-locator' || action === 'why-flaky';
+          const perResult = action === 'analyze-failure' || action === 'suggest-locator' || action === 'why-flaky' || action === 'explain-visual';
           if (perResult && !RESULT_ID.test(String(body.resultId ?? ''))) return send(res, 400, { error: 'invalid resultId' });
           const result = perResult && (run.report.run.results ?? []).find((r) => r.id === body.resultId);
           if (perResult && !result) return send(res, 404, { error: 'result not found' });
@@ -518,13 +613,29 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
           }
           let evidence = null;
           let newest = '';
+          if (action === 'run-summary' || action === 'why-slow') {
+            evidence = (action === 'run-summary' ? runSummaryEvidence : whySlowEvidence)(await loadHistory(projectRoot, 31), run.meta.runId);
+            if (!evidence) return send(res, 404, { error: 'run quá cũ để so với lịch sử' });
+          }
+          if (action === 'explain-visual') {
+            evidence = visualEvidence(run.report, body.resultId, relative(projectRoot, run.dir).split('\\').join('/'), typeof body.name === 'string' ? body.name : null);
+            if (!evidence) return send(res, 404, { error: 'Không có cặp ảnh expected / actual cho test này' });
+            newest = typeof body.name === 'string' ? body.name.slice(0, 120) : '';
+          }
+          if (action === 'explain-group') {
+            if (!/^[0-9a-f]{12}$/.test(String(body.groupId ?? ''))) return send(res, 400, { error: 'invalid groupId' });
+            const g = groupEvidence(await loadHistory(projectRoot, runCount(url)), body.groupId);
+            if (!g) return send(res, 404, { error: 'group not found' });
+            evidence = g.lines;
+            newest = body.groupId; // cache theo nhóm
+          }
           if (action === 'why-flaky') {
             // the answer depends on the history, so the cache key follows the newest run too
             const history = await loadHistory(projectRoot, 60);
             evidence = flakyEvidence(history, testKey(result));
             newest = history[0]?.meta.runId ?? '';
           }
-          key = cacheKey(action, run.meta.runId, action === 'suggest-locator' ? `${body.resultId}:${body.stepIndex}` : action === 'why-flaky' ? `${body.resultId}:${newest}` : perResult ? body.resultId : '');
+          key = cacheKey(action, run.meta.runId, action === 'suggest-locator' ? `${body.resultId}:${body.stepIndex}` : action === 'why-flaky' ? `${body.resultId}:${newest}` : action === 'explain-group' ? `group:${newest}` : action === 'explain-visual' ? `${body.resultId}:visual:${newest}` : perResult ? body.resultId : '');
           const cached = body.refresh ? null : await getAi(projectRoot, run.meta.runId, key);
           if (cached) {
             const write = startSse(res);
@@ -553,7 +664,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         if (key && final) await writeAi(projectRoot, run.meta.runId, key, { action, resultId: body.resultId ?? null, markdown: final, createdAt: new Date().toISOString() });
         return res.end();
       }
-      if (p === '/api/linear/draft' || p === '/api/linear/issue') {
+      if (p === '/api/linear/draft' || p === '/api/linear/issue' || p === '/api/linear/rewrite') {
         const body = await readBody(req);
         const run = await getRun(projectRoot, body.runId);
         if (!run) return send(res, 404, { error: 'run not found' });
@@ -563,7 +674,26 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         const draft = issueDraft({ meta: run.meta, report: run.report, resultId: body.resultId, commits: await commitsFor(projectRoot, run, 'analyze-failure', body.resultId), analysis: saved?.markdown ?? null, project: basename(projectRoot), owners: ownersOf(readCodeowners(projectRoot).rules, (run.report.run.results ?? []).find((r) => r.id === body.resultId)?.source?.file) });
         const { apiKey, team } = await linearConfig(cfg, env);
         const links = await readIssueLinks(projectRoot);
-        if (p === '/api/linear/draft') return send(res, 200, { draft, prompt: claudePrompt(draft, team), configured: Boolean(apiKey), team, link: links[draft.fingerprint] ?? null });
+        // ảnh minh hoạ nằm trong thư mục run: Claude (Linear MCP) nhận đường dẫn trên máy để tự đính kèm nếu được
+        const localDraft = { ...draft, description: draft.description.replace(/\(e2ed-image:(\d+)\)/g, (m, i) => (draft.images[i] ? `(${join(run.dir, draft.images[i].path)})` : m)) };
+        if (p === '/api/linear/draft') return send(res, 200, { draft, prompt: claudePrompt(localDraft, team), imagePaths: draft.images.map((im) => join(run.dir, im.path)), configured: Boolean(apiKey), team, link: links[draft.fingerprint] ?? null });
+        if (p === '/api/linear/rewrite') {
+          // viết lại cho tự nhiên; chỉ nhận khi AI giữ đủ dòng fingerprint và mọi chỗ đặt ảnh
+          const base = acceptDescription(draft, body.description);
+          let final = null;
+          let error = null;
+          const ac = new AbortController();
+          res.on('close', () => !res.writableEnded && ac.abort());
+          await ai.run({ signal: ac.signal, prompt: buildPrompt('linear-rewrite', { evidence: base.split('\n'), language: cfg.ai?.language }), onEvent: (e) => {
+            if (e.type === 'done' && !e.isError) final = e.result;
+            if (e.type === 'error') error = e.message;
+          } });
+          if (!final) return send(res, 502, { error: error ?? 'AI không trả lời' });
+          const text = final.trim().replace(/^```(?:markdown|md)?\n([\s\S]*)\n```$/, '$1');
+          const refs = [...base.matchAll(/\(e2ed-image:\d+\)/g)].map((m) => m[0]);
+          if (acceptDescription(draft, text) !== text || refs.some((x) => !text.includes(x))) return send(res, 502, { error: 'Bản AI viết lại làm mất dòng fingerprint hoặc ảnh: giữ bản cũ, thử lại.' });
+          return send(res, 200, { description: text });
+        }
         if (!apiKey) return send(res, 400, { error: 'Chưa cấu hình LINEAR_API_KEY: dùng nút "Copy cho Claude" để gửi qua Linear MCP.', prompt: claudePrompt(draft, team) });
         const linear = createLinear({ apiKey, team, ...(linearFetch ? { fetchImpl: linearFetch } : {}) });
         const found = await linear.find(draft.fingerprint);
@@ -574,10 +704,25 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
           await saveIssueLink(projectRoot, draft.fingerprint, found.open);
           return send(res, 200, { status: 'commented', issue: found.open, fingerprint: draft.fingerprint });
         }
+        // nội dung đã sửa trong hộp thoại (phải còn dòng fingerprint), rồi tải ảnh minh hoạ lên Linear
+        let description = acceptDescription(draft, body.description);
+        const urls = [];
+        for (const [i, im] of draft.images.entries()) {
+          try {
+            const full = safeJoin(run.dir, im.path);
+            const st = full && !isLink(full) && realInside(run.dir, full) ? await lstat(full) : null; // artifacts/ là symlink thì không đọc
+            if (!st?.isFile() || st.size > 5 * 1024 * 1024) continue;
+            const ext = extname(full).toLowerCase();
+            urls[i] = await linear.uploadImage(await readFile(full), basename(full), ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg');
+          } catch {
+            // ảnh không tải được: thay bằng ghi chú, không làm hỏng cả issue
+          }
+        }
+        description = placeImages(description, urls, draft.images);
         const old = found.closed[0];
-        const issue = await linear.create(old ? { ...draft, description: `Tái phát của ${old.identifier} (đã đóng).\n\n${draft.description}` } : draft);
+        const issue = await linear.create({ ...draft, title: acceptTitle(draft, body.title), description: old ? `Tái phát của ${old.identifier} (đã đóng).\n\n${description}` : description });
         await saveIssueLink(projectRoot, draft.fingerprint, issue);
-        return send(res, 201, { status: 'created', issue, reopenedFrom: old?.identifier ?? null, fingerprint: draft.fingerprint });
+        return send(res, 201, { status: 'created', issue, reopenedFrom: old?.identifier ?? null, fingerprint: draft.fingerprint, images: urls.filter(Boolean).length });
       }
       if (p === '/api/triage') {
         const body = await readBody(req);
@@ -614,6 +759,12 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
           return send(res, 400, { error: e.message });
         }
       }
+      if (p === '/api/storage/cleanup') {
+        const b = await readBody(req);
+        const r = await cleanupRuns(projectRoot, { from: b.from, to: b.to, olderThanDays: Number.isInteger(b.olderThanDays) ? b.olderThanDays : null, status: b.status ?? 'all' }, { preview: false });
+        void syncIndex(projectRoot).catch(() => {});
+        return send(res, 200, r);
+      }
       if (p === '/api/storage/prune') {
         const { days } = await readBody(req);
         try {
@@ -628,9 +779,73 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         const out = await deleteRun(projectRoot, del[1]);
         return send(res, out.deleted ? 200 : out.reason === 'not-found' ? 404 : 409, out);
       }
+      if (p === '/api/system/envfile') {
+        const body = await readBody(req);
+        return send(res, 200, { ...(await writeEnvFile(projectRoot, body.name, body.content)), env: await envSummary(projectRoot) });
+      }
+      if (p === '/api/system/user') return send(res, 200, await writeUser(env, await readBody(req)));
+      if (p === '/api/tests/draft') {
+        // lưu test nháp AI viết từ ticket: chỉ trong project, đuôi .e2e.ts, không ghi đè, không đi qua symlink
+        const b = await readBody(req);
+        const rel = String(b.path ?? '').replace(/^\.\//, '');
+        if (!DRAFT_PATH.test(rel) || typeof b.content !== 'string' || !b.content.trim() || b.content.length > 200_000) return send(res, 400, { error: 'Đường dẫn phải là file .e2e.ts trong project (không có .., không thư mục ẩn)' });
+        const full = join(projectRoot, rel);
+        if (existsSync(full)) return send(res, 409, { error: `${rel} đã tồn tại: đổi tên rồi lưu lại` });
+        const parts = rel.split('/');
+        for (let i = 1; i < parts.length; i++) if (isLink(join(projectRoot, ...parts.slice(0, i)))) return send(res, 400, { error: 'Thư mục đích là symlink' });
+        await mkdir(dirname(full), { recursive: true });
+        await writeFile(full, b.content.endsWith('\n') ? b.content : `${b.content}\n`, { flag: 'wx' });
+        return send(res, 200, { saved: rel });
+      }
+      if (p === '/api/ai/triage-suggest') {
+        // gợi ý triage cho các test đang fail; nhớ theo run mới nhất (đổi khi có run mới)
+        const history = await loadHistory(projectRoot, 60);
+        const { entries, failing } = await syncTriage(projectRoot, history);
+        const rows = triageBoard({ entries, failing, links: {}, ownersOf: ownersFn() }).rows.filter((r) => r.failingNow);
+        const memoKey = `${history[0]?.meta.runId}:${rows.map((r) => r.fp).join(',')}`;
+        if (!(await readBody(req)).refresh && triageMemo.key === memoKey) return send(res, 200, { suggestions: triageMemo.value, cached: true });
+        if (!rows.length) return send(res, 200, { suggestions: [] });
+        let final = null;
+        let error = null;
+        const ac = new AbortController();
+        res.on('close', () => !res.writableEnded && ac.abort()); // tab đóng: không chạy / dừng claude
+        await ai.run({ signal: ac.signal, prompt: buildPrompt('triage-suggest', { evidence: triageEvidence(rows), language: readConfig(projectRoot).ai?.language }), onEvent: (e) => {
+          if (e.type === 'done' && !e.isError) final = e.result;
+          if (e.type === 'error') error = e.message;
+        } });
+        if (!final) return send(res, 502, { error: error ?? 'AI không trả lời' });
+        const suggestions = parseTriage(final, rows);
+        Object.assign(triageMemo, { key: memoKey, value: suggestions });
+        return send(res, 200, { suggestions });
+      }
+      if (p === '/api/app-error') {
+        // lỗi JS của giao diện (ui/app.js): ghi lại cho tự sửa lỗi
+        const b = await readBody(req);
+        await selfHeal?.report({ source: 'ui', message: b.message, stack: b.stack, route: b.route, file: b.file });
+        return send(res, 204, '');
+      }
+      if (p === '/api/selfheal/retry') return send(res, 200, { ok: Boolean(await selfHeal?.retry(String((await readBody(req)).fingerprint ?? ''))) });
+      if (p === '/api/system/doctor') {
+        const { doctor } = await import('./doctor.mjs');
+        return send(res, 200, await doctor(projectRoot, { dryRun: Boolean((await readBody(req)).dryRun), reporter: reporterStatus(projectRoot) }));
+      }
+      if (p === '/api/system/setup') {
+        const { setup } = await import('../bin/dashboard.mjs'); // lazy: bin kéo theo nhiều module server
+        return send(res, 200, { lines: await setup(projectRoot) });
+      }
       if (p === '/api/settings') {
-        const { workers } = await readBody(req);
-        return send(res, 200, { ...(await writeSettings(projectRoot, { workers })), autoWorkers: autoWorkers() });
+        const { workers, sqlite, browser } = await readBody(req);
+        if (sqlite === true) {
+          const sup = sqliteSupport();
+          if (!sup.ok) return send(res, 400, { error: sup.reason });
+        }
+        const saved = await writeSettings(projectRoot, { workers, sqlite, browser });
+        if (sqlite === true) void syncIndex(projectRoot).catch(() => {});
+        if (sqlite === false) {
+          closeIndex(projectRoot);
+          for (const f of ['', '-wal', '-shm']) await rm(`${indexPath(projectRoot)}${f}`, { force: true }).catch(() => {});
+        }
+        return send(res, 200, { ...saved, autoWorkers: autoWorkers() });
       }
       if (p === '/api/coverage/ignore') {
         const { kind, value, remove } = await readBody(req);
@@ -704,13 +919,16 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         if (body.rerunOf !== undefined && !RUN_ID.test(String(body.rerunOf))) return send(res, 400, { error: 'invalid rerunOf' });
         let out;
         try {
-          const RUN_KEYS = ['tests', 'targets', 'agents', 'retries', 'repeatEach', 'noCache', 'rerunOf', 'workers'];
+          const RUN_KEYS = ['tests', 'targets', 'agents', 'retries', 'repeatEach', 'noCache', 'rerunOf', 'workers', 'browser'];
           const opts = Object.fromEntries(RUN_KEYS.filter((k) => body[k] !== undefined).map((k) => [k, body[k]]));
           // workers: không gửi = mặc định ở Settings; null = để e2e tự chọn theo máy cho lần chạy này
           if (body.workers === undefined) {
             const { workers } = await readSettings(projectRoot);
             if (workers) opts.workers = workers;
           } else if (body.workers === null) delete opts.workers;
+          // trình duyệt: không gửi = mặc định ở Settings (chromium)
+          if (body.browser === undefined) opts.browser = (await readSettings(projectRoot)).browser;
+          else if (!validBrowser(body.browser)) return send(res, 400, { error: 'Trình duyệt phải là chromium, firefox hoặc webkit' });
           if (body.excludeQuarantined === true) opts.grepInvert = quarantineFlags(await readQuarantine(projectRoot)).args.filter((x) => x !== '--grep-invert');
           out = runner.start(opts);
         } catch (e) {
@@ -739,7 +957,9 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
     try {
       await route(req, res);
     } catch (e) {
-      if (!res.headersSent) send(res, e.status ?? (e instanceof SyntaxError ? 400 : 500), { error: e.message });
+      const status = e.status ?? (e instanceof SyntaxError ? 400 : 500);
+      if (status >= 500) void selfHeal?.report({ source: 'server', message: e.message, stack: e.stack, route: req.url?.split('?')[0] }).catch(() => {});
+      if (!res.headersSent) send(res, status, { error: e.message });
       else res.end();
     }
   };

@@ -81,35 +81,54 @@ export function fileUrl(runId, rel) {
 
 // One EventSource per page, shared by every subscriber (nav badge + Live view), so tabs do not
 // exhaust the browser's per-host connection limit.
-let liveSource = null;
-let liveLast = null;
-const liveSubs = new Set();
+// Server gửi `full` rồi các `patch` (chỉ test đổi + dòng output mới): ghép lại thành snapshot cho các view.
+// Tin không có kind (luồng lite) thay thế hẳn.
+export function applyLive(prev, msg) {
+  if (msg.kind !== 'patch' || !prev) return { ...msg, tests: msg.tests ?? [], output: msg.output ?? [] };
+  const { kind, tests = [], output = [], ...run } = msg;
+  const at = new Map(prev.tests.map((t, i) => [t.key, i]));
+  const next = prev.tests.slice();
+  for (const t of tests) {
+    if (at.has(t.key)) next[at.get(t.key)] = t;
+    else next.push(t);
+  }
+  // dòng đã có (seq ≤ seq cuối) thì bỏ: tab vừa kết nối nhận full rồi patch có thể gửi lại cùng dòng
+  const last = prev.output.at(-1)?.seq ?? 0;
+  const fresh = output.filter((o) => !(o.seq <= last));
+  return { ...prev, ...run, tests: next, output: fresh.length ? [...prev.output, ...fresh].slice(-50) : prev.output };
+}
 
-export function liveStream(onSnapshot) {
+// lite: chỉ tiến độ (badge ở mọi trang); đầy đủ: trang Live. Mỗi loại một EventSource dùng chung.
+const streams = new Map(); // url -> { source, last, subs }
+
+export function liveStream(onSnapshot, { lite = false } = {}) {
   if (EXPORT) return () => {};
-  liveSubs.add(onSnapshot);
-  if (!liveSource) {
-    liveSource = new EventSource('/api/live');
-    liveSource.onmessage = (e) => {
-      liveLast = JSON.parse(e.data);
-      for (const fn of liveSubs) fn(liveLast);
+  const url = lite ? '/api/live?lite=1' : '/api/live';
+  let st = streams.get(url);
+  if (!st) {
+    st = { source: new EventSource(url), last: null, subs: new Set() };
+    streams.set(url, st);
+    const cur = st;
+    cur.source.onmessage = (e) => {
+      cur.last = applyLive(cur.last, JSON.parse(e.data));
+      for (const fn of cur.subs) fn(cur.last);
     };
     // CLOSED = trình duyệt bỏ kết nối hẳn (vd. dashboard khởi động lại với token mới → 401): báo cho trang
     // thay vì giữ nguyên snapshot cũ (nút Dừng của một run không còn tồn tại)
-    liveSource.onerror = () => {
-      if (liveSource?.readyState !== EventSource.CLOSED) return; // đang tự kết nối lại
-      const snap = { ...(liveLast ?? { status: 'idle', tests: [], output: [] }), disconnected: true };
-      for (const fn of liveSubs) fn(snap);
+    cur.source.onerror = () => {
+      if (cur.source.readyState !== EventSource.CLOSED) return; // đang tự kết nối lại
+      const snap = { ...(cur.last ?? { status: 'idle', tests: [], output: [] }), disconnected: true };
+      for (const fn of cur.subs) fn(snap);
     };
-  } else if (liveLast) {
-    onSnapshot(liveLast);
+  } else if (st.last) {
+    onSnapshot(st.last);
   }
+  st.subs.add(onSnapshot);
   return () => {
-    liveSubs.delete(onSnapshot);
-    if (!liveSubs.size && liveSource) {
-      liveSource.close();
-      liveSource = null;
-      liveLast = null;
+    st.subs.delete(onSnapshot);
+    if (!st.subs.size && streams.get(url) === st) {
+      st.source.close();
+      streams.delete(url);
     }
   };
 }

@@ -1,8 +1,8 @@
 import { readdir, readFile, writeFile, mkdir, rename, rm, lstat, stat } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
-import { join } from 'node:path';
+import { basename, join, relative } from 'node:path';
 import { serial } from './jsonstate.mjs';
-import { DATA_DIR, RUN_ID, RESULT_ID, resultAttempts, realInside, isLink } from '../reporter/e2e-dashboard.reporter.mjs';
+import { DATA_DIR, RUN_ID, RESULT_ID, resultAttempts, realInside, isLink, listRunDirs } from '../reporter/e2e-dashboard.reporter.mjs';
 
 const runsDir = (root) => join(root, DATA_DIR, 'runs');
 const readJson = async (p) => JSON.parse(await readFile(p, 'utf8'));
@@ -12,13 +12,8 @@ const readJson = async (p) => JSON.parse(await readFile(p, 'utf8'));
 const metaCache = new Map();
 
 export async function listRuns(root) {
-  let names;
-  try {
-    names = await readdir(runsDir(root));
-  } catch {
-    return [];
-  }
-  const dirs = names.filter((n) => !n.startsWith('.')).sort().reverse();
+  if (isLink(join(root, DATA_DIR)) || isLink(runsDir(root))) return [];
+  const dirs = await listRunDirs(runsDir(root)); // runs/YYYY/MM/DD/… và bố cục cũ runs/<ISO>_<id>, mới nhất trước
   const live = new Set();
   const one = async (dir) => {
     const p = join(runsDir(root), dir, 'meta.json');
@@ -37,33 +32,61 @@ export async function listRuns(root) {
   const metas = [];
   for (let i = 0; i < dirs.length; i += 32) metas.push(...(await Promise.all(dirs.slice(i, i + 32).map(one)))); // 32 stats in flight, order kept
   for (const k of metaCache.keys()) if (k.startsWith(runsDir(root)) && !live.has(k)) metaCache.delete(k); // removed by retention
-  for (const k of reportCache.keys()) if (k.startsWith(runsDir(root)) && !live.has(join(k, 'meta.json'))) reportCache.delete(k);
+  for (const k of [...reportCache.keys()]) if (k.startsWith(runsDir(root)) && !live.has(join(k, 'meta.json'))) dropReport(k);
+  for (const k of [...countCache.keys()]) if (k.startsWith(runsDir(root)) && !live.has(join(k, 'meta.json'))) countCache.delete(k);
   return metas.filter(Boolean);
 }
 
 export async function findRunDir(root, runId) {
   if (typeof runId !== 'string' || !RUN_ID.test(runId)) return null;
   if (isLink(join(root, DATA_DIR)) || isLink(runsDir(root))) return null;
-  const names = await readdir(runsDir(root)).catch(() => []);
-  const dir = names.find((d) => d.endsWith(`_${runId}`));
+  const dir = (await listRunDirs(runsDir(root), { sort: false })).find((d) => d.endsWith(`_${runId}`)); // tra cứu: không cần sắp xếp
   if (!dir) return null;
-  // a hostile clone can commit runs/<x> as a symlink: only real directories under runs/ count
+  // a hostile clone can commit runs/<x> (or runs/2026 …) as a symlink: only real directories under runs/ count
   const full = join(runsDir(root), dir);
   return !isLink(full) && realInside(runsDir(root), full) ? full : null;
 }
 
-// Archived reports never change: parse each once, keyed by its run directory.
-const reportCache = new Map();
+// Archived reports never change: parse each once, keyed by its run directory. Giới hạn theo dung lượng
+// (không theo số report): report có step agent nặng vài MB, 400 report từng có thể chiếm hàng GB RAM.
+// ponytail: đo bằng độ dài text JSON (bản parse ~1.6×); ?n=200 với report lớn sẽ đọc lại đĩa thay vì hết RAM.
+export const REPORT_CACHE_BYTES = 48 * 1024 * 1024;
+const reportCache = new Map(); // key -> { report: Promise, bytes }, cũ nhất trước
+let cachedBytes = 0;
 async function cachedReport(root, dir) {
   const key = join(runsDir(root), dir);
-  if (!reportCache.has(key)) {
-    if (reportCache.size > 400) reportCache.delete(reportCache.keys().next().value);
-    reportCache.set(key, readJson(join(key, 'report.json')).catch((e) => {
-      reportCache.delete(key);
-      throw e;
-    }));
+  const hit = reportCache.get(key);
+  if (hit) {
+    reportCache.delete(key); // LRU: dùng lại thì xếp cuối
+    reportCache.set(key, hit);
+    return hit.report;
   }
-  return reportCache.get(key);
+  const entry = { bytes: 0, report: null };
+  entry.report = readFile(join(key, 'report.json'), 'utf8')
+    .then((text) => {
+      const report = JSON.parse(text);
+      if (reportCache.get(key) === entry) {
+        entry.bytes = text.length;
+        cachedBytes += text.length;
+        for (const [k] of reportCache) {
+          if (cachedBytes <= REPORT_CACHE_BYTES) break;
+          if (k !== key) dropReport(k); // bỏ cũ nhất trước, không bao giờ bỏ report vừa đọc
+        }
+      }
+      return report;
+    })
+    .catch((e) => {
+      if (reportCache.get(key) === entry) dropReport(key); // file hỏng / bị xoá: lần sau đọc lại
+      throw e;
+    });
+  reportCache.set(key, entry);
+  return entry.report;
+}
+function dropReport(key) {
+  const e = reportCache.get(key);
+  if (!e) return;
+  reportCache.delete(key);
+  cachedBytes -= e.bytes;
 }
 
 // The last n runs as {meta, report}, newest first (what server/analytics.mjs works on).
@@ -83,7 +106,28 @@ export async function loadHistory(root, n = 30) {
 export async function getRun(root, runId) {
   const dir = await findRunDir(root, runId);
   if (!dir) return null;
-  return { meta: await readJson(join(dir, 'meta.json')), report: await readJson(join(dir, 'report.json')), dir };
+  return { meta: await readJson(join(dir, 'meta.json')), report: await cachedReport(root, relative(runsDir(root), dir)), dir };
+}
+
+// Số test đã chạy / fail của một run cho SLO: đếm một lần rồi nhớ (run đã lưu không đổi). Đọc thẳng file, không qua
+// cache report: cửa sổ SLO có thể vài trăm run, giữ cả trăm report cùng lúc từng đẩy RAM lên ~700MB.
+const countCache = new Map();
+const SLO_FAIL = new Set(['failed', 'timed-out', 'interrupted']);
+export function runCounts(report) {
+  let executed = 0;
+  let failed = 0;
+  for (const r of report?.run?.results ?? []) {
+    if (!r || r.kind === 'setup' || r.status === 'skipped') continue;
+    executed++;
+    if (SLO_FAIL.has(r.status)) failed++;
+  }
+  return { executed, failed };
+}
+export async function cachedCounts(root, dir) {
+  const key = join(runsDir(root), dir);
+  if (isLink(key) || isLink(join(key, 'report.json'))) throw new Error('symlink');
+  if (!countCache.has(key)) countCache.set(key, runCounts(JSON.parse(await readFile(join(key, 'report.json'), 'utf8'))));
+  return countCache.get(key);
 }
 
 // Write via a temp file + rename: a symlink planted at the target is replaced, never written through.
@@ -120,13 +164,14 @@ export async function setFlag(root, runId, flag, value) {
 }
 
 // Runs started from the dashboard: remember that, and which run they reran (spec §4.5).
-export async function annotateRun(root, runId, { launchedBy, rerunOf } = {}) {
+export async function annotateRun(root, runId, { launchedBy, rerunOf, browser } = {}) {
   const dir = await findRunDir(root, runId);
   if (!dir) return null;
   return serial(`meta:${root}`, async () => {
     const meta = await readJson(join(dir, 'meta.json'));
     if (launchedBy !== undefined) meta.launchedBy = String(launchedBy);
     if (rerunOf !== undefined && rerunOf !== null) meta.rerunOf = String(rerunOf);
+    if (/^(chromium|firefox|webkit)$/.test(browser ?? '')) meta.browser = browser; // trình duyệt dashboard đã chạy run này
     return writeMeta(dir, meta);
   });
 }

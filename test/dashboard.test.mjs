@@ -53,6 +53,26 @@ test('setup copies reporter + types, patches config, gitignore is idempotent', a
   assert.equal(gi.split('\n').filter((l) => l === '.e2e-dashboard/').length, 1);
 });
 
+test('setup creates .env from .env.example once, never overwrites, and git-ignores it', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const root = project();
+  execFileSync('git', ['init', '-q'], { cwd: root });
+  writeFileSync(join(root, '.env.example'), '"admin_email":"<email>"\n');
+  const lines = await setup(root);
+  assert.equal(readFileSync(join(root, '.env'), 'utf8'), '"admin_email":"<email>"\n');
+  assert.ok(lines.some((l) => l.includes('Đã tạo .env')));
+  assert.match(readFileSync(join(root, '.gitignore'), 'utf8'), /^\.env$/m);
+  writeFileSync(join(root, '.env'), 'secret');
+  await setup(root);
+  assert.equal(readFileSync(join(root, '.env'), 'utf8'), 'secret');
+  assert.equal(readFileSync(join(root, '.gitignore'), 'utf8').split('\n').filter((l) => l === '.env').length, 1);
+});
+
+test('setup warns when there is neither .env nor .env.example', async () => {
+  const lines = await setup(project());
+  assert.ok(lines.some((l) => l.includes('chưa có .env')));
+});
+
 test('setup asks for a manual edit when the config shape is unknown', async () => {
   const root = project('export default makeConfig();\n');
   const lines = await setup(root);
@@ -115,10 +135,10 @@ test('setup refuses to write through symlinks planted in the repo', async () => 
 test('start refuses a symlinked server.log', async () => {
   const { symlinkSync, mkdirSync: mk } = await import('node:fs');
   const root = project();
-  mk(join(root, '.e2e-dashboard'), { recursive: true });
+  mk(join(root, '.e2e-dashboard/runtime'), { recursive: true });
   const outside = mkdtempSync(join(tmpdir(), 'victim-'));
   writeFileSync(join(outside, 'precious'), 'keep me');
-  symlinkSync(join(outside, 'precious'), join(root, '.e2e-dashboard/server.log'));
+  symlinkSync(join(outside, 'precious'), join(root, '.e2e-dashboard/runtime/server.log'));
   await assert.rejects(start(root, { open: false }), /symlink/);
   assert.equal(readFileSync(join(outside, 'precious'), 'utf8'), 'keep me');
 });

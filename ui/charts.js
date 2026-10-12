@@ -1,4 +1,4 @@
-import { escapeHtml, STATUS } from './format.js';
+import { escapeHtml, STATUS, cap } from './format.js';
 import { icon } from './icons.js';
 
 const W = 600;
@@ -89,7 +89,7 @@ export function calendarHeatmap(days = [], { href = null } = {}) {
     .filter((m, k) => !(m.first && marks[k + 1] && marks[k + 1].col - m.col < 4))
     .map((m) => `<span style="grid-column:${m.col}">${escapeHtml(m.label)}</span>`);
   return `<div class="cal" style="--cal-cols:${cols}"><div class="cal-months">${months.join('')}</div><div class="cal-grid">${cells}</div>
-    <div class="cal-legend"><span class="cal-cell cal-1"></span>&lt;85% <span class="cal-cell cal-2"></span>85–95% <span class="cal-cell cal-3"></span>95–98% <span class="cal-cell cal-4"></span>≥98% <span class="cal-cell cal-0"></span>không chạy</div></div>`;
+    <div class="cal-legend"><span class="cal-cell cal-1"></span>&lt;85% <span class="cal-cell cal-2"></span>85–95% <span class="cal-cell cal-3"></span>95–98% <span class="cal-cell cal-4"></span>≥98% <span class="cal-cell cal-0"></span>Không chạy</div></div>`;
 }
 
 // Rect with only the top corners rounded (the data end of a vertical bar).
@@ -98,7 +98,7 @@ function topRounded(x, y, w, h, r) {
   return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
 }
 
-export function stackedBarChart({ bars = [], keys = [], ariaLabel } = {}) {
+export function stackedBarChart({ bars = [], keys = [], ariaLabel, yFormat = (v) => String(Math.round(v)) } = {}) {
   if (!bars.length) return EMPTY;
   const totals = bars.map((b) => keys.reduce((s, k) => s + (b.segments[k] ?? 0), 0));
   const max = Math.max(1, ...totals);
@@ -126,12 +126,12 @@ export function stackedBarChart({ bars = [], keys = [], ariaLabel } = {}) {
     })
     .join('');
   const defs = '<defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="6"/></pattern></defs>';
-  return `${svgOpen(ariaLabel)}${defs}${grid(max, (v) => String(Math.round(v)))}${marks}</svg>`;
+  return `${svgOpen(ariaLabel)}${defs}${grid(max, yFormat)}${marks}</svg>`;
 }
 
 export function legend(keys) {
   return `<div class="legend">${keys
-    .map((k) => `<span class="tone-${STATUS[k]?.tone ?? 'muted'}"><i class="swatch s-${escapeHtml(k)}"></i>${STATUS[k] ? icon(STATUS[k].icon, { size: 12 }) : ''}${escapeHtml(STATUS[k]?.label ?? k)}</span>`)
+    .map((k) => `<span class="tone-${STATUS[k]?.tone ?? 'muted'}"><i class="swatch s-${escapeHtml(k)}"></i>${STATUS[k] ? icon(STATUS[k].icon, { size: 12 }) : ''}${escapeHtml(cap(STATUS[k]?.label ?? k))}</span>`)
     .join('')}</div>`;
 }
 
@@ -152,23 +152,31 @@ export function attachTooltips(root) {
     tip.style.top = `${e.clientY + 12}px`;
   });
   root.addEventListener('pointerleave', () => (tip.hidden = true));
+  root.addEventListener('focusin', (e) => {
+    const el = e.target.closest?.('[data-tip]');
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    tip.textContent = el.getAttribute('data-tip');
+    tip.hidden = false;
+    tip.style.left = `${Math.min(r.left, innerWidth - 380)}px`;
+    tip.style.top = `${r.bottom + 6}px`;
+  });
+  root.addEventListener('focusout', () => (tip.hidden = true));
 }
 
-export function donutChart({ segments = [], center = '', ariaLabel } = {}) {
+// Part-to-whole một lần đo (kết quả run, cache, giai đoạn): thanh 100% chia đoạn thay cho donut —
+// đoạn nhỏ (1 flaky giữa 30 fail) vẫn thấy được, và so độ dài dễ hơn so góc.
+export function shareBar({ segments = [], center = '', centerLabel = '', ariaLabel } = {}) {
   const parts = segments.filter((sg) => sg.value > 0);
   const total = parts.reduce((a, sg) => a + sg.value, 0);
   if (!total) return EMPTY;
-  const C = 2 * Math.PI * 36;
-  let offset = 0;
-  const arcs = parts
-    .map((sg) => {
-      const len = (sg.value / total) * C;
-      const arc = `<circle class="arc s-${escapeHtml(sg.key)}" cx="50" cy="50" r="36" stroke-dasharray="${Math.max(0.5, len - (parts.length > 1 ? 2 : 0)).toFixed(2)} ${C.toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 50 50)" data-tip="${escapeHtml(`${sg.value} ${sg.label ?? STATUS[sg.key]?.label ?? sg.key}`)}"/>`;
-      offset += len;
-      return arc;
-    })
+  const name = (sg) => sg.label ?? STATUS[sg.key]?.label ?? sg.key;
+  const pct = (sg) => `${Math.round((sg.value / total) * 100)}%`;
+  const segs = parts
+    .map((sg) => `<span class="share-seg s-${escapeHtml(sg.key)}" style="flex-grow:${sg.value}" data-tip="${escapeHtml(`${sg.value} ${name(sg)} · ${pct(sg)}`)}"></span>`)
     .join('');
-  return `<svg viewBox="0 0 100 100" role="img" aria-label="${escapeHtml(ariaLabel ?? '')}" class="donut">${arcs}<text class="donut-center" x="50" y="56" text-anchor="middle">${escapeHtml(center)}</text></svg>`;
+  const label = `${ariaLabel ?? ''}: ${parts.map((sg) => `${sg.value} ${name(sg)}`).join(', ')}`;
+  return `<div class="share" role="img" aria-label="${escapeHtml(label)}">${center ? `<div class="share-head"><b>${escapeHtml(center)}</b>${centerLabel ? ` <span class="muted small">${escapeHtml(centerLabel)}</span>` : ''}</div>` : ''}<div class="share-bar">${segs}</div></div>`;
 }
 
 export function sparkline(values = []) {

@@ -1,3 +1,4 @@
+import { listRunDirsSync } from '../reporter/e2e-dashboard.reporter.mjs';
 import './_home.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -104,7 +105,7 @@ test('storage: usage by kind, prune old videos (not pinned), delete runs (not pi
     writeFileSync(join(out.runDir, 'artifacts/web/video.webm'), Buffer.alloc(2000));
     writeFileSync(join(out.runDir, 'artifacts/web/shot.png'), Buffer.alloc(100));
   }
-  const dirs = readdirSync(join(root, '.e2e-dashboard/runs'));
+  const dirs = listRunDirsSync(join(root, '.e2e-dashboard/runs'));
   const pinnedDir = dirs.find((d) => d.endsWith(pinned.meta.runId));
   const metaPath = join(root, '.e2e-dashboard/runs', pinnedDir, 'meta.json');
   writeFileSync(metaPath, JSON.stringify({ ...pinned.meta, pinned: true }));
@@ -118,14 +119,14 @@ test('storage: usage by kind, prune old videos (not pinned), delete runs (not pi
   await assert.rejects(pruneVideos(root, -1), /invalid days/);
   assert.deepEqual(await deleteRun(root, pinned.meta.runId), { deleted: false, reason: 'pinned' });
   assert.deepEqual(await deleteRun(root, old.meta.runId), { deleted: true });
-  assert.equal(readdirSync(join(root, '.e2e-dashboard/runs')).length, 1);
+  assert.equal(listRunDirsSync(join(root, '.e2e-dashboard/runs')).length, 1);
 });
 
 test('retention can keep failed runs longer than passed ones', async () => {
   const root = tmp();
   for (let i = 0; i < 6; i++) await archive(root, { source: 'test', report: run({ startedAt: new Date(Date.UTC(2026, 0, 1, i)).toISOString(), results: [result({ status: i % 2 ? 'failed' : 'passed' })] }).report, keep: 100 });
   await applyRetention(root, { keep: 1, keepFailed: 3 });
-  assert.equal(readdirSync(join(root, '.e2e-dashboard/runs')).length, 4);
+  assert.equal(listRunDirsSync(join(root, '.e2e-dashboard/runs')).length, 4);
 });
 
 test('webhooks: only https URLs from the user config/env, Slack and Discord fields, per event', async () => {

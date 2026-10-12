@@ -1,30 +1,15 @@
 // Quarantined (known-flaky) tests: kept out of runs until a date, listed for CI as e2e flags.
 // One JSON file in .e2e-dashboard/ (local); `/e2e-dashboard quarantine` prints the flags to commit.
-import { readFile, writeFile, rename } from 'node:fs/promises';
-import { randomBytes } from 'node:crypto';
-import { join } from 'node:path';
-import { DATA_DIR, isLink, ensureDataDir } from '../reporter/e2e-dashboard.reporter.mjs';
-import { serial } from './jsonstate.mjs';
+import { serial, readState, writeState } from './jsonstate.mjs';
 
-const file = (root) => join(root, DATA_DIR, 'quarantine.json');
 const KEY = /^[^\n|]{1,600}\|[\w.-]{1,80}\|[\w.-]{1,80}$/;
 
 export async function readQuarantine(root) {
-  if (isLink(file(root))) return [];
-  try {
-    const list = JSON.parse(await readFile(file(root), 'utf8'));
-    return Array.isArray(list) ? list.filter((q) => q && typeof q.key === 'string' && KEY.test(q.key)) : [];
-  } catch {
-    return [];
-  }
+  const list = await readState(root, 'quarantine.json', []); // state/quarantine.json (đọc cả vị trí cũ)
+  return Array.isArray(list) ? list.filter((q) => q && typeof q.key === 'string' && KEY.test(q.key)) : [];
 }
 
-async function save(root, list) {
-  if (!(await ensureDataDir(root))) throw new Error('unsafe data dir');
-  const tmp = `${file(root)}.tmp-${randomBytes(6).toString('hex')}`;
-  await writeFile(tmp, JSON.stringify(list, null, 2), { flag: 'wx' });
-  await rename(tmp, file(root));
-}
+const save = (root, list) => writeState(root, 'quarantine.json', list);
 
 export async function addQuarantine(root, { key, title, file: testFile, line, reason = '', days = 14 }, now = Date.now()) {
   if (typeof key !== 'string' || !KEY.test(key)) throw new Error('invalid key');

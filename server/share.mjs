@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve, basename, dirname, relative } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { DATA_DIR, RUN_ID, archive, ensureDataDir, isLink } from '../reporter/e2e-dashboard.reporter.mjs';
+import { DATA_DIR, RUN_ID, archive, ensureDataDir, isLink, listRunDirs, runSortKey, nestedFromLegacy } from '../reporter/e2e-dashboard.reporter.mjs';
 
 const runsDir = (root) => join(root, DATA_DIR, 'runs');
 
@@ -70,13 +70,15 @@ export async function sharePush(root, dir) {
   await mkdir(target, { recursive: true });
   const there = new Set(await readdir(target).catch(() => []));
   let pushed = 0;
-  for (const name of await readdir(runsDir(root)).catch(() => [])) {
-    if (name.startsWith('.') || there.has(name) || isLink(join(runsDir(root), name))) continue;
-    const meta = JSON.parse(await readFile(join(runsDir(root), name, 'meta.json'), 'utf8').catch(() => 'null'));
+  // thư mục chung giữ tên phẳng kiểu cũ (<ISO>_<id>): đồng đội dùng bản cũ vẫn đọc được
+  for (const rel of isLink(runsDir(root)) ? [] : await listRunDirs(runsDir(root))) {
+    const name = runSortKey(rel);
+    if (there.has(name) || rel.split('/').some((_, i, a) => isLink(join(runsDir(root), ...a.slice(0, i + 1))))) continue;
+    const meta = JSON.parse(await readFile(join(runsDir(root), rel, 'meta.json'), 'utf8').catch(() => 'null'));
     if (!meta || meta.source === 'shared') continue; // only our own runs travel
     const tmp = join(target, `.tmp-${randomBytes(6).toString('hex')}`);
     try {
-      await copyTree(join(runsDir(root), name), tmp);
+      await copyTree(join(runsDir(root), rel), tmp);
       await rename(tmp, join(target, name));
       pushed++;
     } catch (e) {
@@ -92,7 +94,7 @@ export async function sharePull(root, dir, { by = null } = {}) {
   const from = teamDir(dir, root);
   if (!(await ensureDataDir(root)) || isLink(runsDir(root))) throw new Error('unsafe data dir');
   await mkdir(runsDir(root), { recursive: true });
-  const local = await readdir(runsDir(root));
+  const local = await listRunDirs(runsDir(root));
   let pulled = 0;
   let skipped = 0;
   for (const name of await readdir(from).catch(() => [])) {
@@ -106,7 +108,11 @@ export async function sharePull(root, dir, { by = null } = {}) {
       await copyTree(join(from, name), tmp);
       await writeFile(join(tmp, 'meta.json'), JSON.stringify({ ...meta, source: 'shared', sharedSource: String(meta.source ?? ''), sharedBy: by, pinned: false, baseline: false }, null, 2));
       await rm(join(tmp, 'ai'), { recursive: true, force: true }); // AI answers are not ours to show as cached
-      await rename(tmp, join(runsDir(root), name));
+      const rel = nestedFromLegacy(name) ?? name; // về máy: runs/YYYY/MM/DD/…
+      const dest = join(runsDir(root), rel);
+      if (rel.split('/').slice(0, -1).some((_, i, a) => isLink(join(runsDir(root), ...a.slice(0, i + 1))))) throw new Error('unsafe');
+      await mkdir(dirname(dest), { recursive: true });
+      await rename(tmp, dest);
       pulled++;
     } catch {
       await rm(tmp, { recursive: true, force: true });

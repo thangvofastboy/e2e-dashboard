@@ -130,7 +130,7 @@ test('syncLongterm folds archived runs once and survives retention', async () =>
   assert.equal((await syncLongterm(root)).added, 0);
   const d = await readDays(root, { from: T0, to: T0 + 3 * DAY });
   assert.equal(d.filter((x) => x.runs).length, 3);
-  assert.ok(existsSync(join(root, '.e2e-dashboard/longterm/index.json')));
+  assert.ok(existsSync(join(root, '.e2e-dashboard/state/longterm/index.json')));
 });
 
 test('triage: failures keyed by fingerprint, auto reopen / fix, board order and counts', async () => {
@@ -210,7 +210,7 @@ test('events: add, validate, remove, timeline; markers on charts', async () => {
   assert.equal((await readEvents(root)).length, 1);
   const tl = await timeline(root, { from: T0, to: T0 + 10 * DAY, tags: false });
   assert.equal(tl[0].label, 'v1 <b>');
-  writeFileSync(join(root, '.e2e-dashboard/events.json'), JSON.stringify([...JSON.parse(readFileSync(join(root, '.e2e-dashboard/events.json'), 'utf8')), { id: 'ev-aaaaaaaaaaaa', kind: 'note', label: 'x', at: at(T0), url: 'javascript:alert(1)' }]));
+  writeFileSync(join(root, '.e2e-dashboard/state/events.json'), JSON.stringify([...JSON.parse(readFileSync(join(root, '.e2e-dashboard/state/events.json'), 'utf8')), { id: 'ev-aaaaaaaaaaaa', kind: 'note', label: 'x', at: at(T0), url: 'javascript:alert(1)' }]));
   assert.equal((await readEvents(root)).find((x) => x.id === 'ev-aaaaaaaaaaaa').url, null, 'planted links are dropped');
   assert.equal(await removeEvent(root, e.id), true);
   assert.equal(await removeEvent(root, e.id), false);

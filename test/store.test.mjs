@@ -57,3 +57,24 @@ test('testHistory lists each test with per-run statuses, newest first', async ()
   assert.equal(row.line, 3);
   assert.ok(row.avgDurationMs > 0);
 });
+
+test('report cache is capped by bytes (LRU) and does not keep a broken report', async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const store = await import('../server/store.mjs');
+  const root = mkdtempSync(join(tmpdir(), 'rc-'));
+  const runs = join(root, '.e2e-dashboard', 'runs');
+  const big = JSON.stringify({ run: { results: [], pad: 'x'.repeat(Math.ceil(store.REPORT_CACHE_BYTES / 2.5)) } });
+  for (const [i, d] of ['a', 'b', 'c'].entries()) {
+    mkdirSync(join(runs, d), { recursive: true });
+    writeFileSync(join(runs, d, 'meta.json'), JSON.stringify({ runId: d, startedAt: `2026-10-0${i + 1}T00:00:00Z`, status: 'passed' }));
+    writeFileSync(join(runs, d, 'report.json'), big);
+  }
+  const h = await store.loadHistory(root, 3); // 3 × 40% budget: chỉ giữ 2 report mới nhất
+  assert.equal(h.length, 3);
+  writeFileSync(join(runs, 'a', 'report.json'), '{broken'); // a đã bị đẩy khỏi cache → đọc lại từ đĩa, fail
+  assert.equal((await store.loadHistory(root, 3)).length, 2);
+  writeFileSync(join(runs, 'a', 'report.json'), big); // lỗi không bị cache: sửa file là đọc lại được
+  assert.equal((await store.loadHistory(root, 3)).length, 3);
+});

@@ -1,4 +1,4 @@
-const PAGES = ['runs', 'live', 'tests', 'flaky', 'errors', 'cost', 'routes', 'projects', 'digest', 'locators', 'models', 'lint', 'app-errors', 'settings', 'coverage', 'environment', 'report', 'trends', 'triage', 'groups', 'release', 'traceability', 'lifecycle'];
+const PAGES = ['runs', 'live', 'tests', 'flaky', 'errors', 'cost', 'routes', 'projects', 'digest', 'locators', 'models', 'lint', 'app-errors', 'settings', 'coverage', 'environment', 'report', 'trends', 'triage', 'groups', 'release', 'traceability', 'lifecycle', 'system'];
 
 // a pasted link with a stray % ("#/test/100%") must still route, not throw
 const dec = (s) => {

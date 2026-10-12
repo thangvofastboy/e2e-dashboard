@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// Entry for /e2e-dashboard: start | setup | export | stop | status | digest | report | gate | fix | triage | quarantine | import | share | publish | mark | ci-sync | projects | statusline.
+// Entry for /e2e-dashboard: start | setup | doctor | export | stop | status | digest | report | gate | fix | triage | quarantine | import | share | publish | mark | ci-sync | projects | statusline.
 import { spawn } from 'node:child_process';
 import { readFile, writeFile, copyFile, mkdir, rm, appendFile, lstat } from 'node:fs/promises';
 import { existsSync, openSync, closeSync } from 'node:fs';
-import { join, basename, dirname, resolve } from 'node:path';
+import { join, basename, dirname, resolve, relative } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DATA_DIR, VERSION, readServerInfo, ensureDataDir, readConfig } from '../reporter/e2e-dashboard.reporter.mjs';
+import { DATA_DIR, VERSION, readServerInfo, ensureDataDir, readConfig, dataPath, legacyDataPath, listRunDirs, isLegacyRunName, nestedFromLegacy, STATE_FILES, RUNTIME_FILES, isLink, pruneEmptyParents } from '../reporter/e2e-dashboard.reporter.mjs';
 import { findProjectRoot, findConfig } from './project.mjs';
 import { exportRun } from '../server/export.mjs';
 import { buildDigest } from '../server/digest.mjs';
@@ -25,6 +25,8 @@ import { addEvent, EVENT_KINDS } from '../server/events.mjs';
 import { ciConfig, syncCi } from '../server/cisync.mjs';
 import { syncTriage, triageBoard } from '../server/triage.mjs';
 import { writeText } from '../server/jsonstate.mjs';
+import { ensureEnvFile } from '../server/system.mjs';
+import { patchBrowser } from '../server/browsers.mjs';
 
 const PLUGIN = fileURLToPath(new URL('..', import.meta.url));
 const MAIN = join(PLUGIN, 'server/main.mjs');
@@ -93,6 +95,14 @@ export async function setup(root) {
       "Thêm dashboardReporter vào mảng reporters (nếu chưa có mảng: reporters: ['list', dashboardReporter]).",
     );
   }
+  // trình duyệt chọn được khi chạy: config đọc E2E_BROWSER (dashboard truyền khi chạy test, mặc định chromium)
+  const b = patchBrowser(await readFile(configPath, 'utf8'));
+  if (b.patched) {
+    await refuseSymlink(configPath);
+    await writeFile(configPath, b.source);
+    lines.push(`Đã thêm browser: process.env.E2E_BROWSER ?? 'chromium' vào web({...}) trong ${basename(configPath)}: chọn được trình duyệt khi chạy test.`);
+  } else if (b.reason === 'unknown-shape') lines.push(`Không tìm thấy web({...}) trong ${basename(configPath)}: thêm tay browser: process.env.E2E_BROWSER ?? 'chromium' để chọn trình duyệt khi chạy test.`);
+  lines.push(...(await ensureEnvFile(root)));
   return lines;
 }
 
@@ -142,8 +152,11 @@ export async function start(root, { open = true } = {}) {
   await refuseSymlink(join(root, DATA_DIR));
   await ensureDataDir(root); // self-ignoring .e2e-dashboard/; the user's .gitignore is only touched by setup
   await rm(join(root, DATA_DIR, 'server.json'), { force: true });
-  await refuseSymlink(join(root, DATA_DIR, 'server.log'));
-  const log = openSync(join(root, DATA_DIR, 'server.log'), 'a');
+  const logPath = dataPath(root, 'server.log'); // runtime/server.log
+  await refuseSymlink(dirname(logPath));
+  await mkdir(dirname(logPath), { recursive: true });
+  await refuseSymlink(logPath);
+  const log = openSync(logPath, 'a');
   const child = spawn(process.execPath, [MAIN, root], { cwd: root, detached: true, stdio: ['ignore', 'pipe', log] });
   closeSync(log);
   const line = await new Promise((ok, fail) => {
@@ -256,7 +269,7 @@ export async function fixContext(root, runId, resultId) {
     if (a?.failure?.url) lines.push(`URL lúc fail: ${a.failure.url}`);
     const logs = (a?.appLog ?? []).filter((l) => l.level === 'error').slice(0, 8);
     if (logs.length) lines.push('Log app:', ...logs.map((l) => `- [${l.source}] ${String(l.text).slice(0, 200)}`));
-    if (run.meta.traces?.[r.id] && RESULT_ID.test(r.id)) lines.push(`Trace: ${join(DATA_DIR, 'runs', basename(run.dir), run.meta.traces[r.id])}`);
+    if (run.meta.traces?.[r.id] && RESULT_ID.test(r.id)) lines.push(`Trace: ${join(relative(root, run.dir), run.meta.traces[r.id])}`);
     const ai = await getAi(root, run.meta.runId, cacheKey('analyze-failure', run.meta.runId, r.id));
     if (ai?.markdown) lines.push('Phân tích AI đã có:', ai.markdown.slice(0, 3000));
     lines.push('');
@@ -295,6 +308,14 @@ export async function main(argv, cwd) {
     return { code: 0, out: lines.join('\n') };
   }
   if (cmd === 'setup') return { code: 0, out: (await setup(root)).join('\n') };
+  if (cmd === 'doctor') {
+    // chuyển dữ liệu .e2e-dashboard sang bố cục mới (runs theo ngày, state/, runtime/), dựng lại chỉ mục SQLite
+    const { doctor } = await import('../server/doctor.mjs');
+    const { reporterStatus } = await import('../server/app.mjs');
+    const dryRun = argv.includes('--dry-run');
+    const r = await doctor(root, { dryRun, reporter: reporterStatus(root) });
+    return { code: 0, out: [dryRun ? 'Doctor (xem trước, chưa đổi gì):' : 'Doctor:', ...r.lines.map((l) => `- ${l}`), ...r.warn.map((w) => `- Lưu ý: ${w}`)].join('\n') };
+  }
   if (cmd === 'stop') return { code: 0, out: (await stop(root)) ? 'Đã tắt dashboard.' : 'Dashboard không chạy.' };
   if (cmd === 'status') {
     const s = await running(root);
@@ -416,10 +437,15 @@ export async function main(argv, cwd) {
     const label = { new: '🆕 Mới', investigating: '🔍 Đang xem', known: '📌 Đã biết', fixed: '✅ Đã sửa', ignored: '🙈 Bỏ qua' };
     return { code: 0, out: b.rows.map((r) => `${label[r.status]} ${r.title} [${r.target ?? '?'}]${r.assignee ? ` · ${r.assignee}` : ''}${r.failingNow ? ` · fail ${r.streak} run` : ' · không còn fail'}`).join('\n') };
   }
-  return { code: 1, out: 'Dùng: /e2e-dashboard [setup|export [runId]|stop|status|digest [ngày]|report [week|month] [--send]|publish [dir]|mark <loại> <mô tả>|triage|ci-sync|projects|statusline [install]|quarantine|import …|share push|pull [dir]|fix [runId] [resultId]|gate]' };
+  return { code: 1, out: 'Dùng: /e2e-dashboard [setup|doctor [--dry-run]|export [runId]|stop|status|digest [ngày]|report [week|month] [--send]|publish [dir]|mark <loại> <mô tả>|triage|ci-sync|projects|statusline [install]|quarantine|import …|share push|pull [dir]|fix [runId] [resultId]|gate]' };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  // package.json "engines": >=22 — báo rõ thay vì lỗi khó hiểu giữa chừng trên Node cũ
+  if (Number(process.versions.node.split('.')[0]) < 22) {
+    process.stdout.write(`e2e-dashboard cần Node.js ≥ 22 (đang chạy ${process.version}). Cài Node 22+ (vd. fnm install 22) rồi chạy lại.\n`);
+    process.exit(1);
+  }
   const r = await main(process.argv.slice(2), process.cwd()).catch((e) => ({ code: 1, out: `Lỗi: ${e.message}` }));
   process.stdout.write(`${r.out}\n`);
   process.exit(r.code);

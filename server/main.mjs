@@ -1,10 +1,15 @@
 #!/usr/bin/env node
 import http from 'node:http';
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { createSelfHeal, CRASH_FILE } from './selfheal.mjs';
+import { summarizeRun } from './aiextra.mjs';
+import { syncIndex } from './runindex.mjs';
+import { readUserConfig, aiPrefs } from './system.mjs';
 import { mkdir, writeFile, rm, readFile, rename } from 'node:fs/promises';
-import { join, resolve, basename } from 'node:path';
+import { join, resolve, basename, dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DATA_DIR, VERSION, RUN_ID, readConfig, archive, isLink } from '../reporter/e2e-dashboard.reporter.mjs';
+import { DATA_DIR, VERSION, RUN_ID, readConfig, archive, isLink, dataPath } from '../reporter/e2e-dashboard.reporter.mjs';
 import { createNotifier, notifyMode, runMessage } from './notify.mjs';
 import { createScheduler, scheduleTimes, createTestWatcher } from './automation.mjs';
 import { webhookConfig, sendWebhooks, mentionMap, mentionsFor } from './webhook.mjs';
@@ -37,11 +42,11 @@ async function readReportId(projectRoot, outputDir) {
 
 // After a dashboard-started run: tag the run it produced, and only if e2e actually wrote a new report
 // (a stop during start-up, a config error or a missing binary leaves the previous one in place).
-export async function finishDashboardRun({ projectRoot, beforeId, rerunOf, outputDir }) {
+export async function finishDashboardRun({ projectRoot, beforeId, rerunOf, outputDir, browser = null }) {
   const id = await readReportId(projectRoot, outputDir);
   if (!id || id === beforeId) return null;
   await archive(projectRoot, { source: 'dashboard', outputDir }).catch(() => null); // "exists" when the watcher won
-  const meta = await annotateRun(projectRoot, id, { launchedBy: 'dashboard', rerunOf: RUN_ID.test(rerunOf ?? '') ? rerunOf : undefined }).catch(() => null);
+  const meta = await annotateRun(projectRoot, id, { launchedBy: 'dashboard', rerunOf: RUN_ID.test(rerunOf ?? '') ? rerunOf : undefined, browser }).catch(() => null);
   return meta ? id : null;
 }
 const randomToken = () => randomBytes(24).toString('hex');
@@ -58,13 +63,14 @@ function listen(server, port) {
 
 // A small live.json beside server.json, for the status line (which reads files, never the network).
 export function liveFileWriter(projectRoot, { minIntervalMs = 1000 } = {}) {
-  const path = join(projectRoot, DATA_DIR, 'live.json');
+  const path = dataPath(projectRoot, 'live.json'); // runtime/live.json
   let lastAt = 0;
   let pending = null;
   let timer = null;
   const write = async (s) => {
     lastAt = Date.now();
-    if (isLink(join(projectRoot, DATA_DIR))) return;
+    if (isLink(join(projectRoot, DATA_DIR)) || isLink(dirname(path))) return;
+    await mkdir(dirname(path), { recursive: true }).catch(() => {});
     const tmp = `${path}.tmp-${randomBytes(4).toString('hex')}`;
     const body = { status: s.status, runStatus: s.runStatus ?? null, runId: s.runId ?? null, done: s.done ?? 0, total: s.total ?? 0, startedAt: s.startedAt ?? null, at: new Date().toISOString() };
     await writeFile(tmp, JSON.stringify(body)).then(() => rename(tmp, path)).catch(() => rm(tmp, { force: true }));
@@ -98,6 +104,23 @@ async function readMeta(runDir) {
   }
 }
 
+// crash của server: ghi đồng bộ (process sắp dừng, không chờ được async), lần khởi động sau selfheal.mjs đọc vào
+let crashWatched = false;
+function watchCrashes(projectRoot) {
+  if (crashWatched) return;
+  crashWatched = true;
+  process.on('uncaughtExceptionMonitor', (e) => {
+    try {
+      const crash = dataPath(projectRoot, CRASH_FILE); // runtime/selfheal-crash.jsonl
+      if (isLink(join(projectRoot, DATA_DIR)) || isLink(dirname(crash)) || isLink(crash)) return; // không ghi xuyên symlink do repo cài sẵn
+      mkdirSync(dirname(crash), { recursive: true });
+      appendFileSync(crash, `${JSON.stringify({ message: String(e?.message ?? e).slice(0, 1000), stack: String(e?.stack ?? '').slice(0, 3000) })}\n`);
+    } catch {
+      // không ghi được: bỏ qua, process đang dừng
+    }
+  });
+}
+
 export async function startServer({ projectRoot, port, token = randomToken(), uiDir = UI_DIR, register = true, notifier }) {
   const cfg = readConfig(projectRoot);
   const preferred = port ?? cfg.port ?? 4477;
@@ -108,8 +131,11 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
   const startedAt = Date.now();
   let last = null; // shown in /api/info so a skipped report (bad schema, unsafe path) is not silent
   // a report written after this server started is a finished run: tell the desktop (M3)
+  const ai = createAi({ projectRoot, settings: () => aiPrefs(process.env, readConfig(projectRoot)) });
+  void syncIndex(projectRoot).catch(() => {}); // chỉ mục SQLite: dựng / bổ sung nền lúc khởi động
   const onArchive = async (r) => {
     last = r;
+    void syncIndex(projectRoot).catch(() => {});
     if (r.runDir && (r.status === 'archived' || r.status === 'exists')) {
       const meta = await readMeta(r.runDir);
       // M7: long-term rollups and alert rules follow every archived run
@@ -117,6 +143,8 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
       if (meta && Date.parse(meta.finishedAt ?? meta.startedAt) >= startedAt - 5000) {
         const found = await loadHistory(projectRoot, 31).then((h) => anomalies(h, { runId: meta.runId })).catch(() => []);
         notifier.runFinished(meta, { anomalies: found.length });
+        // tóm tắt AI cho run có test không pass (tắt: "ai": { "autoSummary": false } trong ~/.e2e-dashboard/config.json)
+        if (meta.status !== 'passed' && readUserConfig().ai?.autoSummary !== false) void summarizeRun({ projectRoot, ai, runId: meta.runId, language: cfg.ai?.language }).catch(() => {});
         if (meta.status !== 'passed' || meta.summary?.flaky || found.length) {
           const m = runMessage(meta, basename(projectRoot));
           const hooks = await webhookConfig().catch(() => []);
@@ -139,16 +167,16 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
     projectRoot,
     live,
     beforeStart: () => readReportId(projectRoot, cfg.output).then((id) => (beforeId = id)),
-    onExit: async ({ rerunOf }) => {
-      await finishDashboardRun({ projectRoot, beforeId, rerunOf, outputDir: cfg.output });
+    onExit: async ({ rerunOf, browser }) => {
+      await finishDashboardRun({ projectRoot, beforeId, rerunOf, outputDir: cfg.output, browser });
     },
   });
   // Scheduled runs and watch mode share the runner (one run at a time) and skip quarantined tests.
   const grepInvert = async () => quarantineFlags(await readQuarantine(projectRoot)).args.filter((x) => x !== '--grep-invert');
   const startAuto = async (opts) => {
     try {
-      const { workers } = await readSettings(projectRoot); // số worker mặc định ở Settings; null = e2e tự chọn
-      return runner.start({ ...opts, ...(workers ? { workers } : {}), grepInvert: await grepInvert() });
+      const { workers, browser } = await readSettings(projectRoot); // worker / trình duyệt mặc định ở Settings
+      return runner.start({ ...opts, ...(workers ? { workers } : {}), browser, grepInvert: await grepInvert() });
     } catch (e) {
       return { ok: false, error: e.message };
     }
@@ -173,11 +201,15 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
   }) });
   const reports = createReportScheduler({ root: projectRoot, schedule: reportSchedule(cfg) });
   const tracking = { ci, sendReport: (kind) => sendReport(projectRoot, kind), publish: () => publishSite(projectRoot) };
+  const selfHeal = createSelfHeal({ projectRoot });
+  selfHeal.ingestCrashes();
+  watchCrashes(projectRoot);
   const app = createApp({
+    selfHeal,
     tracking,
     automation,
     projectRoot, token, uiDir, live, lastArchive: () => last, runner,
-    ai: createAi({ projectRoot, model: typeof cfg.ai?.model === 'string' && /^[\w.:][\w.:-]{0,79}$/.test(cfg.ai.model) ? cfg.ai.model : undefined }),
+    ai,
     onEvent: (e) => {
       if (e?.type === 'run-started' && e.artifactsRoot) watcher.retarget(outputFromArtifactsRoot(e.artifactsRoot), e.artifactsRoot);
     },

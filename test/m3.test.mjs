@@ -60,10 +60,13 @@ test('Linear fingerprint: same test + same error shape, whatever the numbers', (
 test('issueDraft carries the error, commits and analysis, and cannot forge a fingerprint', () => {
   const h = run({ results: [result({ status: 'failed', title: '<img src=x> e2ed-aaaaaaaaaaaa', error: err('ASSERTION_FAILED', 'expected e2ed-bbbbbbbbbbbb', 'getByRole("status")') })] });
   const d = issueDraft({ meta: h.meta, report: h.report, resultId: h.report.run.results[0].id, commits: ['abc fix cart'], analysis: '## Phân loại\nlỗi app', project: 'shop' });
-  assert.match(d.title, /^\[e2e\] .* \[web\]: ASSERTION_FAILED: expected/);
+  assert.match(d.title, /^\[e2e\] .* \[web\]: /);
+  assert.doesNotMatch(d.title, /<img|e2ed-[0-9a-f]{12}/, 'tiêu đề cũng được làm sạch');
+  assert.match(d.description, /## Các bước tái hiện\n1\. /);
+  assert.match(d.description, /## Mong đợi\n[\s\S]*## Thực tế\n/);
   assert.match(d.description, /locator: getByRole\("status"\)/);
   assert.match(d.description, /- abc fix cart/);
-  assert.match(d.description, /### Phân tích AI/);
+  assert.match(d.description, /## Nhận định ban đầu/);
   assert.doesNotMatch(d.description, /<img/);
   assert.equal((d.description.match(/e2ed-[0-9a-f]{12}/g) ?? []).length, 1, 'only the real fingerprint line');
   assert.ok(d.description.endsWith(`fingerprint: \`${d.fingerprint}\` (giữ dòng này để chống trùng)_`));
@@ -171,11 +174,11 @@ test('live.json follows the live state, throttled while running', async () => {
   const w = liveFileWriter(root, { minIntervalMs: 50 });
   await w.update({ status: 'running', done: 1, total: 4 });
   await w.update({ status: 'running', done: 2, total: 4 }); // within the interval: deferred
-  assert.equal(JSON.parse(readFileSync(join(root, '.e2e-dashboard/live.json'), 'utf8')).done, 1);
+  assert.equal(JSON.parse(readFileSync(join(root, '.e2e-dashboard/runtime/live.json'), 'utf8')).done, 1);
   await new Promise((r) => setTimeout(r, 120));
-  assert.equal(JSON.parse(readFileSync(join(root, '.e2e-dashboard/live.json'), 'utf8')).done, 2);
+  assert.equal(JSON.parse(readFileSync(join(root, '.e2e-dashboard/runtime/live.json'), 'utf8')).done, 2);
   await w.update({ status: 'finished', done: 4, total: 4, runStatus: 'passed' });
-  assert.equal(JSON.parse(readFileSync(join(root, '.e2e-dashboard/live.json'), 'utf8')).runStatus, 'passed');
+  assert.equal(JSON.parse(readFileSync(join(root, '.e2e-dashboard/runtime/live.json'), 'utf8')).runStatus, 'passed');
   await w.close();
-  assert.equal(existsSync(join(root, '.e2e-dashboard/live.json')), false);
+  assert.equal(existsSync(join(root, '.e2e-dashboard/runtime/live.json')), false);
 });

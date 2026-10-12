@@ -1,3 +1,4 @@
+import { listRunDirsSync } from '../reporter/e2e-dashboard.reporter.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync } from 'node:fs';
@@ -14,7 +15,7 @@ const waitFor = async (fn, ms = 4000) => {
   }
   return false;
 };
-const runCount = (root) => (existsSync(join(root, '.e2e-dashboard/runs')) ? readdirSync(join(root, '.e2e-dashboard/runs')).filter((n) => !n.startsWith('.')).length : 0);
+const runCount = (root) => (existsSync(join(root, '.e2e-dashboard/runs')) ? listRunDirsSync(join(root, '.e2e-dashboard/runs')).filter((n) => !n.startsWith('.')).length : 0);
 
 test('outputFromArtifactsRoot strips a trailing results dir', () => {
   assert.equal(outputFromArtifactsRoot('/p/.e2e/results'), '/p/.e2e');

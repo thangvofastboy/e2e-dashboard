@@ -1,5 +1,8 @@
 import { icon } from './icons.js';
 
+// viết hoa chữ cái đầu của nhãn hiển thị (giá trị gốc như 'reporter', 'network' giữ nguyên)
+export const cap = (s) => (s ? String(s).charAt(0).toUpperCase() + String(s).slice(1) : s);
+
 export function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }

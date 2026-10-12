@@ -18,6 +18,7 @@ import { renderLint } from './views/lint.js';
 import { openSearch, bindSearchShortcut } from './views/search.js';
 import { renderTest } from './views/test.js';
 import { renderAppErrors } from './views/app-errors.js';
+import { renderSystem } from './views/system.js';
 import { renderSettings } from './views/settings.js';
 import { openAskPanel } from './views/ai-panel.js';
 import { bindShortcuts, setPageKeys, shortcutHelp } from './shortcuts.js';
@@ -33,9 +34,10 @@ import { renderLifecycle } from './views/lifecycle.js';
 import { initI18n, setLang, currentLang, translate } from './i18n.js';
 import { openModal } from './analysis.js';
 import { renderMarkdown } from './markdown.js';
-import { getJson, isExport, liveStream } from './api.js';
+import { getJson, postJson, isExport, liveStream } from './api.js';
 import { attachTooltips } from './charts.js';
 import { escapeHtml } from './format.js';
+import { applyPrefs, setTheme } from './prefs.js';
 import { parseRoute } from './router.js';
 import { icon, ICON_SPRITE } from './icons.js';
 
@@ -44,7 +46,7 @@ const NAV = [
   [null, [['overview', '#/', 'Overview', 'grid'], ['runs', '#/runs', 'Runs', 'list'], ['live', '#/live', 'Live', 'activity'], ['tests', '#/tests', 'Tests', 'flask']]],
   ['Theo dõi', [['trends', '#/trends', 'Xu hướng', 'activity'], ['triage', '#/triage', 'Triage lỗi', 'ticket'], ['groups', '#/groups', 'Module / team', 'layers'], ['release', '#/release', 'Phát hành', 'upload'], ['traceability', '#/traceability', 'Truy vết', 'route'], ['lifecycle', '#/lifecycle', 'Vòng đời test', 'recycle']]],
   ['Phân tích', [['flaky', '#/flaky', 'Flaky', 'shuffle'], ['errors', '#/errors', 'Nhóm lỗi', 'layers'], ['cost', '#/cost', 'Chi phí & cache', 'coins'], ['routes', '#/routes', 'Bản đồ route', 'route'], ['branches', '#/branches', 'Branch', 'branch'], ['models', '#/models', 'Model & ngân sách', 'cpu'], ['locators', '#/locators', 'Gợi ý locator', 'crosshair'], ['lint', '#/lint', 'Lint agent', 'lint'], ['app-errors', '#/app-errors', 'Lỗi app', 'terminal'], ['coverage', '#/coverage', 'Coverage', 'crosshair'], ['environment', '#/environment', 'Môi trường', 'cpu']]],
-  ['Tích hợp', [['projects', '#/projects', 'Projects', 'folder'], ['digest', '#/digest', 'Digest tuần', 'newspaper'], ['report', '#/report', 'Báo cáo', 'file'], ['settings', '#/settings', 'Tự động & lưu trữ', 'gauge']]],
+  ['Tích hợp', [['projects', '#/projects', 'Projects', 'folder'], ['digest', '#/digest', 'Digest tuần', 'newspaper'], ['report', '#/report', 'Báo cáo', 'file'], ['settings', '#/settings', 'Tự động & lưu trữ', 'gauge'], ['system', '#/system', 'Cài đặt hệ thống', 'settings']]],
 ];
 const EXPORT_VIEWS = new Set(['overview', 'runs', 'run']);
 const VIEWS = {
@@ -52,9 +54,9 @@ const VIEWS = {
   flaky: renderFlaky, compare: renderCompare, errors: renderErrors, cost: renderCost, routes: renderRoutes,
   branches: renderBranches, projects: renderProjects, digest: renderDigest, locators: renderLocators, models: renderModels, lint: renderLint,
   test: renderTest, 'app-errors': renderAppErrors, settings: renderSettings, coverage: renderCoverage, environment: renderEnvironment, report: renderReport,
-  trends: renderTrends, triage: renderTriage, groups: renderGroups, release: renderRelease, traceability: renderTraceability, lifecycle: renderLifecycle,
+  system: renderSystem, trends: renderTrends, triage: renderTriage, groups: renderGroups, release: renderRelease, traceability: renderTraceability, lifecycle: renderLifecycle,
 };
-const TITLES = { overview: 'Overview', runs: 'Runs', run: 'Run', live: 'Live', tests: 'Tests', test: 'Test', compare: 'So sánh', flaky: 'Flaky', errors: 'Nhóm lỗi', cost: 'Chi phí', routes: 'Route', branches: 'Branch', projects: 'Projects', digest: 'Digest', locators: 'Locator', models: 'Model', lint: 'Lint', 'app-errors': 'Lỗi app', settings: 'Cài đặt', coverage: 'Coverage', environment: 'Môi trường', report: 'Báo cáo', trends: 'Xu hướng', triage: 'Triage', groups: 'Module / team', release: 'Phát hành', traceability: 'Truy vết', lifecycle: 'Vòng đời test' };
+const TITLES = { overview: 'Overview', runs: 'Runs', run: 'Run', live: 'Live', tests: 'Tests', test: 'Test', compare: 'So sánh', flaky: 'Flaky', errors: 'Nhóm lỗi', cost: 'Chi phí', routes: 'Route', branches: 'Branch', projects: 'Projects', digest: 'Digest', locators: 'Locator', models: 'Model', lint: 'Lint', 'app-errors': 'Lỗi app', settings: 'Cài đặt', coverage: 'Coverage', environment: 'Môi trường', report: 'Báo cáo', trends: 'Xu hướng', triage: 'Triage', groups: 'Module / team', release: 'Phát hành', traceability: 'Truy vết', lifecycle: 'Vòng đời test', system: 'Cài đặt hệ thống' };
 
 // Which nav groups are folded: a per-viewer convenience, so storage failures are fine.
 function foldedGroups() {
@@ -75,35 +77,17 @@ function saveFolded(set) {
 let cleanup = null;
 let lastStatus = null;
 
-// Theme: follows the OS until the viewer picks one; the choice is a per-viewer convenience.
-function storedTheme() {
-  try {
-    return localStorage.getItem('e2ed-theme');
-  } catch {
-    return null;
-  }
-}
-
-function applyTheme(theme) {
-  if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
-  else delete document.documentElement.dataset.theme;
-}
-
+// Theme: follows the OS until the viewer picks one; the choice is a per-viewer convenience (ui/prefs.js).
 function toggleTheme() {
   const current = document.documentElement.dataset.theme ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  const next = current === 'dark' ? 'light' : 'dark';
-  applyTheme(next);
-  try {
-    localStorage.setItem('e2ed-theme', next);
-  } catch {
-    // storage blocked: the toggle still works for this page view
-  }
+  setTheme(current === 'dark' ? 'light' : 'dark');
 }
 
 function shell() {
-  applyTheme(storedTheme());
+  applyPrefs();
   document.body.insertAdjacentHTML('afterbegin', ICON_SPRITE);
-  const link = ([v, href, label, ic]) => `<a href="${href}" data-nav="${v}" class="n-${v}"><span class="ni">${icon(ic)}</span>${label}${v === 'live' ? '<span class="live-dot" aria-label="đang chạy"></span>' : ''}</a>`;
+  // title: khi menu thu gọn chỉ còn icon, rê chuột vẫn thấy tên trang
+  const link = ([v, href, label, ic]) => `<a href="${href}" data-nav="${v}" class="n-${v}" title="${label}"><span class="ni">${icon(ic)}</span><span class="nl">${label}</span>${v === 'live' ? '<span class="live-dot" aria-label="đang chạy"></span>' : ''}</a>`;
   const folded = foldedGroups();
   const nav = NAV.map(([group, items]) => {
     const shown = items.filter(([v]) => !isExport() || EXPORT_VIEWS.has(v));
@@ -114,16 +98,45 @@ function shell() {
   document.querySelector('link[rel="icon"]')?.setAttribute('href', `data:image/svg+xml,${encodeURIComponent(MARK_SVG)}`);
   document.getElementById('app').innerHTML = `
     <aside class="nav">
-      <div class="nav-top"><a class="brand" href="#/"><span class="logo">${LOGO_SVG}</span>e2e <span>dashboard</span></a>
+      <div class="nav-top"><a class="brand" href="#/"><span class="logo">${LOGO_SVG}</span><span class="brand-text">e2e <span>dashboard</span></span></a>
+        <button type="button" class="icon-btn nav-collapse" aria-pressed="false" aria-label="Thu gọn menu" title="Thu gọn menu">${icon('columns', { size: 16 })}</button>
         <button type="button" class="icon-btn nav-toggle" aria-expanded="false" aria-controls="nav-body" aria-label="Mở menu">${icon('list', { size: 18 })}</button></div>
       <div class="nav-body" id="nav-body">
-      ${isExport() ? '' : `<div class="nav-tools"><button type="button" class="nav-search" data-search>${icon('search', { size: 15 })}Tìm kiếm <kbd>Ctrl K</kbd></button><button type="button" class="nav-ask btn-ai" data-ask title="Hỏi AI về bộ test">${icon('sparkles', { size: 15 })}Hỏi AI</button></div>`}
+      ${isExport() ? '' : `<div class="nav-tools"><button type="button" class="nav-search" data-search title="Tìm kiếm (Ctrl K)">${icon('search', { size: 15 })}<span class="nl">Tìm kiếm</span> <kbd>Ctrl K</kbd></button><button type="button" class="nav-ask btn-ai" data-ask title="Hỏi AI về bộ test">${icon('sparkles', { size: 15 })}<span class="nl">Hỏi AI</span></button></div>`}
       <nav aria-label="Điều hướng">${nav}</nav>
-      <div class="nav-foot"><div class="foot-btns"><button class="theme-toggle" type="button" aria-label="Chuyển giao diện sáng / tối">${icon('sun')}Sáng / Tối</button>${isExport() ? '' : `<button type="button" class="icon-btn" data-keys title="Phím tắt (?)" aria-label="Phím tắt">${icon('bolt', { size: 15 })}</button>`}<button type="button" class="icon-btn lang-btn" data-lang title="Tiếng Việt / English" aria-label="Ngôn ngữ">${currentLang() === 'en' ? 'VI' : 'EN'}</button></div><div id="nav-foot"></div></div>
+      <div class="nav-foot"><div class="foot-btns"><button class="theme-toggle" type="button" aria-label="Chuyển giao diện sáng / tối" title="Sáng / Tối">${icon('sun')}<span class="nl">Sáng / Tối</span></button>${isExport() ? '' : `<button type="button" class="icon-btn" data-keys title="Phím tắt (?)" aria-label="Phím tắt">${icon('bolt', { size: 15 })}</button>`}<button type="button" class="icon-btn lang-btn" data-lang title="Tiếng Việt / English" aria-label="Ngôn ngữ">${currentLang() === 'en' ? 'VI' : 'EN'}</button></div><div id="nav-foot"></div></div>
       </div>
     </aside>
     <main id="main" tabindex="-1"></main>`;
   document.querySelector('.theme-toggle').addEventListener('click', toggleTheme);
+  // thu gọn menu trái (desktop): chỉ còn icon; nhớ lựa chọn trên trình duyệt này
+  const collapse = document.querySelector('.nav-collapse');
+  const setCollapsed = (on) => {
+    document.body.classList.toggle('nav-collapsed', on);
+    // dải icon: mọi nhóm mở (nhóm gập thì các trang của nó biến mất); mở rộng lại thì trả trạng thái gập đã lưu
+    const folded = foldedGroups();
+    for (const sec of document.querySelectorAll('.nav-sec')) sec.open = on || !folded.has(sec.dataset.group);
+    collapse.setAttribute('aria-pressed', String(on));
+    const label = on ? 'Mở rộng menu' : 'Thu gọn menu';
+    collapse.setAttribute('aria-label', label);
+    collapse.title = label;
+  };
+  let collapsedPref = false;
+  try {
+    collapsedPref = localStorage.getItem('e2ed-nav-collapsed') === '1';
+  } catch {
+    // storage bị chặn
+  }
+  setCollapsed(collapsedPref);
+  collapse.addEventListener('click', () => {
+    const on = !document.body.classList.contains('nav-collapsed');
+    setCollapsed(on);
+    try {
+      localStorage.setItem('e2ed-nav-collapsed', on ? '1' : '0');
+    } catch {
+      // storage bị chặn: chỉ trong lần mở này
+    }
+  });
   document.querySelector('[data-search]')?.addEventListener('click', openSearch);
   document.querySelector('[data-ask]')?.addEventListener('click', openAskPanel);
   document.querySelector('[data-keys]')?.addEventListener('click', shortcutHelp);
@@ -135,6 +148,7 @@ function shell() {
   });
   document.querySelectorAll('.nav-sec').forEach((d) =>
     d.addEventListener('toggle', () => {
+      if (document.body.classList.contains('nav-collapsed')) return; // dải icon tự mở mọi nhóm: không ghi đè trạng thái gập đã lưu
       const f = foldedGroups();
       if (d.open) f.delete(d.dataset.group);
       else f.add(d.dataset.group);
@@ -218,6 +232,7 @@ async function route() {
   // a fresh <main> per navigation: a slower page still loading writes into its own detached element,
   // never over the page the viewer moved to
   const main = document.getElementById('main').cloneNode(false);
+  main.dataset.view = r.view; // chú giải + nút phóng to theo trang (enhance)
   document.getElementById('main').replaceWith(main);
   attachTooltips(main);
   main.innerHTML = '<div class="skeleton" aria-busy="true" aria-label="Đang tải"><i class="sk-h"></i><i class="sk-row"></i><i class="sk-row"></i><i class="sk-block"></i></div>';
@@ -268,7 +283,7 @@ function watchLive() {
       if (['overview', 'runs', 'tests', 'flaky', 'errors', 'cost'].includes(view)) setTimeout(route, 1500); // give archive() time to finish
     }
     lastStatus = s.status;
-  });
+  }, { lite: true });
 }
 
 // Views render HTML strings; this pass fixes up what CSS alone cannot:
@@ -383,10 +398,96 @@ function enhance(root) {
     t.replaceWith(w);
     w.append(t);
   }
-  // bảng rộng hơn khung: cuộn ngang trong khung (không tràn ra cả trang). Bảng vừa khung giữ overflow visible để <th> dính.
-  for (const w of root.querySelectorAll('.table-wrap.auto-wrap')) w.classList.toggle('scroll-x', w.firstElementChild.scrollWidth > w.clientWidth + 1);
   for (const t of root.querySelectorAll('table.table:not([data-paged])')) pageItems(t, [...t.tBodies].flatMap((b) => [...b.rows]), 25);
   for (const u of root.querySelectorAll('ul.life-list:not([data-paged]), ul.eg-tests:not([data-paged])')) pageItems(u, [...u.children], 10);
+  markFill(document.getElementById('main'));
+  pageExtras(document.getElementById('main'));
+}
+
+// Chú giải từng trang (ⓘ cạnh tiêu đề) và từng chart (ⓘ cạnh tên chart): rê chuột hoặc Tab tới để đọc.
+const PAGE_HELP = {
+  overview: 'Tổng quan sức khoẻ bộ test: điểm health 0–100, KPI của run gần nhất so với trung bình, xu hướng theo run và test chậm nhất. Bấm vào một run để xem chi tiết.',
+  runs: 'Mọi run đã lưu, mới nhất trước. Lọc theo nguồn (terminal, CI, dashboard), tích 2 run để so sánh, xuất CSV.',
+  run: 'Chi tiết một run: kết quả từng test, step, ảnh / video / trace lúc fail, nhóm lỗi và bất thường so với lịch sử.',
+  live: 'Run đang chạy theo thời gian thực: mỗi hàng của gantt là một làn chạy song song; bấm một đoạn để xem step của test đó. Banner đỏ là lỗi gốc cần sửa trước.',
+  tests: 'Từng test với lịch sử 10 run gần nhất, pass rate và thời gian trung bình. Lọc theo tên, tag, target; bấm tên test để xem chi tiết.',
+  test: 'Lịch sử một test: pass rate, thời gian và token theo run, các lần fail và step ở run gần nhất. Có thể chạy lại riêng test này.',
+  compare: 'So sánh hai run: test đổi kết quả, chậm đi / nhanh lên, lỗi mới.',
+  trends: 'Số liệu dài hạn (30–365 ngày): pass rate theo ngày, lịch 12 tháng, test fail lâu nhất, thời gian đỏ và MTTR theo tuần, sự kiện (deploy, release…).',
+  triage: 'Xử lý test fail: đặt trạng thái Mới → Đang xem → Đã biết → Đã sửa / Bỏ qua, người phụ trách, ghi chú. Fail lại đúng lỗi cũ thì giữ trạng thái.',
+  groups: 'Kết quả gom theo module / team (theo thư mục hoặc CODEOWNERS): pass rate, flaky, test đang fail của từng nhóm.',
+  release: 'Đánh giá một bản phát hành: test fail / flaky mới so với bản trước, có nên phát hành hay không.',
+  traceability: 'Truy vết yêu cầu (story / ticket) tới test: yêu cầu nào đã có test, test nào đang fail.',
+  lifecycle: 'Vòng đời test: test mới, bị bỏ, đổi tên, luôn fail; số test theo ngày và tuổi của từng test.',
+  flaky: 'Test lúc pass lúc fail: điểm flaky càng cao càng thất thường. Cách ly tạm một test để không làm đỏ cả suite.',
+  errors: 'Các test fail cùng một dạng lỗi được gom thành nhóm: sửa một nguyên nhân là xanh nhiều test.',
+  cost: 'Token và chi phí model theo run, tỉ lệ replay cache của agent.act (cao = nhanh và rẻ), lý do không replay được, step / test tốn nhất.',
+  routes: 'Bản đồ các trang app mà test đã đi qua và các bước chuyển giữa chúng.',
+  branches: 'So sánh kết quả giữa các branch: branch nào đỏ hơn main, test nào chỉ fail trên một branch.',
+  models: 'Token theo model và vai trò, so với ngân sách đặt trong config.',
+  locators: 'Gợi ý chuyển bước agent.act hay đổi / chậm thành locator cố định để chạy nhanh và ổn định hơn.',
+  lint: 'Các bước agent mô tả mơ hồ hoặc dễ hỏng, kèm luật và cách viết lại.',
+  'app-errors': 'Lỗi phía app (console, request lỗi) ghi nhận trong lúc test chạy, gom theo chữ ký lỗi.',
+  coverage: 'Trang nào của app chưa có test: so route trong source với route test đã đi qua. Bấm "Viết test" để nhờ AI viết.',
+  environment: 'Kết quả theo môi trường (trình duyệt, OS, máy chạy): lỗi chỉ xảy ra ở một môi trường.',
+  projects: 'Mọi project đã mở dashboard trên máy này, kèm tình trạng gần nhất.',
+  digest: 'Tóm tắt tuần để gửi team: số run, pass rate, test mới fail, flaky.',
+  report: 'Báo cáo in được (In / Lưu PDF) và xuất CSV; đặt lịch gửi báo cáo tuần / tháng.',
+  system: 'Cài đặt chung: theme, cỡ chữ, ngôn ngữ; xem và sửa trực tiếp .env / .env.local của project; Linear API key, webhook; kiểm tra và chạy setup.',
+  settings: 'Số worker khi chạy test, chế độ watch, lịch chạy, webhook, cảnh báo, dung lượng lịch sử và đồng bộ từ CI.',
+};
+const CHART_HELP = {
+  'Pass rate theo run': 'Tỉ lệ test pass ở mỗi run (flaky tính là pass, skip không tính). Cờ trên trục là sự kiện deploy / release.',
+  'Run gần nhất': 'Phân bổ kết quả của run mới nhất; số lớn là pass rate.',
+  'Kết quả theo run': 'Số test pass / flaky / fail / skip của từng run, cũ → mới.',
+  'Thời gian chạy': 'Tổng thời gian mỗi run. Tăng đột ngột thường do test treo hoặc cache không replay.',
+  'Token theo run': 'Token model dùng mỗi run (vào + ra). Giảm khi replay cache tốt.',
+  'Test chậm nhất (trung bình)': 'Thời gian trung bình của các test chậm nhất trong 10 run gần nhất.',
+  'Test × 10 run gần nhất (cũ → mới)': 'Mỗi ô là kết quả một test ở một run; hàng nhiều ô đỏ / vàng là test cần xem.',
+  'Kết quả cache của agent.act': 'agent.act chạy lại từ cache (nhanh, không gọi model) hay phải gọi model.',
+  'Vì sao không replay được': 'Lý do bước agent.act không dùng được cache, nhiều nhất trước.',
+  'Thời gian theo giai đoạn': 'Tỉ lệ thời gian dành cho setup, beforeEach, afterEach và thân test.',
+};
+const helpBtn = (text) => `<button type="button" class="icon-btn help-tip" data-tip="${escapeHtml(text)}" aria-label="Chú giải" aria-description="${escapeHtml(text)}">${icon('info', { size: 14 })}</button>`;
+const fsBtn = (page) => `<button type="button" class="icon-btn fs-btn${page ? ' fs-page' : ''}" data-tip="${page ? 'Cả trang toàn màn hình' : 'Phóng to toàn màn hình'} (Esc để thoát)" aria-label="Phóng to toàn màn hình">${icon('expand', { size: 14 })}</button>`;
+const MAXABLE = '.charts > figure, #main > section.panel, #main > .fill, .two-col > .panel, .ov-top > .health-score, .run-summary';
+function pageExtras(main) {
+  if (!main || isExport()) return;
+  const h1 = main.querySelector('h1');
+  if (h1 && !h1.querySelector('.help-tip, .fs-page')) {
+    if (PAGE_HELP[main.dataset.view]) h1.insertAdjacentHTML('beforeend', helpBtn(PAGE_HELP[main.dataset.view]));
+    if (document.fullscreenEnabled) h1.insertAdjacentHTML('beforeend', fsBtn(true));
+  }
+  for (const cap of main.querySelectorAll('figcaption:not([data-help])')) {
+    cap.dataset.help = '';
+    const text = CHART_HELP[cap.textContent.trim()];
+    if (text) cap.insertAdjacentHTML('beforeend', helpBtn(text));
+  }
+  // Live dựng lại DOM mỗi snapshot: phóng to từng khối sẽ bị thoát ngay, chỉ dùng nút cả trang
+  if (!document.fullscreenEnabled || main.dataset.view === 'live') return;
+  for (const el of main.querySelectorAll(MAXABLE)) if (!el.querySelector(':scope > .fs-btn')) el.insertAdjacentHTML('beforeend', fsBtn(false));
+}
+// phần tử fullscreen che mọi thứ ngoài nó: mang toast và tooltip vào trong, thoát thì trả về body
+document.addEventListener('fullscreenchange', () => {
+  const host = document.fullscreenElement ?? document.body;
+  for (const id of ['toasts', 'chart-tip']) {
+    const el = document.getElementById(id);
+    if (el && el.parentElement !== host) host.append(el);
+  }
+});
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('.fs-btn');
+  if (!b) return;
+  const el = b.classList.contains('fs-page') ? document.getElementById('main') : b.parentElement;
+  if (document.fullscreenElement === el) document.exitFullscreen();
+  else el.requestFullscreen?.().catch(() => {});
+});
+
+// Trang vừa một màn hình: khối dữ liệu chính (bảng, danh sách…) giãn lấp phần còn lại và cuộn bên trong (style.css .fill)
+const FILL = '.table-wrap, .err-groups, section.locs, section.projects, .empty-state, article.digest, section.fill-me, #main > section.panel:last-child';
+function markFill(main) {
+  if (!main || main.querySelector(':scope > .fill')) return;
+  (main.querySelector(':scope > .fill-me') ?? [...main.children].filter((e) => e.matches(FILL)).at(-1))?.classList.add('fill');
 }
 
 if (isExport() && !location.hash) location.hash = `#/run/${encodeURIComponent(globalThis.__E2ED_EXPORT__.runId)}`;
@@ -397,6 +498,18 @@ new MutationObserver((ms) => {
   if (ms.every((m) => m.target.closest?.('#chart-tip, #run-pill'))) return;
   enhance(document.body);
 }).observe(document.body, { childList: true, subtree: true });
+// Lỗi JS của giao diện → server ghi lại cho tự sửa lỗi (trang Cài đặt hệ thống). Mỗi lỗi gửi một lần / lần tải trang, tối đa 5.
+const sentErrors = new Set();
+function reportUiError(err, fallback) {
+  if (isExport()) return;
+  const message = String(err?.message ?? fallback ?? err ?? '').slice(0, 1000);
+  // "401: …" / "500: …" là lỗi HTTP: server đã ghi phía nó, mất kết nối thì không phải lỗi code
+  if (!message || /^\d{3}: /.test(message) || /Failed to fetch|NetworkError|Load failed/.test(message) || sentErrors.has(message) || sentErrors.size >= 5) return;
+  sentErrors.add(message);
+  postJson('/api/app-error', { message, stack: String(err?.stack ?? '').slice(0, 3000), route: location.hash.split('?')[0] }).catch(() => {});
+}
+window.addEventListener('error', (e) => reportUiError(e.error, e.message));
+window.addEventListener('unhandledrejection', (e) => reportUiError(e.reason));
 shell();
 footer();
 watchLive();

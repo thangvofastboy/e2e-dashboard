@@ -1,7 +1,7 @@
 // e2e-dashboard reporter. Self-contained: imports only node:* so it can be copied into any e2e project.
 // Exported archive() is also used by the e2e-dashboard plugin (hook + server).
-import { mkdir, readFile, writeFile, copyFile, rename, rm, readdir, stat } from 'node:fs/promises';
-import { readFileSync, existsSync, realpathSync, lstatSync } from 'node:fs';
+import { mkdir, readFile, writeFile, copyFile, rename, rm, rmdir, readdir, stat } from 'node:fs/promises';
+import { readFileSync, readdirSync, existsSync, realpathSync, lstatSync } from 'node:fs';
 import { join, dirname, basename, resolve, relative, sep, isAbsolute } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -40,6 +40,7 @@ export function summarize(report, { source, rerunOf = null, git = null }) {
     startedAt: run.startedAt,
     finishedAt,
     durationMs: finishedAt ? Date.parse(finishedAt) - Date.parse(run.startedAt) : null,
+    browser: /^(chromium|firefox|webkit)$/.test(process.env.E2E_BROWSER ?? '') ? process.env.E2E_BROWSER : null, // run do dashboard chạy với trình duyệt đã chọn
     status: run.status,
     exitCode: run.exitCode ?? null,
     kind: run.explore ? 'explore' : 'run',
@@ -67,6 +68,79 @@ export const RESULT_ID = /^[0-9a-f]{64}$/i;
 
 export function runDirName(report) {
   return `${String(report.run.startedAt).replace(/[^0-9A-Za-z]/g, '-')}_${report.run.id}`;
+}
+
+// Bố cục run (v0.8.8): runs/YYYY/MM/DD/<HH-MM-SS-mmmZ>_<runId>/. Trước đó: runs/<YYYY-MM-DDTHH-MM-SS-mmmZ>_<runId>/
+// (vẫn đọc được; `/e2e-dashboard doctor` chuyển sang bố cục mới). Đường dẫn trả về luôn dùng '/'.
+const LEGACY_RUN = /^(\d{4})-(\d{2})-(\d{2})T([\w-]+_[0-9a-f-]{8,})$/i;
+export const isLegacyRunName = (name) => LEGACY_RUN.test(name);
+export function nestedFromLegacy(name) {
+  const m = LEGACY_RUN.exec(name);
+  return m ? `${m[1]}/${m[2]}/${m[3]}/${m[4]}` : null;
+}
+export function runRelPath(report) {
+  return nestedFromLegacy(runDirName(report)) ?? runDirName(report);
+}
+// khoá sắp xếp chung cho hai bố cục: '2026/10/12/13-17-13-716Z_id' → '2026-10-12T13-17-13-716Z_id'
+export const runSortKey = (rel) => rel.replace(/^(\d{4})\/(\d{2})\/(\d{2})\//, '$1-$2-$3T');
+export const runIdOf = (rel) => rel.slice(rel.lastIndexOf('_') + 1);
+
+// mọi thư mục run (cả hai bố cục), mới nhất trước; bỏ symlink và thư mục tạm .tmp-*
+export async function listRunDirs(runsDir, { sort = true } = {}) {
+  const out = [];
+  const dirs = async (p) => (await readdir(p, { withFileTypes: true }).catch(() => [])).filter((e) => e.isDirectory() && !e.name.startsWith('.')).map((e) => e.name);
+  for (const top of await dirs(runsDir)) {
+    if (!/^\d{4}$/.test(top)) {
+      out.push(top); // bố cục cũ: mọi thư mục ở cấp đầu không phải năm là một run
+      continue;
+    }
+    for (const mo of (await dirs(join(runsDir, top))).filter((x) => /^\d{2}$/.test(x))) {
+      for (const d of (await dirs(join(runsDir, top, mo))).filter((x) => /^\d{2}$/.test(x))) {
+        for (const r of await dirs(join(runsDir, top, mo, d))) out.push(`${top}/${mo}/${d}/${r}`);
+      }
+    }
+  }
+  if (!sort) return out;
+  const key = new Map(out.map((x) => [x, runSortKey(x)])); // khoá tính một lần, so sánh chuỗi thường (nhanh hơn localeCompare)
+  return out.sort((a, b) => (key.get(a) < key.get(b) ? 1 : key.get(a) > key.get(b) ? -1 : 0));
+}
+
+// Bố cục .e2e-dashboard (v0.8.8): state/ dữ liệu lâu dài, runtime/ file tạm của server, cache/ chỉ mục (dựng lại được).
+// config.json và server.json ở gốc (người dùng sửa tay / reporter bản cũ trong project tìm server qua đó).
+export const STATE_FILES = new Set(['settings.json', 'triage.json', 'alerts.json', 'selfheal.json', 'events.json', 'coverage-ignore.json', 'ci-sync.json', 'quarantine.json', 'issues.json', 'longterm']);
+export const RUNTIME_FILES = new Set(['live.json', 'server.log', 'selfheal-crash.jsonl']);
+export function dataPath(root, rel) {
+  const top = rel.split('/')[0];
+  return join(root, DATA_DIR, ...(STATE_FILES.has(top) ? ['state'] : RUNTIME_FILES.has(top) ? ['runtime'] : []), rel);
+}
+// chưa chạy `/e2e-dashboard doctor`: file vẫn ở gốc .e2e-dashboard
+export const legacyDataPath = (root, rel) => join(root, DATA_DIR, rel);
+
+// bản đồng bộ (statusline, CLI): cùng quy tắc với listRunDirs
+export function listRunDirsSync(runsDir) {
+  const dirs = (p) => {
+    try {
+      return readdirSync(p, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith('.')).map((e) => e.name);
+    } catch {
+      return [];
+    }
+  };
+  const out = [];
+  for (const top of dirs(runsDir)) {
+    if (!/^\d{4}$/.test(top)) out.push(top);
+    else for (const mo of dirs(join(runsDir, top)).filter((x) => /^\d{2}$/.test(x))) for (const d of dirs(join(runsDir, top, mo)).filter((x) => /^\d{2}$/.test(x))) for (const r of dirs(join(runsDir, top, mo, d))) out.push(`${top}/${mo}/${d}/${r}`);
+  }
+  return out.sort((a, b) => runSortKey(b).localeCompare(runSortKey(a)));
+}
+
+// sau khi xoá run: bỏ thư mục ngày / tháng / năm đã rỗng
+export async function pruneEmptyParents(runsDir, rel) {
+  const parts = rel.split('/');
+  for (let i = parts.length - 1; i > 0; i--) {
+    const dir = join(runsDir, ...parts.slice(0, i));
+    if ((await readdir(dir).catch(() => ['x'])).length) return;
+    await rmdir(dir).catch(() => {}); // rmdir: chỉ xoá được thư mục rỗng
+  }
 }
 
 export function safeJoin(root, rel) {
@@ -216,8 +290,8 @@ export async function archive(projectRoot, { source, rerunOf = null, report, rep
   const runsDir = join(projectRoot, DATA_DIR, 'runs');
   if (!dataDir || isLink(runsDir)) return { status: 'skipped', reason: 'unsafe-path' };
   await mkdir(runsDir, { recursive: true });
-  const name = runDirName(report);
-  const existing = (await readdir(runsDir)).find((d) => d.endsWith(`_${report.run.id}`));
+  const name = runRelPath(report);
+  const existing = (await listRunDirs(runsDir)).find((d) => d.endsWith(`_${report.run.id}`));
   if (existing) return { status: 'exists', runDir: join(runsDir, existing) };
 
   const artRoot = resolve(projectRoot, artifactsRoot ?? join(output, 'results'));
@@ -246,10 +320,22 @@ export async function archive(projectRoot, { source, rerunOf = null, report, rep
     aborted();
     const meta = { ...summarize(report, { source, rerunOf, git: report.run.vcs ? null : gitInfo(projectRoot) }), traces: traceMeta };
     await writeFile(join(tmp, 'meta.json'), JSON.stringify(meta, null, 2));
-    await rename(tmp, final);
+    // runs/YYYY/MM/DD: không cấp nào được là symlink (repo lạ có thể commit sẵn runs/2026 -> ~/)
+    const segs = name.split('/').slice(0, -1);
+    const unsafe = () => Object.assign(new Error('unsafe run path'), { code: 'E2ED_UNSAFE' });
+    for (let i = 1; i <= segs.length; i++) if (isLink(join(runsDir, ...segs.slice(0, i)))) throw unsafe();
+    const parent = dirname(final);
+    await mkdir(parent, { recursive: true });
+    if (!realInside(runsDir, parent) && parent !== runsDir) throw unsafe();
+    await rename(tmp, final).catch(async (e) => {
+      if (e.code !== 'ENOENT') throw e;
+      await mkdir(parent, { recursive: true }); // retention vừa dọn thư mục ngày rỗng: tạo lại, thử một lần nữa
+      await rename(tmp, final);
+    });
   } catch (e) {
     await rm(tmp, { recursive: true, force: true });
     if (e.code === 'E2ED_ABORTED') return { status: 'skipped', reason: 'aborted' };
+    if (e.code === 'E2ED_UNSAFE') return { status: 'skipped', reason: 'unsafe-path' };
     if (e.code === 'ENOTEMPTY' || e.code === 'EEXIST') return { status: 'exists', runDir: final };
     throw e;
   }
@@ -277,7 +363,7 @@ export async function applyRetention(projectRoot, keep = 50) {
     const st = await stat(join(runsDir, n)).catch(() => null);
     if (st && Date.now() - st.mtimeMs > 600_000) await rm(join(runsDir, n), { recursive: true, force: true });
   }
-  const names = all.filter((n) => !n.startsWith('.')).sort().reverse(); // names start with ISO time
+  const names = await listRunDirs(runsDir); // cả bố cục cũ lẫn mới, mới nhất trước
   const removed = [];
   let kept = 0;
   let keptFailed = 0;
@@ -293,6 +379,7 @@ export async function applyRetention(projectRoot, keep = 50) {
       if (++keptFailed <= keepFailed) continue;
     } else if (++kept <= keep) continue;
     await rm(join(runsDir, n), { recursive: true, force: true });
+    await pruneEmptyParents(runsDir, n);
     removed.push(n);
   }
   return removed;

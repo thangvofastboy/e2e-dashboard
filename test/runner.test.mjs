@@ -50,7 +50,7 @@ test('runner spawns without a shell, streams output into live, refuses a second 
   assert.match(live.snapshot().output.at(-1).text, /shows the form/);
   calls[0].child.emit('close', 1);
   assert.equal(runner.state().running, false);
-  assert.deepEqual(finished, [{ exitCode: 1, rerunOf: 'r-old', before: null }]);
+  assert.deepEqual(finished, [{ exitCode: 1, rerunOf: 'r-old', before: null, browser: null }]);
   assert.equal(live.snapshot().status, 'finished');
 });
 

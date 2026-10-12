@@ -1,12 +1,12 @@
 import { getJson } from '../api.js';
 import { runCountPicker, analysisCount, pageHead, emptyBox } from '../analysis.js';
-import { escapeHtml, fmtRelative } from '../format.js';
+import { escapeHtml, fmtRelative, cap } from '../format.js';
 import { runHref } from '../router.js';
 import { icon } from '../icons.js';
 
 export function appErrorHtml(g) {
   const tone = g.level === 'error' ? 'bad' : 'warn';
-  return `<details class="err-group panel"><summary><span class="chip tone-${tone}">${icon(g.source === 'network' ? 'route' : 'terminal', { size: 12 })}${escapeHtml(g.source)}${g.httpStatus ? ` ${escapeHtml(g.httpStatus)}` : ''}</span>
+  return `<details class="err-group panel"><summary><span class="chip tone-${tone}">${icon(g.source === 'network' ? 'route' : 'terminal', { size: 12 })}${escapeHtml(cap(g.source))}${g.httpStatus ? ` ${escapeHtml(g.httpStatus)}` : ''}</span>
       <span class="eg-msg"><code>${escapeHtml(g.signature)}</code></span>
       <span class="eg-count muted">${escapeHtml(g.runs)} run · ${escapeHtml(g.tests.length)} test · ${escapeHtml(g.count)} lần${g.failing ? ` · <span class="tone-bad delta">${escapeHtml(g.failing)} trong test fail</span>` : ''}</span></summary>
     <div class="eg-body"><div class="muted small">Mẫu: ${escapeHtml(g.sample)}</div>

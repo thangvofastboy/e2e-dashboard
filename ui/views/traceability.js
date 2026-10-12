@@ -28,7 +28,7 @@ export async function renderTraceability(main) {
   main.innerHTML = `${head}<section class="kpis">
       ${card('Story', s.stories, 'info', s.listed ? `${s.covered}/${s.listed} story trong danh sách có test` : `${d.unlinkedTests}/${d.tests} test chưa gắn story`)}
       ${card('Đang pass', s.passing, 'good')}${card('Đang fail', s.failing, s.failing ? 'bad' : 'good')}${card('Flaky', s.flaky, s.flaky ? 'warn' : 'good')}
-      ${card('Chưa có test', s.noTests, s.noTests ? 'warn' : 'good', s.listed ? '' : 'cần danh sách story trong config')}</section>
+      ${card('Chưa có test', s.noTests, s.noTests ? 'warn' : 'good', s.listed ? '' : 'Cần danh sách story trong config')}</section>
     <table class="table"><thead><tr><th>Story</th><th>Trạng thái</th><th>Test</th></tr></thead><tbody>${d.rows.map(storyRowHtml).join('')}</tbody></table>
     <p class="muted small">${icon('info', { size: 12 })} ${escapeHtml(d.unlinkedTests)} test chưa gắn story nào.</p>`;
   picker.bind(main);

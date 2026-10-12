@@ -59,7 +59,7 @@ export function visualCompareHtml({ left, right, diff = null, leftLabel = 'Trư�
 const loadImage = (src) => new Promise((ok, fail) => {
   const img = new Image();
   img.onload = () => ok(img);
-  img.onerror = () => fail(new Error('không tải được ảnh'));
+  img.onerror = () => fail(new Error('Không tải được ảnh'));
   img.src = src;
 });
 

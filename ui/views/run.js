@@ -1,6 +1,6 @@
 import { getJson, postJson, fileUrl, isExport } from '../api.js';
 import { translate } from '../i18n.js';
-import { flattenResults, facets, applyFilters, matrix, isFailure, stepVideoOffset, selectionToRun } from '../model.js';
+import { flattenResults, facets, applyFilters, matrix, isFailure, isFailed, stepVideoOffset, selectionToRun } from '../model.js';
 import { openRunDialog } from './run-dialog.js';
 import { openAiPanel } from './ai-panel.js';
 import { openLinearDialog } from './linear.js';
@@ -14,7 +14,7 @@ import { setPageKeys } from '../shortcuts.js';
 import { toast } from '../toast.js';
 import { copyToClipboard } from '../analysis.js';
 import { icon } from '../icons.js';
-import { donutChart, legend } from '../charts.js';
+import { shareBar, legend } from '../charts.js';
 import { passRate } from '../health.js';
 
 // View state survives re-renders of the same run (filters, matrix toggle, chosen attempt, tab).
@@ -68,11 +68,13 @@ function header(meta, report) {
   const s = meta.summary ?? {};
   const tokens = (meta.tokens?.input ?? 0) + (meta.tokens?.output ?? 0);
   const replay = meta.replay?.total ? `<span class="m-replay">${icon('recycle', { size: 14 })}${Math.round((meta.replay.replayed / meta.replay.total) * 100)}% replay</span>` : '';
+  const browser = meta.browser ? `<span class="m-browser" title="Trình duyệt">${icon('eye', { size: 14 })}${escapeHtml(meta.browser)}</span>` : '';
   const git = meta.git?.commit ? `<span class="m-git">${icon('branch', { size: 14 })}${escapeHtml(meta.git.branch ?? '?')}@${escapeHtml(String(meta.git.commit).slice(0, 7))}${meta.git.dirty ? ' (dirty)' : ''}</span>` : '';
   const savedRun = ui.saved.find((e) => e.action === 'analyze-run');
   const actions = isExport()
     ? savedRun ? `<button class="btn-ai" data-ai="analyze-run">${icon('sparkles', { size: 15 })}Xem phân tích AI</button>` : ''
     : `<button class="btn-ai" data-ai="analyze-run">${icon('sparkles', { size: 15 })}Phân tích run</button>
+       <button class="btn-ai" data-ai="why-slow" title="So thời gian / token với lịch sử của chính từng test">${icon('timer', { size: 15 })}Vì sao chậm / tốn token?</button>
        ${ui.compareWith ? `<a class="button" href="${compareHref(ui.compareWith.runId, meta.runId)}" title="So với ${ui.compareWith.baseline ? 'baseline' : 'run trước'}">${icon('columns', { size: 15 })}So với ${ui.compareWith.baseline ? 'baseline' : 'run trước'}</a>` : ''}
        <button class="btn-pin${meta.pinned ? ' on' : ''}" data-flag="pin" aria-pressed="${Boolean(meta.pinned)}" title="${meta.pinned ? 'Bỏ ghim' : 'Ghim: không bao giờ bị xoá'}">${icon('pin', { size: 15 })}${meta.pinned ? 'Đã ghim' : 'Ghim'}</button>
        <details class="more"><summary class="button" aria-label="Thêm thao tác">${icon('list', { size: 15 })}Thêm</summary><div class="more-menu">
@@ -83,12 +85,15 @@ function header(meta, report) {
   const runErrors = (report.run.errors ?? []).map(errorBox).join('');
   const rate = passRate(meta);
   const keys = ['passed', 'flaky', 'failed', 'interrupted', 'skipped'];
+  const sum = ui.saved.find((e) => e.action === 'run-summary');
+  const aiSummary = sum ? `<section class="panel ai-summary"><h2>${icon('sparkles', { size: 15 })} Tóm tắt AI <span class="muted small">Tự tạo khi run xong</span></h2><div class="md">${renderMarkdown(sum.markdown)}</div></section>` : '';
   return `<nav class="crumbs" aria-label="Vị trí"><a href="#/runs">Runs</a> › <span>${escapeHtml(meta.runId.slice(-8))}</span></nav><div class="run-head">
       <div><h1>Run ${escapeHtml(meta.runId.slice(-8))} ${statusBadge(meta.status)}</h1>
-        <div class="run-meta"><span class="m-time">${icon('clock', { size: 14 })}${new Date(meta.startedAt).toLocaleString('vi-VN')} · ${fmtDuration(meta.durationMs)}</span><span class="m-tok">${icon('coins', { size: 14 })}${fmtTokens(tokens)} tok</span>${replay}${git}</div></div>
+        <div class="run-meta"><span class="m-time">${icon('clock', { size: 14 })}${new Date(meta.startedAt).toLocaleString('vi-VN')} · ${fmtDuration(meta.durationMs)}</span><span class="m-tok">${icon('coins', { size: 14 })}${fmtTokens(tokens)} tok</span>${replay}${browser}${git}</div></div>
       <div class="actions">${actions}</div>
     </div>
-    ${report.run.explore && !(report.run.results ?? []).length ? '' : `<section class="panel run-summary">${donutChart({ segments: keys.map((k) => ({ key: k, value: s[k] ?? 0 })), center: rate == null ? '—' : `${Math.round(rate * 100)}%`, ariaLabel: 'Kết quả run' })}
+    ${aiSummary}
+    ${report.run.explore && !(report.run.results ?? []).length ? '' : `<section class="panel run-summary">${shareBar({ segments: keys.map((k) => ({ key: k, value: s[k] ?? 0 })), center: rate == null ? '—' : `${Math.round(rate * 100)}%`, centerLabel: 'Pass rate', ariaLabel: 'Kết quả run' })}
       <div><div>${countChips(s)}</div>${legend(keys.filter((k) => s[k]))}</div></section>`}${runErrors}${explorePanel(report)}${anomaliesPanel()}${groupsPanel()}`;
 }
 
@@ -132,7 +137,8 @@ function filterBar(all) {
       .map((v) => `<option ${ui.filters[k]?.[0] === v ? 'selected' : ''}>${escapeHtml(v)}</option>`)
       .join('')}</select></label>`)
     .join('');
-  return `<div class="filters">${selects}<button class="btn-matrix" data-toggle="matrix" aria-pressed="${ui.matrix}">${icon('table', { size: 15 })}Ma trận</button></div>`;
+  const nFail = all.filter((r) => isFailed(r.status)).length;
+  return `<div class="filters"><button type="button" class="only-failed" data-only-failed aria-pressed="${Boolean(ui.onlyFailed)}"${nFail ? '' : ' disabled'}>${icon('x', { size: 14 })}Chỉ test fail <strong>${nFail}</strong></button>${selects}<button class="btn-matrix" data-toggle="matrix" aria-pressed="${ui.matrix}">${icon('table', { size: 15 })}Ma trận</button></div>`;
 }
 
 function testList(rows, runId, selectedId) {
@@ -192,7 +198,7 @@ function mediaTab(row, attempt, runId) {
     })
     .join('');
   const visual = screenshotTriplets(screenshots)
-    .map((t) => visualCompareHtml({ left: mediaSrc(runId, t.expected), right: mediaSrc(runId, t.actual), diff: t.diff ? mediaSrc(runId, t.diff) : null, leftLabel: 'Ảnh mẫu (expected)', rightLabel: 'Thực tế (actual)', title: `toHaveScreenshot · ${t.name}` }))
+    .map((t) => `${visualCompareHtml({ left: mediaSrc(runId, t.expected), right: mediaSrc(runId, t.actual), diff: t.diff ? mediaSrc(runId, t.diff) : null, leftLabel: 'Ảnh mẫu (expected)', rightLabel: 'Thực tế (actual)', title: `toHaveScreenshot · ${t.name}` })}${isExport() ? '' : `<p class="visual-ai"><button type="button" class="btn-ai" data-ai-visual="${escapeHtml(row.id)}" data-name="${escapeHtml(t.name)}">${icon('sparkles', { size: 14 })}AI giải thích khác biệt</button> <span class="muted small">Lỗi thật hay thay đổi có chủ đích</span></p>`}`)
     .join('');
   return `${visual}${vid}${shots ? `<div class="shots">${shots}</div>` : ''}`;
 }
@@ -243,7 +249,7 @@ function detail(row, meta, runId) {
 export async function renderRun(main, route) {
   const { runId, resultId } = route;
   if (ui.runId !== runId || !ui.data) {
-    Object.assign(ui, { runId, filters: Object.fromEntries(Object.entries(route.params ?? {}).filter(([k]) => FILTERS.some(([f]) => f === k)).map(([k, v]) => [k, [v]])), matrix: false, attempt: new Map(), tab: 'media', selected: new Set(), saved: [] });
+    Object.assign(ui, { runId, onlyFailed: route.params?.failed === '1', filters: Object.fromEntries(Object.entries(route.params ?? {}).filter(([k]) => FILTERS.some(([f]) => f === k)).map(([k, v]) => [k, [v]])), matrix: false, attempt: new Map(), tab: 'media', selected: new Set(), saved: [] });
     // a newer renderRun (the viewer clicked another run) owns `ui` now: a slow response must not land in it
     const stale = () => ui.runId !== runId || !main.isConnected;
     const data = await getJson(`/api/runs/${encodeURIComponent(runId)}`);
@@ -274,7 +280,7 @@ export async function renderRun(main, route) {
   }
   const { meta, report } = ui.data;
   const all = flattenResults(report);
-  const rows = applyFilters(all, ui.filters);
+  const rows = applyFilters(all, ui.filters).filter((r) => !ui.onlyFailed || isFailed(r.status));
   const selected = all.find((r) => r.id === resultId) ?? rows.find((r) => isFailure(r.status)) ?? rows[0];
   if (ui.tab === 'trace' && !meta.traces?.[selected?.id]) ui.tab = 'media';
   const exploreOnly = report.run.explore && !all.length;
@@ -288,9 +294,14 @@ export async function renderRun(main, route) {
   main.querySelectorAll('[data-filter]').forEach((el) =>
     el.addEventListener('change', () => {
       ui.filters[el.dataset.filter] = el.value ? [el.value] : [];
-      replaceParams(Object.fromEntries(Object.entries(ui.filters).map(([k, v]) => [k, v[0]])));
+      replaceParams({ ...Object.fromEntries(Object.entries(ui.filters).map(([k, v]) => [k, v[0]])), failed: ui.onlyFailed ? '1' : undefined });
       rerender();
     }));
+  main.querySelector('[data-only-failed]')?.addEventListener('click', () => {
+    ui.onlyFailed = !ui.onlyFailed;
+    replaceParams({ ...Object.fromEntries(Object.entries(ui.filters).map(([k, v]) => [k, v[0]])), failed: ui.onlyFailed ? '1' : undefined });
+    rerender();
+  });
   main.querySelector('[data-toggle="matrix"]')?.addEventListener('click', () => {
     ui.matrix = !ui.matrix;
     rerender();
@@ -337,9 +348,9 @@ export async function renderRun(main, route) {
     el.addEventListener('click', () => {
       const action = el.dataset.ai;
       const resultId = el.dataset.result ?? null;
-      const saved = ui.saved.find((e) => e.action === action && (action === 'analyze-run' || e.resultId === resultId));
+      const saved = ui.saved.find((e) => e.action === action && (action === 'analyze-run' || action === 'why-slow' || e.resultId === resultId));
       const row = all.find((r) => r.id === resultId);
-      openAiPanel({ action, runId, resultId, saved, title: action === 'analyze-run' ? 'Phân tích run' : `Phân tích lỗi · ${row?.title ?? ''}` });
+      openAiPanel({ action, runId, resultId, saved, title: action === 'analyze-run' ? 'Phân tích run' : action === 'why-slow' ? 'Vì sao chậm / tốn token' : `Phân tích lỗi · ${row?.title ?? ''}` });
     }));
   main.querySelectorAll('[data-fix]').forEach((el) =>
     el.addEventListener('click', async () => {
@@ -390,4 +401,13 @@ export async function renderRun(main, route) {
     // leaving the run page drops cached data so the next visit refetches
     if (!location.hash.startsWith(`#/run/${encodeURIComponent(runId)}`)) ui.data = null;
   };
+}
+
+// "AI giải thích khác biệt" ở khối so sánh ảnh: một listener cho mọi lần vẽ lại tab ảnh
+if (typeof document !== 'undefined') {
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest?.('[data-ai-visual]');
+    if (!b || !ui.runId) return;
+    openAiPanel({ action: 'explain-visual', runId: ui.runId, resultId: b.dataset.aiVisual, title: `Khác biệt ảnh · ${b.dataset.name}`, extra: { name: b.dataset.name } });
+  });
 }

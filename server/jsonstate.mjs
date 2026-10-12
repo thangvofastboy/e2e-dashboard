@@ -4,19 +4,30 @@
 import { readFile, writeFile, rename, rm, mkdir, lstat } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { join, dirname } from 'node:path';
-import { DATA_DIR, isLink, ensureDataDir } from '../reporter/e2e-dashboard.reporter.mjs';
+import { DATA_DIR, isLink, ensureDataDir, dataPath, legacyDataPath } from '../reporter/e2e-dashboard.reporter.mjs';
 
-export const statePath = (root, rel) => join(root, DATA_DIR, rel);
+// state/… hoặc runtime/… theo bố cục mới (dataPath); đọc thì rơi về vị trí cũ nếu chưa chạy doctor
+export const statePath = (root, rel) => dataPath(root, rel);
 
 export async function readState(root, rel, fallback) {
-  const p = statePath(root, rel);
-  if (isLink(join(root, DATA_DIR)) || isLink(dirname(p)) || isLink(p)) return fallback;
-  try {
-    const v = JSON.parse(await readFile(p, 'utf8'));
-    return v ?? fallback;
-  } catch {
-    return fallback;
+  for (const p of [statePath(root, rel), legacyDataPath(root, rel)]) {
+    const data = join(root, DATA_DIR);
+    // mọi thư mục từ .e2e-dashboard tới file (không xét project root: nó có thể là symlink hợp lệ)
+    for (let d = dirname(p); d.startsWith(data); d = dirname(d)) if (isLink(d)) return fallback;
+    if (isLink(p)) return fallback;
+    let text;
+    try {
+      text = await readFile(p, 'utf8');
+    } catch {
+      continue; // chưa có ở đây: thử vị trí cũ
+    }
+    try {
+      return JSON.parse(text) ?? fallback;
+    } catch {
+      return fallback;
+    }
   }
+  return fallback;
 }
 
 export const writeState = (root, rel, value) => writeText(root, rel, JSON.stringify(value));
@@ -25,7 +36,7 @@ export async function writeText(root, rel, text) {
   if (!(await ensureDataDir(root))) throw new Error('unsafe data dir');
   const p = statePath(root, rel);
   const dir = dirname(p);
-  if ((await lstat(dir).catch(() => null))?.isSymbolicLink()) throw new Error(`Từ chối ghi qua symlink: ${dir}`);
+  for (const d of [dirname(dir), dir]) if ((await lstat(d).catch(() => null))?.isSymbolicLink()) throw new Error(`Từ chối ghi qua symlink: ${d}`);
   await mkdir(dir, { recursive: true });
   const tmp = `${p}.tmp-${randomBytes(6).toString('hex')}`;
   await writeFile(tmp, text, { flag: 'wx' });
