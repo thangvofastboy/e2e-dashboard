@@ -196,7 +196,7 @@ ${stepsText(a) || '(không có)'}
 Nhiệm vụ: nhiều test fail trong một run. Gom các test có CÙNG nguyên nhân gốc để QC chỉ tạo một issue cho mỗi nhóm. Đọc code test (Read / Grep) khi cần để kết luận. Chỉ gom khi có bằng chứng; không chắc thì để riêng và nói rõ.
 
 <${fence}>
-${(evidence ?? []).join('\n') || '(không có)'}
+${(evidence ?? []).map((l) => clip(l)).join('\n') || '(không có)'}
 </${fence}>
 
 Trả lời theo khung:

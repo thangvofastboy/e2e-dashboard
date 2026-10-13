@@ -2,6 +2,9 @@
 // comment), nhưng mỗi lệnh là một lần chạy `claude -p` chỉ được dùng công cụ của server Linear MCP.
 // Có API key thì key luôn được ưu tiên (resolveLinear). Dữ liệu từ app / test đi qua khối không tin cậy.
 import { execFile } from 'node:child_process';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createAi } from './ai.mjs';
 import { createLinear, linearConfig } from './linear.mjs';
@@ -47,7 +50,11 @@ export function detectMcpLinear({ exec = execFile, now = Date.now(), force = fal
 export const resetMcpDetect = () => { cache = null; inflight = null; };
 
 // Claude chạy không có công cụ dựng sẵn, chỉ công cụ của server Linear; mọi thứ khác bị từ chối (dontAsk).
-export const mcpArgs = (prefixes) => ['-p', '--output-format', 'stream-json', '--verbose', '--tools', '', '--allowedTools', prefixes.join(','), '--permission-mode', 'dontAsk', '--disable-slash-commands'];
+// Chỉ đọc cấu hình của người dùng (--setting-sources user) và chạy trong thư mục rỗng (mcpCwd): một repo bị clone không
+// thể cài sẵn .mcp.json, settings hay hook để chạy mã khi dashboard gọi Claude.
+export const mcpArgs = (prefixes) => ['-p', '--output-format', 'stream-json', '--verbose', '--setting-sources', 'user', '--tools', '', '--allowedTools', prefixes.join(','), '--permission-mode', 'dontAsk', '--disable-slash-commands'];
+let cwd = null;
+const mcpCwd = () => (cwd ??= mkdtempSync(join(tmpdir(), 'e2ed-mcp-')));
 
 const issueOf = (x) => {
   if (!x || typeof x !== 'object' || !ID.test(String(x.identifier ?? ''))) return null;
@@ -108,6 +115,8 @@ ${data.length ? `<${fence}>\n${data.map(noFence).join('\n')}\n</${fence}>\n\n` :
       const out = await ask(`Tạo MỘT issue mới${team ? ` trong team ${team}` : ''} với đúng tiêu đề và mô tả (Markdown) trong khối dữ liệu, chép nguyên văn từng ký tự, không thêm bớt. Trả về {"issues":[issue vừa tạo]} theo dạng ${SHAPE}.`, { data: [`TIÊU ĐỀ: ${clip(draft.title, 300)}`, 'MÔ TẢ:', clip(draft.description, 20_000)] });
       const issue = issueOf(out.issues?.[0]);
       if (!issue) throw new Error('Linear MCP: không thấy issue vừa tạo trong kết quả.');
+      // Claude phải đã tạo đúng issue được yêu cầu: tiêu đề khác nghĩa là nó làm việc khác (ví dụ bị dữ liệu từ app dẫn đi)
+      if (issue.title.trim() !== clip(draft.title, 300).trim()) throw new Error(`Linear MCP: issue ${issue.identifier} có tiêu đề khác với yêu cầu, kiểm tra trên Linear.`);
       return issue;
     },
     async comment(issueId, body) {
@@ -123,7 +132,7 @@ ${data.length ? `<${fence}>\n${data.map(noFence).join('\n')}\n</${fence}>\n\n` :
 const aiByPrefix = new Map();
 const mcpAiFor = (projectRoot, prefixes, settings) => {
   const k = `${projectRoot}|${prefixes.join(',')}`;
-  if (!aiByPrefix.has(k)) aiByPrefix.set(k, createAi({ projectRoot, args: mcpArgs(prefixes), settings, timeoutMs: 180_000 }));
+  if (!aiByPrefix.has(k)) aiByPrefix.set(k, createAi({ projectRoot: mcpCwd(), args: mcpArgs(prefixes), settings, timeoutMs: 180_000 }));
   return aiByPrefix.get(k);
 };
 
