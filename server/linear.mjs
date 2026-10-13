@@ -3,8 +3,8 @@
 // we look the fingerprint up in Linear, so the same failure in ten runs is one issue, not ten.
 // With LINEAR_API_KEY the server talks to Linear itself; without it the dashboard hands Claude a
 // prompt for its Linear MCP server instead.
-import { createHash, randomBytes } from 'node:crypto';
-import { readFile, writeFile, rename } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DATA_DIR, isLink, resultAttempts } from '../reporter/e2e-dashboard.reporter.mjs';
 import { errorSignature, resultError, testKey } from './analytics.mjs';

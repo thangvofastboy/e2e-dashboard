@@ -16,7 +16,7 @@ import { resetPreview, resetAll } from './reset.mjs';
 import { scanJunk, cleanJunk } from './junk.mjs';
 import { flakyTests, compareRuns, groupErrors, costStats, slowSteps, routeMap, branchStats, compareBranches, locatorCandidates, traceToCode, testKey, resultError } from './analytics.mjs';
 import { projectSummaries, forgetProject } from './projects.mjs';
-import { acceptDescription, acceptTitle, placeImages, issueDraft, claudePrompt, linearConfig, createLinear, readIssueLinks, saveIssueLink, parseIssueRef, removeIssueLink, fingerprint as issueFingerprint } from './linear.mjs';
+import { acceptDescription, acceptTitle, placeImages, issueDraft, claudePrompt, linearConfig, readIssueLinks, saveIssueLink, parseIssueRef, removeIssueLink, fingerprint as issueFingerprint } from './linear.mjs';
 import { healthScore } from '../ui/health.js';
 import { search, anomalies, lintAgentSteps, agentScan, LINT_RULES, modelStats, bisectPlan, flakyEvidence, testDetail, appErrors, setupTiming } from './insights.mjs';
 import { changedFiles, impactedTests } from './impact.mjs';
@@ -532,7 +532,8 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       }
       if (p === '/api/lint') {
         const history = await loadHistory(projectRoot, runCount(url));
-        return send(res, 200, { findings: lintAgentSteps(history), rules: LINT_RULES, scan: agentScan(history) });
+        const findings = lintAgentSteps(history);
+        return send(res, 200, { findings, rules: LINT_RULES, scan: findings.length ? null : agentScan(history) }); // scan chỉ để giải thích trang trống
       }
       if (p === '/api/models') return send(res, 200, modelStats(await loadHistory(projectRoot, runCount(url)), { budget: readConfig(projectRoot).budget }));
       if (p === '/api/bisect') {
@@ -557,7 +558,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
           const entry = c.entry ? await readCacheEntry(projectRoot, c.entry, cfg) : null;
           out.push({ ...c, suggestion: entry ? traceToCode(entry) : null });
         }
-        return send(res, 200, { candidates: out, scan: agentScan(history) });
+        return send(res, 200, { candidates: out, scan: out.length ? null : agentScan(history) });
       }
       if (p === '/api/linear') {
         const lin = await linearBackend();

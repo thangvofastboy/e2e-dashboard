@@ -4,7 +4,7 @@
 // network, and prints nothing outside an e2e project. Usage in settings.json:
 //   "statusLine": { "type": "command", "command": "node ~/.e2e-dashboard/statusline.mjs" }
 // To keep an existing status line, pipe the same stdin to both and join the outputs.
-import { readFileSync, readdirSync, existsSync, lstatSync } from 'node:fs';
+import { readFileSync, existsSync, lstatSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { listRunDirsSync } from '../reporter/e2e-dashboard.reporter.mjs';

@@ -9,7 +9,7 @@
 ![Node](https://img.shields.io/badge/Node-%E2%89%A5%2022-339933?style=for-the-badge&logo=node.js&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-16a34a?style=for-the-badge)
 ![Build](https://img.shields.io/badge/build-kh%C3%B4ng%20c%E1%BA%A7n-2563eb?style=for-the-badge)
-![Tests](https://img.shields.io/badge/tests-459%20passing-16a34a?style=for-the-badge&logo=checkmarx&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-460%20passing-16a34a?style=for-the-badge&logo=checkmarx&logoColor=white)
 ![AI](https://img.shields.io/badge/AI-claude%20--p-a855f7?style=for-the-badge&logo=anthropic&logoColor=white)
 ![Database](https://img.shields.io/badge/database-kh%C3%B4ng%20c%E1%BA%A7n-8b5cf6?style=for-the-badge)
 
