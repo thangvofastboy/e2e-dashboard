@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.11.0 — 2026-10-13
+
+- **Gửi Linear qua MCP của Claude CLI**: chưa có Linear API key thì dashboard tự tìm trùng, tạo issue và comment qua MCP Linear (cần đăng nhập một lần: chạy `claude`, gõ `/mcp`). Có API key thì luôn dùng key. Cài đặt hệ thống → Tích hợp cho biết đang dùng cách nào. Tự log bug cũng dùng được cách này.
+- **AI cho bug**: ở test fail có *Bước tái hiện* (viết cho người không biết code) và *Mức độ nghiêm trọng* (Critical / High / Medium / Low kèm lý do, để QC duyệt); ở Run detail có *Gom bug trùng* nhóm các test fail cùng nguyên nhân.
+- **Bảo mật**: MCP Linear chỉ đọc cấu hình người dùng và chạy trong thư mục rỗng (repo bị clone không cài được hook qua `.mcp.json` / settings); bằng chứng gom bug nằm trong khối dữ liệu không tin cậy; issue do Claude tạo phải đúng tiêu đề yêu cầu.
+- **Giao diện**: icon có màu theo ý nghĩa và mọi mục menu đều có màu; dropdown thống nhất ở mọi trang; mục đang chọn ở menu bên trái nổi rõ cả khi dark mode; mỗi trang có mô tả ngắn dưới tiêu đề; ô nhập trong hộp thoại Run rộng hơn, có dòng giải thích và giá trị mặc định; ô trong Cài đặt có mô tả.
+- **Lint và Gợi ý locator**: khi không có step `agent.*` nào, trang nói rõ đã quét bao nhiêu run và step, thay vì báo "không có cảnh báo". Mọi trang phân tích có nút *Phân tích lại*.
+- **Hiệu năng / dọn mã**: bỏ import thừa; chỉ quét step agent khi trang trống.
+
 ## v0.10.0 — 2026-10-13
 
 - **QC xác nhận** (trang mới, menu Theo dõi): hàng đợi *Chờ xác nhận* cho known bug mà run mới nhất đã pass (*Đã sửa* gỡ known bug sau khi xác nhận, *Chưa đúng* giữ lại và ẩn run đó cho tới khi có run pass mới hơn); **waiver có hạn** bỏ một test fail khỏi cổng chất lượng đến hết ngày đã chọn (bắt buộc lý do, tối đa 365 ngày); **nhật ký thay đổi** ghi mọi lần đổi ghi chú, known bug, waiver và xác nhận (500 dòng gần nhất).
