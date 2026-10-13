@@ -337,8 +337,8 @@ dialog#run-dialog::backdrop { background: rgba(15, 23, 42, 0.5); }
 .nav-group { margin: 10px 9px 2px; font-size: calc(11px * var(--fs)); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
 .nav nav a { min-height: 36px; padding: 5px 9px; }
 .ni { width: 26px; height: 26px; }
-.n-flaky { --hue: #f59e0b; } .n-errors { --hue: #dc2626; } .n-cost { --hue: #ca8a04; } .n-routes { --hue: #0ea5e9; }
-.n-branches { --hue: #8b5cf6; } .n-locators { --hue: #10b981; } .n-projects { --hue: #6366f1; } .n-digest { --hue: #ec4899; }
+.n-flaky { --hue: #f59e0b; } .n-errors { --hue: #b91c1c; } .n-cost { --hue: #ca8a04; } .n-routes { --hue: #0ea5e9; }
+.n-branches { --hue: #0369a1; } .n-locators { --hue: #10b981; } .n-projects { --hue: #6366f1; } .n-digest { --hue: #ec4899; }
 .page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
 .page-head h1 { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .page-head h1 .icon { color: var(--series-1); }
@@ -569,7 +569,7 @@ main h1:focus { outline: none; }
 .table.compact td { padding: 6px 10px; }
 .load-more { text-align: center; margin: 12px 0; }
 .lang-btn { font-weight: 700; font-size: calc(12px * var(--fs)); min-width: 34px; justify-content: center; }
-.n-coverage { --hue: #0d9488; } .n-environment { --hue: #7c3aed; } .n-report { --hue: #475569; }
+.n-coverage { --hue: #0d9488; } .n-environment { --hue: #6d28d9; } .n-report { --hue: #475569; }
 .whatsnew h2 { margin: 12px 0 4px; font-size: calc(15px * var(--fs)); } .whatsnew { max-height: 60vh; overflow: auto; }
 .vsync video { width: 100%; max-height: 340px; background: #000; border-radius: 6px; }
 @media (max-width: 900px) { .slo { grid-template-columns: 1fr; } }
@@ -582,7 +582,7 @@ main h1:focus { outline: none; }
 }
 
 /* M7: long-term tracking & reporting */
-.n-trends { --hue: #2563eb; } .n-triage { --hue: #dc2626; } .n-groups { --hue: #7c3aed; } .n-release { --hue: #059669; } .n-traceability { --hue: #0891b2; } .n-lifecycle { --hue: #d97706; }
+.n-trends { --hue: #2563eb; } .n-triage { --hue: #dc2626; } .n-groups { --hue: #7c3aed; } .n-release { --hue: #059669; } .n-traceability { --hue: #a16207; } .n-lifecycle { --hue: #d97706; }
 .marker line { stroke-width: 1.5; stroke-dasharray: 4 3; stroke: var(--mk); } .marker circle { fill: var(--mk); stroke: var(--surface); stroke-width: 1.5; }
 .mk-deploy { --mk: #2563eb; } .mk-release { --mk: #7c3aed; } .mk-incident { --mk: #dc2626; } .mk-env { --mk: #d97706; } .mk-note { --mk: #64748b; }
 .mk-chip { display: inline-flex; align-items: center; gap: 5px; font-size: calc(12px * var(--fs)); font-weight: 600; color: var(--text-secondary); margin-right: 10px; }
@@ -1122,3 +1122,6 @@ td > :where(button, a.button) + :where(button, a.button), p > :where(button, a.b
 .filters > label > select, .page-tools > label > select { flex: none; }
 .impact-form { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .impact-form label { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+/* menu: các mục chưa có màu (trước đây icon rơi về màu chữ mặc định) */
+.n-manual { --hue: #0284c7; } .n-verify { --hue: #16a34a; } .n-build { --hue: #4f46e5; } .n-quality { --hue: #0f766e; }
+.n-qc-templates { --hue: #c026d3; } .n-system { --hue: #52525b; } .n-feedback { --hue: #f97316; }
