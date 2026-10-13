@@ -18,7 +18,7 @@ import { flakyTests, compareRuns, groupErrors, costStats, slowSteps, routeMap, b
 import { projectSummaries, forgetProject } from './projects.mjs';
 import { acceptDescription, acceptTitle, placeImages, issueDraft, claudePrompt, linearConfig, createLinear, readIssueLinks, saveIssueLink, parseIssueRef, removeIssueLink, fingerprint as issueFingerprint } from './linear.mjs';
 import { healthScore } from '../ui/health.js';
-import { search, anomalies, lintAgentSteps, LINT_RULES, modelStats, bisectPlan, flakyEvidence, testDetail, appErrors, setupTiming } from './insights.mjs';
+import { search, anomalies, lintAgentSteps, agentScan, LINT_RULES, modelStats, bisectPlan, flakyEvidence, testDetail, appErrors, setupTiming } from './insights.mjs';
 import { changedFiles, impactedTests } from './impact.mjs';
 import { appRoutes, coverageGaps } from './coverage.mjs';
 import { scanSource } from './sourcescan.mjs';
@@ -526,7 +526,10 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         const runId = url.searchParams.get('runId');
         return send(res, 200, { anomalies: anomalies(await loadHistory(projectRoot, 60), { runId: runId && RUN_ID.test(runId) ? runId : null }) });
       }
-      if (p === '/api/lint') return send(res, 200, { findings: lintAgentSteps(await loadHistory(projectRoot, runCount(url))), rules: LINT_RULES });
+      if (p === '/api/lint') {
+        const history = await loadHistory(projectRoot, runCount(url));
+        return send(res, 200, { findings: lintAgentSteps(history), rules: LINT_RULES, scan: agentScan(history) });
+      }
       if (p === '/api/models') return send(res, 200, modelStats(await loadHistory(projectRoot, runCount(url)), { budget: readConfig(projectRoot).budget }));
       if (p === '/api/bisect') {
         const plan = bisectPlan(await loadHistory(projectRoot, 100), url.searchParams.get('runId'), url.searchParams.get('resultId'));
@@ -545,11 +548,12 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       if (p === '/api/locators') {
         const cfg = readConfig(projectRoot);
         const out = [];
-        for (const c of locatorCandidates(await loadHistory(projectRoot, runCount(url)))) {
+        const history = await loadHistory(projectRoot, runCount(url));
+        for (const c of locatorCandidates(history)) {
           const entry = c.entry ? await readCacheEntry(projectRoot, c.entry, cfg) : null;
           out.push({ ...c, suggestion: entry ? traceToCode(entry) : null });
         }
-        return send(res, 200, { candidates: out });
+        return send(res, 200, { candidates: out, scan: agentScan(history) });
       }
       if (p === '/api/linear') {
         const { apiKey, team } = await linearConfig(readConfig(projectRoot), env);

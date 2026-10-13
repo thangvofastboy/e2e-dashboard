@@ -1,5 +1,5 @@
 import { getJson } from '../api.js';
-import { runCountPicker, analysisCount, pageHead, emptyBox } from '../analysis.js';
+import { runCountPicker, analysisCount, pageHead, emptyBox, noAgentBox } from '../analysis.js';
 import { escapeHtml } from '../format.js';
 import { runHref } from '../router.js';
 
@@ -14,8 +14,8 @@ export function lintRowHtml(f, rules) {
 
 export async function renderLint(main) {
   const picker = runCountPicker(() => renderLint(main));
-  const { findings, rules } = await getJson(`/api/lint?n=${analysisCount()}`);
+  const { findings, rules, scan } = await getJson(`/api/lint?n=${analysisCount()}`);
   const head = pageHead('Lint câu lệnh agent', 'lint', 'Kiểm tra các bước <code>agent.*</code>: thiếu bước kiểm tra (cache không được ghi), gộp nhiều mục tiêu, quá dài, mơ hồ, đọc giá trị trên màn hình, tốn nhiều model call.', picker.html);
-  main.innerHTML = findings.length ? `${head}<section class="locs">${findings.map((f) => lintRowHtml(f, rules)).join('')}</section>` : `${head}${emptyBox('Không có cảnh báo', 'Các câu lệnh agent trong các run đã chọn đều ổn.')}`;
+  main.innerHTML = findings.length ? `${head}<section class="locs">${findings.map((f) => lintRowHtml(f, rules)).join('')}</section>` : `${head}${scan.agentSteps ? emptyBox('Không có cảnh báo', `Đã kiểm tra ${scan.agentSteps} step agent trong ${scan.runs} run: đều ổn.`) : noAgentBox(scan, 'kiểm tra')}`;
   picker.bind(main);
 }

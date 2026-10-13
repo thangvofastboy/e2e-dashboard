@@ -4,7 +4,7 @@ import { icon, ICON_SPRITE, ICON_NAMES } from '../ui/icons.js';
 import { statusBadge, countChips, STATUS } from '../ui/format.js';
 
 test('icon renders a sprite reference, decorative by default, labelled when asked', () => {
-  assert.match(icon('check'), /^<svg class="icon" width="16" height="16" aria-hidden="true"><use href="#i-check"\/><\/svg>$/);
+  assert.match(icon('check'), /^<svg class="icon ic-check" width="16" height="16" aria-hidden="true"><use href="#i-check"\/><\/svg>$/);
   assert.match(icon('x', { size: 12, label: 'thất bại <b>' }), /role="img" aria-label="thất bại &lt;b&gt;"/);
   assert.throws(() => icon('nope'), /unknown icon/);
 });

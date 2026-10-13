@@ -4,6 +4,9 @@ import { escapeHtml } from '../format.js';
 import { icon } from '../icons.js';
 
 const MODES = ['off', 'on', 'retain-on-failure', 'on-first-retry', 'on-all-retries'];
+// một ô nhập: nhãn, ô, và dòng giải thích kèm giá trị mặc định
+const fld = (label, control, hint) => `<label class="fld"><span class="fld-l">${label}</span>${control}<small class="fld-hint">${hint}</small></label>`;
+const sw = (name, label, hint, checked = false) => `<label class="fld fld-sw"><span class="pill switch"><input type="checkbox" name="${name}"${checked ? ' checked' : ''}><span class="track"></span><span>${label}</span></span><small class="fld-hint">${hint}</small></label>`;
 const csv = (v) => String(v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
 
 // Modal to start an e2e run (spec §4.5): tests are file:line, plus targets/agents and run flags.
@@ -20,31 +23,29 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
     ${tests.length ? `<details><summary>Danh sách test</summary><ul class="mono-list">${tests.map((t) => `<li><code>${escapeHtml(t)}</code></li>`).join('')}</ul></details>` : ''}
     ${allTargets.length ? `<fieldset><legend>Target</legend>${box('target', allTargets, targets)}</fieldset>` : ''}
     ${allAgents.length > 1 ? `<fieldset><legend>Agent</legend>${box('agent', allAgents, agents)}</fieldset>` : ''}
-    <div class="row">
-      <label>Retries <input type="number" name="retries" min="0" max="10" placeholder="theo config"></label>
-      <label>Repeat each <input type="number" name="repeatEach" min="1" max="50" placeholder="1"${Number.isInteger(repeatEach) ? ` value="${repeatEach}"` : ''}></label>
-      <label title="Trình duyệt chạy lần này (mặc định đặt ở Tự động & lưu trữ)">Trình duyệt <select name="browser" aria-label="Trình duyệt">${['chromium', 'firefox', 'webkit'].map((b) => `<option value="${b}">${b === 'webkit' ? 'WebKit' : b.charAt(0).toUpperCase() + b.slice(1)}</option>`).join('')}</select></label>
-      <label title="Số test chạy song song. Để trống = tự động theo máy">Workers <input type="number" name="workers" min="1" max="1024" placeholder="tự động"></label>
-      <label class="pill switch"><input type="checkbox" name="noCache"><span class="track"></span><span>--no-cache</span></label>
+    <div class="run-grid">
+      ${fld('Retries', '<input type="number" name="retries" min="0" max="10" placeholder="theo config">', 'Số lần chạy lại test bị fail. Mặc định: theo e2e.config.')}
+      ${fld('Repeat each', `<input type="number" name="repeatEach" min="1" max="50" placeholder="1"${Number.isInteger(repeatEach) ? ` value="${repeatEach}"` : ''}>`, 'Chạy mỗi test N lần liên tiếp để dò flaky. Mặc định: 1.')}
+      ${fld('Trình duyệt', `<select name="browser" aria-label="Trình duyệt">${['chromium', 'firefox', 'webkit'].map((b) => `<option value="${b}">${b === 'webkit' ? 'WebKit' : b.charAt(0).toUpperCase() + b.slice(1)}</option>`).join('')}</select>`, 'Trình duyệt chạy lần này. Mặc định: giá trị đặt ở Tự động & lưu trữ (Chromium).')}
+      ${fld('Workers', '<input type="number" name="workers" min="1" max="1024" placeholder="tự động">', 'Số test chạy song song. Để trống = tự động theo số lõi CPU.')}
     </div>
+    ${sw('noCache', '--no-cache', 'Bỏ qua replay cache: mọi step agent gọi model thật (chậm, tốn token). Mặc định: tắt.')}
     <details class="run-adv"${preset.updateSnapshots ? ' open' : ''}><summary>Nâng cao</summary>
-      <div class="row">
-        <label>Tag <input type="text" name="tag" placeholder="smoke,api"></label>
-        <label>Tag mode <select name="tagMode"><option value="">mặc định</option><option value="any">any</option><option value="all">all</option></select></label>
-        <label>Bỏ tag <input type="text" name="excludeTag" placeholder="slow"></label>
-        <label>Grep <input type="text" name="grep" placeholder="login"></label>
+      <div class="run-grid">
+        ${fld('Tag', '<input type="text" name="tag" placeholder="smoke,api">', 'Chỉ chạy test có tag này, cách nhau bằng dấu phẩy. Mặc định: chạy tất cả.')}
+        ${fld('Tag mode', '<select name="tagMode"><option value="">mặc định</option><option value="any">any</option><option value="all">all</option></select>', 'any = khớp một trong các tag; all = khớp mọi tag. Mặc định: theo e2e.')}
+        ${fld('Bỏ tag', '<input type="text" name="excludeTag" placeholder="slow">', 'Bỏ qua test có tag này. Mặc định: không bỏ test nào.')}
+        ${fld('Grep', '<input type="text" name="grep" placeholder="login">', 'Chỉ chạy test có tên khớp biểu thức này. Mặc định: không lọc.')}
+        ${fld('Shard', '<input type="text" name="shard" placeholder="1/4" pattern="\\d+/\\d+">', 'Chia suite để chạy một phần: 1/4 là phần 1 trong 4. Mặc định: chạy toàn bộ.')}
+        ${fld('Max failures', '<input type="number" name="maxFailures" min="1" max="1000" placeholder="không giới hạn">', 'Dừng cả run sau N test fail. Mặc định: không giới hạn.')}
+        ${fld('Trace', `<select name="trace">${['', ...MODES].map((m) => `<option value="${m}">${m || 'theo config'}</option>`).join('')}</select>`, 'Khi nào ghi trace để debug. Mặc định: theo config.')}
+        ${fld('Video', `<select name="video">${['', ...MODES].map((m) => `<option value="${m}">${m || 'theo config'}</option>`).join('')}</select>`, 'Khi nào quay video. Mặc định: theo config.')}
       </div>
-      <div class="row">
-        <label>Shard <input type="text" name="shard" placeholder="1/4" pattern="\d+/\d+"></label>
-        <label>Max failures <input type="number" name="maxFailures" min="1" max="1000" placeholder="không giới hạn"></label>
-        <label>Trace <select name="trace">${['', ...MODES].map((m) => `<option value="${m}">${m || 'theo config'}</option>`).join('')}</select></label>
-        <label>Video <select name="video">${['', ...MODES].map((m) => `<option value="${m}">${m || 'theo config'}</option>`).join('')}</select></label>
-      </div>
-      <div class="row">
-        <label class="pill switch"><input type="checkbox" name="strictCache"><span class="track"></span><span>--strict-cache</span></label>
-        <label class="pill switch"><input type="checkbox" name="lastFailed"><span class="track"></span><span>--last-failed</span></label>
-        <label class="pill switch"><input type="checkbox" name="updateSnapshots"${preset.updateSnapshots ? ' checked' : ''}><span class="track"></span><span>-u (cập nhật snapshot)</span></label>
-        <label class="pill switch" title="Ghi ai-trace.json: từng lần gọi model của mỗi step"><input type="checkbox" name="aiTrace"><span class="track"></span><span>--ai-trace</span></label>
+      <div class="run-grid">
+        ${sw('strictCache', '--strict-cache', 'Cache nghiêm ngặt của e2e (dùng cho CI): không chấp nhận cache thiếu hoặc lệch. Mặc định: tắt.')}
+        ${sw('lastFailed', '--last-failed', 'Chỉ chạy lại các test fail ở lần chạy trước. Mặc định: tắt.')}
+        ${sw('updateSnapshots', '-u (cập nhật snapshot)', 'Ghi đè ảnh mẫu bằng ảnh hiện tại, xem git diff trước khi commit. Mặc định: tắt.', preset.updateSnapshots)}
+        ${sw('aiTrace', '--ai-trace', 'Ghi từng lần gọi model của mỗi step vào ai-trace.json (tab Model). Mặc định: tắt.')}
       </div>
     </details>
     <p class="small tone-warn" data-browser-note hidden></p>

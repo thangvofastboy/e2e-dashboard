@@ -110,6 +110,19 @@ export const LINT_RULES = {
   'budget-heavy': 'Step tốn nhiều model call: thường do câu lệnh mơ hồ hoặc màn hình thay đổi; xem lại hoặc chuyển thành locator.',
 };
 
+// What a step analysis had to work with: runs, steps and how many of them are agent steps (0 = nothing to analyse).
+export function agentScan(history) {
+  let all = 0;
+  let agent = 0;
+  let act = 0;
+  for (const { report } of history) for (const r of results(report)) for (const s of steps(report, r)) {
+    all++;
+    if (s.kind === 'agent') agent++;
+    if (s.api === 'agent.act') act++;
+  }
+  return { runs: history.length, steps: all, agentSteps: agent, actSteps: act };
+}
+
 export function lintAgentSteps(history, { maxModelCalls = 6 } = {}) {
   const by = new Map();
   for (const { meta, report } of history) {

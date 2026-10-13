@@ -201,7 +201,7 @@ export function workersPanelHtml(p) {
   return `<section class="panel"><h2>${icon('cpu', { size: 15 })} Chạy test: worker và trình duyệt</h2>
     <form class="row" data-workers>
       <label class="pill switch"><input type="checkbox" name="auto" ${isAuto ? 'checked' : ''}><span class="track"></span><span>Tự động theo máy (${escapeHtml(p.autoWorkers)} worker)</span></label>
-      <label>Số worker <input type="number" name="workers" min="1" max="1024" required value="${escapeHtml(p.workers ?? p.autoWorkers)}" ${isAuto ? 'disabled' : ''}></label>
+      <label>Số worker <input type="number" name="workers" min="1" max="1024" required value="${escapeHtml(p.workers ?? p.autoWorkers)}" ${isAuto ? 'disabled' : ''}></label><small class="fld-hint">Số test chạy song song cho run bấm từ dashboard. Mặc định: tự động theo số lõi CPU của máy.</small>
       <button type="submit">${icon('check', { size: 14 })}Lưu</button>
     </form>
     <p class="muted small">Áp dụng cho run bấm từ dashboard, lịch chạy và watch; đổi riêng từng lần trong hộp thoại <em>Chạy test</em>. Tự động: dùng <code>workers</code> trong <code>e2e.config</code>, không có thì một nửa số core. Nhiều worker chạy nhanh hơn nhưng các test dùng chung tài khoản hoặc dữ liệu có thể đụng nhau.</p>

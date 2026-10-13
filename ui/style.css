@@ -1040,3 +1040,85 @@ figure:fullscreen figcaption { font-size: calc(17px * var(--fs)); }
 .views-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); }
 .views-list a { font-weight: 600; flex: 1; overflow-wrap: anywhere; }
 .row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ---- màu cho mọi icon: mỗi icon một sắc theo ý nghĩa; trong nút đặc (primary / stop) và mục đang chọn thì kế thừa màu chữ */
+:root { --violet: #7c3aed; --teal: #0d9488; --orange: #ea580c; --pink: #db2777; }
+@media (prefers-color-scheme: dark) { :root:where(:not([data-theme="light"])) { --violet: #a78bfa; --teal: #2dd4bf; --orange: #fb923c; --pink: #f472b6; } }
+:root[data-theme="dark"] { --violet: #a78bfa; --teal: #2dd4bf; --orange: #fb923c; --pink: #f472b6; }
+.icon:where(.ic-check, .ic-play, .ic-upload, .ic-unlock, .ic-heart) { color: var(--good); }
+.icon:where(.ic-x, .ic-close, .ic-stop, .ic-ban, .ic-square, .ic-pin, .ic-ticket) { color: var(--bad); }
+.icon:where(.ic-alert, .ic-timer, .ic-clock, .ic-skip, .ic-bolt, .ic-zap, .ic-bulb, .ic-star, .ic-lock, .ic-coins, .ic-sun) { color: var(--warn); }
+.icon:where(.ic-info, .ic-search, .ic-eye, .ic-file, .ic-table, .ic-list, .ic-columns, .ic-copy, .ic-external, .ic-download, .ic-arrow, .ic-send, .ic-loader, .ic-settings) { color: var(--info); }
+.icon:where(.ic-sparkles, .ic-flask, .ic-layers, .ic-code, .ic-terminal, .ic-cpu, .ic-lint, .ic-crosshair, .ic-moon) { color: var(--violet); }
+.icon:where(.ic-route, .ic-branch, .ic-commit, .ic-folder, .ic-grid, .ic-filter, .ic-shuffle, .ic-recycle, .ic-rerun, .ic-activity, .ic-gauge, .ic-image, .ic-video, .ic-newspaper, .ic-users) { color: var(--teal); }
+.icon:where(.ic-up, .ic-down) { color: var(--muted); }
+:is(.primary, .btn-stop, .btn-ai.primary, [aria-selected="true"], .ni, .toast, .sys-badge) .icon { color: inherit; }
+button:disabled .icon { opacity: 0.5; }
+
+/* ---- mô tả ngắn ở đầu mỗi trang: tính năng này là gì, dùng thế nào */
+.page-desc { margin: 0 0 16px; max-width: 90ch; padding: 10px 14px; border-left: 4px solid var(--series-1); border-radius: 0 10px 10px 0; background: var(--info-bg); color: var(--text-primary); font-size: calc(14px * var(--fs)); line-height: 1.55; }
+
+/* ---- dropdown: một kiểu cho mọi <select> (trừ ô trạng thái dạng pill của Triage) */
+select:not(.tri-status), .run-form select, .sys select { min-height: 40px; padding: 8px 36px 8px 14px; border: 1px solid var(--border); border-radius: 10px; background-color: var(--surface); color: var(--text-primary); font: inherit; font-weight: 500; box-shadow: var(--shadow); transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s; }
+select:not(.tri-status):hover, .run-form select:hover, .sys select:hover { border-color: var(--series-1); background-color: var(--surface-2); }
+select:not(.tri-status):focus-visible, .run-form select:focus-visible, .sys select:focus-visible { outline: none; border-color: var(--series-1); box-shadow: 0 0 0 3px color-mix(in srgb, var(--series-1) 30%, transparent); }
+select:not(.tri-status):disabled { opacity: 0.55; }
+select option { background: var(--surface); color: var(--text-primary); padding: 8px 12px; }
+select option:checked { background: var(--info-bg); color: var(--info-ink); font-weight: 600; }
+select.tri-status { min-height: 34px; padding-right: 30px; border-width: 1.5px; font-weight: 700; letter-spacing: 0.04em; }
+select.tri-status option { background: var(--surface); color: var(--text-primary); letter-spacing: normal; font-weight: 500; }
+:root[data-theme="dark"] select, :root:not([data-theme="light"]) select { color-scheme: dark; }
+:root[data-theme="light"] select { color-scheme: light; }
+
+/* ---- menu bên trái: mục đang chọn phải nổi hẳn, cả sáng lẫn tối */
+.sys-nav button[aria-selected="true"] { background: color-mix(in srgb, var(--series-1) 24%, var(--surface)); border-color: var(--series-1); color: var(--text-primary); font-weight: 700; box-shadow: inset 5px 0 0 var(--series-1), 0 2px 10px color-mix(in srgb, var(--series-1) 25%, transparent); }
+.sys-nav button[aria-selected="true"] .sys-nav-t .small { color: var(--text-secondary); opacity: 1; }
+.sys-nav button:not([aria-selected="true"]):hover { background: var(--surface-2); border-color: var(--border); }
+.nav nav a.active { background: color-mix(in srgb, var(--hue) 22%, var(--surface)); font-weight: 700; box-shadow: inset 4px 0 0 var(--hue); }
+.nav nav a.active .ni { background: var(--hue); color: #fff; }
+
+/* ---- ô nhập rộng hơn kèm dòng giải thích (hộp thoại Run, Cài đặt) */
+dialog#run-dialog { width: min(780px, calc(100vw - 32px)); }
+#run-dialog .run-form { width: auto; }
+.run-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; margin: 10px 0; }
+.run-form .fld { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.fld-l { font-weight: 600; font-size: calc(13.5px * var(--fs)); color: var(--text-primary); }
+.run-form .fld input[type="number"], .run-form .fld input[type="text"], .run-form .fld select { width: 100%; min-height: 40px; padding: 8px 12px; border-radius: 10px; }
+.fld-hint { color: var(--text-secondary); font-size: calc(12px * var(--fs)); line-height: 1.45; }
+.fld-sw .pill { align-self: flex-start; }
+@media (max-width: 560px) { .run-grid { grid-template-columns: 1fr; } }
+.sys input[type="number"] { width: 20ch; }
+.sys input[type="text"], .sys input:not([type]) { min-width: min(34ch, 100%); }
+.sys .form-row .fld-hint { flex-basis: 100%; margin-top: -4px; }
+
+/* ---- nút đứng cạnh nhau: tách ra cho dễ nhìn */
+.actions, .filters, .page-tools, .actions-cell, .project footer, .loc footer, .row-actions, dialog.modal footer, #linear-dialog footer, .confirm-form footer, .run-form footer, .form-row { gap: 12px; }
+td > :where(button, a.button) + :where(button, a.button), p > :where(button, a.button) + :where(button, a.button), .panel > :where(button, a.button) + :where(button, a.button) { margin-inline-start: 10px; }
+.sys .panel button + button, .sys .panel button + a.button { margin-inline-start: 4px; }
+
+/* ---- chữ có màu: nội dung Markdown (popup Có gì mới, panel AI), tiêu đề và nhãn trong Cài đặt */
+.md strong { color: var(--info-ink); }
+.md em { color: var(--violet); }
+.md :not(pre) > code { color: var(--teal); background: color-mix(in srgb, var(--teal) 12%, transparent); border-radius: 5px; padding: 1px 5px; }
+.md li::marker { color: var(--series-1); }
+.md a { color: var(--link); text-decoration: underline; }
+.whatsnew h2 { color: var(--series-1); padding-bottom: 4px; border-bottom: 1px solid var(--border); margin-top: 18px; }
+.whatsnew h2 .muted { color: var(--orange); }
+.sys-pane .panel h3 { color: var(--teal); }
+.sys .form-label { color: var(--info-ink); }
+.sys-pane .panel h2 .icon { color: var(--series-1); }
+/* mỗi tab của menu trái một sắc riêng (icon, cả khi chưa chọn) */
+.sys-nav button:nth-child(1) .sys-nav-ic { color: var(--warn); background: var(--warn-bg); }
+.sys-nav button:nth-child(2) .sys-nav-ic { color: var(--teal); background: color-mix(in srgb, var(--teal) 16%, transparent); }
+.sys-nav button:nth-child(3) .sys-nav-ic { color: var(--info); background: var(--info-bg); }
+.sys-nav button:nth-child(4) .sys-nav-ic { color: var(--violet); background: color-mix(in srgb, var(--violet) 16%, transparent); }
+.sys-nav button:nth-child(5) .sys-nav-ic { color: var(--orange); background: color-mix(in srgb, var(--orange) 16%, transparent); }
+.sys-nav button:nth-child(6) .sys-nav-ic { color: var(--bad); background: var(--bad-bg); }
+.sys-nav button[aria-selected="true"] .sys-nav-ic { background: var(--series-1); color: var(--on-primary, #fff); }
+.sys-nav-ic .icon { color: inherit; }
+
+/* ---- ô lọc: nhãn và dropdown không bị co đè lên nhau */
+.filters > label, .page-tools > label, .cmp-head > label { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.filters > label > select, .page-tools > label > select { flex: none; }
+.impact-form { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.impact-form label { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }

@@ -1,6 +1,7 @@
 // Small helpers shared by the M2/M3 pages (all names are unique across ui/: the bundle has one scope).
 import { escapeHtml } from './format.js';
 import { icon } from './icons.js';
+import { toast } from './toast.js';
 
 export const fmtPct = (v) => (v == null || Number.isNaN(v) ? '—' : `${Math.round(v * 100)}%`);
 export const fmtPoints = (d) => (d == null ? '—' : `${d > 0 ? '+' : ''}${Math.round(d * 100)} điểm`);
@@ -13,16 +14,27 @@ export const analysisCount = () => analysisRuns;
 
 export function runCountPicker(onChange) {
   const opts = [10, 20, 30, 50, 100];
-  const html = `<label class="count-pick">Phân tích <select data-run-count>${opts.map((n) => `<option value="${n}" ${n === analysisRuns ? 'selected' : ''}>${n} run gần nhất</option>`).join('')}</select></label>`;
-  const bind = (root) => root.querySelector('[data-run-count]')?.addEventListener('change', (e) => {
-    analysisRuns = Number(e.target.value) || 30;
-    onChange();
-  });
+  const html = `<label class="count-pick">Phân tích <select data-run-count>${opts.map((n) => `<option value="${n}" ${n === analysisRuns ? 'selected' : ''}>${n} run gần nhất</option>`).join('')}</select></label><button type="button" class="small-btn" data-rerun-analysis data-tip="Quét lại dữ liệu và route ngay bây giờ">${icon('rerun', { size: 14 })}Phân tích lại</button>`;
+  const bind = (root) => {
+    root.querySelector('[data-run-count]')?.addEventListener('change', (e) => {
+      analysisRuns = Number(e.target.value) || 30;
+      onChange();
+    });
+    root.querySelector('[data-rerun-analysis]')?.addEventListener('click', async () => {
+      await onChange();
+      toast('Đã phân tích lại');
+    });
+  };
   return { html, bind };
 }
 
 export function pageHead(title, ic, sub = '', right = '') {
   return `<div class="page-head"><div><h1>${icon(ic, { size: 18 })} ${escapeHtml(title)}</h1>${sub ? `<p class="muted">${sub}</p>` : ''}</div><div class="page-tools">${right}</div></div>`;
+}
+
+// Why an agent-step page is empty: nothing to analyse (no agent steps in the runs) is not the same as "all good".
+export function noAgentBox(scan, what) {
+  return emptyBox(`Chưa có step agent để ${what}`, `Đã quét ${scan.runs} run (${scan.steps} step): ${scan.agentSteps} step <code>agent.*</code>${scan.actSteps ? '' : ', không có <code>agent.act</code> nào'}. Các test hiện chỉ dùng <code>browser.*</code> / <code>expect.*</code> / <code>app.*</code> nên trang này chưa có gì để phân tích. Khi test dùng <code>agent.act</code> / <code>agent.extract</code> / <code>agent.check</code> và chạy xong, kết quả tự hiện ở đây; bấm <em>Phân tích lại</em> để quét lại.`);
 }
 
 export function emptyBox(title, body = '') {

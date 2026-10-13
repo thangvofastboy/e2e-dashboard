@@ -77,5 +77,5 @@ const escAttr = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<'
 export function icon(name, { size = 16, label } = {}) {
   if (!PATHS[name]) throw new Error(`unknown icon ${name}`);
   const a11y = label ? `role="img" aria-label="${escAttr(label)}"` : 'aria-hidden="true"';
-  return `<svg class="icon" width="${size}" height="${size}" ${a11y}><use href="#i-${name}"/></svg>`;
+  return `<svg class="icon ic-${name}" width="${size}" height="${size}" ${a11y}><use href="#i-${name}"/></svg>`;
 }

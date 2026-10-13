@@ -1,6 +1,6 @@
 import { getJson, isExport } from '../api.js';
 import { openAiPanel } from './ai-panel.js';
-import { runCountPicker, analysisCount, pageHead, emptyBox, meter, copyToClipboard } from '../analysis.js';
+import { runCountPicker, analysisCount, pageHead, emptyBox, noAgentBox, meter, copyToClipboard } from '../analysis.js';
 import { escapeHtml, fmtTokens } from '../format.js';
 import { runHref } from '../router.js';
 import { icon } from '../icons.js';
@@ -20,9 +20,9 @@ export function locatorCardHtml(c, i) {
 
 export async function renderLocators(main) {
   const picker = runCountPicker(() => renderLocators(main));
-  const { candidates } = await getJson(`/api/locators?n=${analysisCount()}`);
+  const { candidates, scan } = await getJson(`/api/locators?n=${analysisCount()}`);
   const head = pageHead('Gợi ý locator', 'crosshair', 'Step <code>agent.act</code> chạy lại từ replay cache ổn định qua nhiều run có thể viết thành code locator: chạy không cần model, nhanh và không tốn token. Code dưới được dựng từ bản ghi cache của e2e (<code>.e2e/cache</code>), hãy xem lại trước khi dùng.', `${picker.html}${isExport() || !candidates.length ? '' : `<button type="button" class="btn-ai" data-ai-locbatch title="AI đề xuất đổi các bước này sang locator cho cả suite">${icon('sparkles', { size: 14 })}AI đề xuất cho cả suite</button>`}`);
-  main.innerHTML = candidates.length ? `${head}<section class="locs">${candidates.map(locatorCardHtml).join('')}</section>` : `${head}${emptyBox('Chưa có step nào đủ ổn định', 'Cần step agent.act được replay từ cache ở ít nhất 3 run.')}`;
+  main.innerHTML = candidates.length ? `${head}<section class="locs">${candidates.map(locatorCardHtml).join('')}</section>` : `${head}${scan.actSteps ? emptyBox('Chưa có step nào đủ ổn định', `Có ${scan.actSteps} step agent.act nhưng chưa step nào được replay từ cache ở ít nhất 3 run (và ≥ 60% số lần chạy).`) : noAgentBox(scan, 'gợi ý locator')}`;
   picker.bind(main);
   main.querySelector('[data-ai-locbatch]')?.addEventListener('click', () => openAiPanel({ action: 'locator-batch', runId: null, title: 'Đổi agent.act sang locator · cả suite' }));
   main.querySelectorAll('[data-copy-loc]').forEach((b) => b.addEventListener('click', () => copyToClipboard(candidates[Number(b.dataset.copyLoc)].suggestion.code, b)));

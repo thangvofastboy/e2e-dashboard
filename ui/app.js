@@ -467,6 +467,8 @@ const MAXABLE = '.charts > figure, #main > section.panel, #main > .fill, .two-co
 function pageExtras(main) {
   if (!main || isExport()) return;
   const h1 = main.querySelector('h1');
+  // trang chưa có mô tả hiển thị: dùng chú giải của trang làm mô tả ngay dưới tiêu đề
+  if (h1 && PAGE_HELP[main.dataset.view] && !main.querySelector('.page-head p, .page-desc')) h1.insertAdjacentHTML('afterend', `<p class="page-desc">${escapeHtml(PAGE_HELP[main.dataset.view])}</p>`);
   if (h1 && !h1.querySelector('.help-tip, .fs-page, .views-btn')) {
     if (PAGE_HELP[main.dataset.view]) h1.insertAdjacentHTML('beforeend', helpBtn(PAGE_HELP[main.dataset.view]));
     h1.insertAdjacentHTML('beforeend', viewsButton());
