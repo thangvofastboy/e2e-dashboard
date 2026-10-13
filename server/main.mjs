@@ -6,6 +6,7 @@ import { summarizeRun } from './aiextra.mjs';
 import { autoLogBugs } from './autobug.mjs';
 import { syncIndex } from './runindex.mjs';
 import { readUserConfig, aiPrefs } from './system.mjs';
+import { resolveLinear, detectMcpLinear } from './linear-mcp.mjs';
 import { mkdir, writeFile, rm, readFile, rename } from 'node:fs/promises';
 import { join, resolve, basename, dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -149,7 +150,7 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
         // tóm tắt AI cho run có test không pass (tắt: "ai": { "autoSummary": false } trong ~/.e2e-dashboard/config.json)
         if (meta.status !== 'passed' && readUserConfig().ai?.autoSummary !== false) void summarizeRun({ projectRoot, ai, runId: meta.runId, language: cfg.ai?.language }).catch(() => {});
         // tự log bug lên Linear (mặc định tắt: "ai": { "autoBugLog": true }); lỗi không làm hỏng việc khác
-        if (meta.status !== 'passed' && readUserConfig().ai?.autoBugLog === true) void autoLogBugs({ projectRoot, runId: meta.runId, ai: qcAi, cfg }).then((r) => { const made = r.rows?.filter((x) => x.status === 'created') ?? []; if (made.length) console.log(`[e2e-dashboard] đã tạo ${made.length} issue Linear: ${made.map((x) => x.issue).join(', ')}`); }).catch((e) => console.error(`[e2e-dashboard] tự log bug lỗi: ${e.message}`));
+        if (meta.status !== 'passed' && readUserConfig().ai?.autoBugLog === true) void autoLogBugs({ projectRoot, runId: meta.runId, ai: qcAi, cfg, resolve: () => resolveLinear({ projectRoot, cfg, env: process.env, settings: () => aiPrefs(process.env, readConfig(projectRoot)) }) }).then((r) => { const made = r.rows?.filter((x) => x.status === 'created') ?? []; if (made.length) console.log(`[e2e-dashboard] đã tạo ${made.length} issue Linear: ${made.map((x) => x.issue).join(', ')}`); }).catch((e) => console.error(`[e2e-dashboard] tự log bug lỗi: ${e.message}`));
         if (meta.status !== 'passed' || meta.summary?.flaky || found.length) {
           const m = runMessage(meta, basename(projectRoot));
           const hooks = await webhookConfig().catch(() => []);
@@ -263,6 +264,7 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const s = await startServer({ projectRoot: resolve(process.argv[2] ?? process.cwd()) });
+  void detectMcpLinear(); // MCP Linear: kiểm tra sớm ở nền để hộp thoại Linear không phải chờ
   process.stdout.write(`${JSON.stringify({ port: s.port, url: s.url })}\n`);
   const stop = () => s.close().finally(() => process.exit(0));
   process.on('SIGINT', stop);

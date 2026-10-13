@@ -60,10 +60,22 @@ function envHtml(env) {
   </section>`;
 }
 
-function userHtml(u) {
+// Cách dashboard gửi issue lên Linear: API key nếu có, không thì MCP Linear của Claude CLI
+function linearModeHtml(l) {
+  const mode = l?.mode;
+  const text = mode === 'api' ? 'Đang dùng Linear API key (ưu tiên khi có key).'
+    : mode === 'mcp' ? `Đang dùng MCP Linear qua Claude CLI (${(l.mcp?.servers ?? []).filter((x) => x.connected).map((x) => escapeHtml(x.name)).join(', ')}). Nhập API key bên dưới nếu muốn dùng key thay thế.`
+      : l?.mcp?.needsAuth ? 'Chưa gửi được: MCP Linear cần đăng nhập. Mở terminal, chạy <code>claude</code>, gõ <code>/mcp</code>, chọn Linear và đăng nhập; hoặc nhập API key bên dưới.'
+        : l?.mcp?.installed === false ? 'Không tìm thấy lệnh <code>claude</code>. Cài Claude Code CLI hoặc nhập Linear API key bên dưới.'
+          : 'Chưa gửi được: chưa có API key và chưa thấy MCP Linear trong Claude CLI (<code>claude mcp list</code>). Thêm MCP Linear hoặc nhập API key bên dưới.';
+  return `<p class="tone-${mode ? 'good' : 'warn'}">${icon(mode ? 'check' : 'alert', { size: 15 })} <strong>Gửi issue lên Linear:</strong> ${text}</p>`;
+}
+
+function userHtml(u, linear = null) {
   const hooks = u.webhooks.map((w, i) => `<li><code>${escapeHtml(w.host)}</code> <span class="muted small">${escapeHtml(w.events.join(', '))}</span> <button type="button" class="small-btn" data-hook-del="${i}">${icon('close', { size: 13 })}Xoá</button></li>`).join('');
   return `<section class="panel"><h2>${icon('bolt', { size: 18 })} Key & tích hợp của dashboard</h2>
     ${sysStats(sysStat('Linear key', u.linear.apiKey ? 'Đã đặt' : 'Chưa đặt', u.linear.apiKey ? 'good' : 'muted', u.linear.fromEnv ? 'từ biến môi trường' : ''), sysStat('Linear team', escapeHtml(u.linear.team || '—')), sysStat('Webhook', u.webhooks.length, u.webhooks.length ? 'good' : 'muted'))}
+    ${linearModeHtml(linear)}
     <p class="muted">Lưu ở <code>${escapeHtml(u.path)}</code> (của bạn, không nằm trong repo). Giá trị đã lưu chỉ hiện 4 ký tự cuối.</p>
     <div class="form-row"><span class="form-label">Linear API key</span><span>${u.linear.apiKey ? `<code>${escapeHtml(u.linear.apiKey)}</code>` : '<span class="muted">Chưa đặt</span>'}${u.linear.fromEnv ? ' <span class="chip tone-info">Đang dùng LINEAR_API_KEY từ env</span>' : ''}</span></div>
     <form class="form-row" data-linear-key><input type="password" name="key" placeholder="lin_api_…" autocomplete="off" aria-label="Linear API key mới"><button type="submit">${icon('check', { size: 14 })}Lưu key</button>${u.linear.apiKey ? `<button type="button" data-linear-clear>${icon('close', { size: 14 })}Xoá key</button>` : ''}<small class="fld-hint">Tạo ở Linear → Settings → API (dạng <code>lin_api_…</code>). Mặc định: chưa đặt; nếu có biến môi trường <code>LINEAR_API_KEY</code> thì dùng biến đó.</small></form>
@@ -227,6 +239,7 @@ export async function renderSystem(main) {
   let heal = await getJson('/api/selfheal').catch(() => ({ errors: [] }));
   let resetInfo = await getJson('/api/reset/preview').catch(() => null);
   let junkInfo = await getJson('/api/junk').catch(() => null);
+  const linearInfo = await getJson('/api/linear').catch(() => null);
   let editing = null; // file env đang mở
   const urlTab = () => new URLSearchParams(location.hash.split('?')[1] ?? '').get('tab');
   let tab = SYS_TABS.some(([k]) => k === urlTab()) ? urlTab() : 'appearance';
@@ -235,7 +248,7 @@ export async function renderSystem(main) {
     return todo ? `<span class="sys-badge" title="Cần xem">${todo}</span>` : '';
   };
   const draw = () => {
-    const panes = { appearance: appearanceHtml(), project: setupHtml(d.setup) + envHtml(d.env), integrations: userHtml(d.user), ai: healHtml(heal, d.user.selfHeal, d.user.ai), about: infoHtml(d), reset: junkHtml(junkInfo) + resetHtml(resetInfo) };
+    const panes = { appearance: appearanceHtml(), project: setupHtml(d.setup) + envHtml(d.env), integrations: userHtml(d.user, linearInfo), ai: healHtml(heal, d.user.selfHeal, d.user.ai), about: infoHtml(d), reset: junkHtml(junkInfo) + resetHtml(resetInfo) };
     main.innerHTML = `${pageHead('Cài đặt hệ thống', 'settings', 'Giao diện, biến môi trường của project, key của dashboard và tình trạng setup.')}
       <div class="sys">
         <div class="sys-nav" role="tablist" aria-orientation="vertical" aria-label="Nhóm cài đặt">${SYS_TABS.map(([k, label, ic, sub]) => `<button type="button" role="tab" id="sys-tab-${k}" data-sys-tab="${k}" aria-selected="${k === tab}" aria-controls="sys-pane-${k}" tabindex="${k === tab ? 0 : -1}"><span class="sys-nav-ic">${icon(ic, { size: 20 })}</span><span class="sys-nav-t"><strong>${label}</strong><span class="small">${sub}</span></span>${badge(k)}</button>`).join('')}</div>

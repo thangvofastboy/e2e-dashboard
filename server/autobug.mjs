@@ -39,18 +39,20 @@ async function describe({ ai, template, vars, fingerprintLine, fallback }) {
 }
 
 // Creates Linear issues for the failing tests of one run. Returns one row per candidate (created, duplicate, error).
-export async function autoLogBugs({ projectRoot, runId, ai = null, env = process.env, cfg = {}, makeLinear = createLinear, linear = null, limit = AUTO_BUG_LIMIT }) {
+export async function autoLogBugs({ projectRoot, runId, ai = null, env = process.env, cfg = {}, makeLinear = createLinear, linear = null, resolve = null, limit = AUTO_BUG_LIMIT }) {
   const handledKey = `${projectRoot}:${runId}`;
   if (handled.has(handledKey)) return { status: 'already-handled', rows: [] };
   const run = await getRun(projectRoot, runId);
   if (!run) return { status: 'no-run', rows: [] };
   const candidates = bugCandidates(run.report);
   if (!candidates.length) return { status: 'no-candidates', rows: [] };
-  const { apiKey, team } = await linearConfig(cfg, env);
-  if (!linear && !apiKey) return { status: 'no-key', rows: [] };
+  // resolve(): API key nếu có, không thì MCP Linear (server/linear-mcp.mjs); không truyền thì chỉ dùng API key
+  const backend = linear || !resolve ? null : await resolve();
+  const { apiKey, team } = backend ? { apiKey: null, team: backend.team } : await linearConfig(cfg, env);
+  const client = linear ?? backend?.client ?? (apiKey ? makeLinear({ apiKey, team }) : null);
+  if (!client) return { status: 'no-key', rows: [] };
   handled.add(handledKey);
   if (handled.size > HANDLED_MAX) handled.delete(handled.values().next().value);
-  const client = linear ?? makeLinear({ apiKey, team });
   const templates = await readTemplates(projectRoot);
   const template = findTemplate(templates, 'bug-linear');
   const notes = await readNotes(projectRoot);

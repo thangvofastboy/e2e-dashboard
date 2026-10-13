@@ -149,6 +149,64 @@ ${commitText}
 Trả lời 3–5 gạch đầu dòng, không tiêu đề: kết quả chung; test mới đỏ so với run trước (nếu có); nguyên nhân chung khả nghi; việc nên làm trước.
 `;
   }
+  if (action === 'repro-steps' || action === 'severity') {
+    const r = (report.run.results ?? []).find((x) => x.id === resultId);
+    if (!r) throw new Error('unknown result');
+    const a = resultAttempts(report, r).at(-1);
+    const task = action === 'repro-steps'
+      ? `Nhiệm vụ: viết BƯỚC TÁI HIỆN lỗi cho người không biết code (QC, dev). Chỉ dựa vào dữ liệu: đừng bịa bước nào không có trong các step.
+
+Trả lời theo khung:
+## Điều kiện ban đầu
+(tài khoản, dữ liệu, môi trường nếu suy ra được; không có thì ghi "Chưa rõ")
+## Các bước tái hiện
+(đánh số, mỗi bước một hành động của người dùng, dùng ngôn ngữ nghiệp vụ, không dùng locator)
+## Kết quả thực tế
+## Kết quả mong đợi
+(suy ra từ tên test, ghi rõ đây là suy đoán)`
+      : `Nhiệm vụ: đề xuất MỨC ĐỘ NGHIÊM TRỌNG của lỗi này để QC duyệt trước khi tạo issue. Chỉ dựa vào dữ liệu; thiếu thông tin thì nói rõ.
+Thang: **Critical** (chặn luồng chính, mất dữ liệu, bảo mật, thanh toán) · **High** (hỏng tính năng quan trọng, không có cách khác) · **Medium** (hỏng một phần hoặc có cách tránh) · **Low** (giao diện, nhỏ, hiếm).
+
+Trả lời theo khung:
+## Mức độ đề xuất
+(một mức in đậm + độ chắc chắn)
+## Lý do
+(ảnh hưởng tới người dùng, luồng nào, có cách tránh không, lỗi có thể là của môi trường / test không)
+## Cần QC xác nhận thêm
+(những điều dữ liệu không cho biết)`;
+    return `${FRAME(language, fence)}
+
+${task}
+
+<${fence}>
+Test: ${title(r)}
+File: ${clip(r.source?.file ?? r.file)}:${clip(r.source?.line ?? '?')}
+Target: ${clip(r.targetId)} · status: ${clip(r.status)}
+Lỗi:
+${errorText(a?.error) || '(không có)'}
+${a?.failure?.url ? `URL lúc fail: ${clip(a.failure.url)}` : ''}
+Các step:
+${stepsText(a) || '(không có)'}
+</${fence}>
+`;
+  }
+  if (action === 'dedupe-failures') {
+    return `${FRAME(language, fence)}
+
+Nhiệm vụ: nhiều test fail trong một run. Gom các test có CÙNG nguyên nhân gốc để QC chỉ tạo một issue cho mỗi nhóm. Đọc code test (Read / Grep) khi cần để kết luận. Chỉ gom khi có bằng chứng; không chắc thì để riêng và nói rõ.
+
+<${fence}>
+${(evidence ?? []).join('\n') || '(không có)'}
+</${fence}>
+
+Trả lời theo khung:
+## Các nhóm nên gộp thành một issue
+(mỗi nhóm: tên nhóm, các test, nguyên nhân gốc chung, bằng chứng)
+## Test nên tạo issue riêng
+(kèm lý do)
+## Gợi ý tiêu đề issue cho từng nhóm
+`;
+  }
   if (action === 'explain-group') {
     return `${FRAME(language, fence)}
 

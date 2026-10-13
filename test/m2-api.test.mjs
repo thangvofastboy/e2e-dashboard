@@ -1,3 +1,4 @@
+const NO_MCP = async () => ({ servers: [], connected: false, prefixes: [], needsAuth: false, installed: true }); // không gọi `claude mcp list` thật trong test
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -51,7 +52,7 @@ before(async () => {
       onEvent({ type: 'done', result: '## Code đề xuất\nok' });
     },
   };
-  server = http.createServer(createApp({ projectRoot: root, token: TOKEN, uiDir: UI, live: createLive({ throttleMs: 1 }), ai, env, linearFetch }));
+  server = http.createServer(createApp({ projectRoot: root, token: TOKEN, uiDir: UI, live: createLive({ throttleMs: 1 }), ai, env, linearFetch, mcpDetect: NO_MCP }));
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${server.address().port}`;
 });

@@ -9,7 +9,7 @@
 ![Node](https://img.shields.io/badge/Node-%E2%89%A5%2022-339933?style=for-the-badge&logo=node.js&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-16a34a?style=for-the-badge)
 ![Build](https://img.shields.io/badge/build-kh%C3%B4ng%20c%E1%BA%A7n-2563eb?style=for-the-badge)
-![Tests](https://img.shields.io/badge/tests-450%20passing-16a34a?style=for-the-badge&logo=checkmarx&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-459%20passing-16a34a?style=for-the-badge&logo=checkmarx&logoColor=white)
 ![AI](https://img.shields.io/badge/AI-claude%20--p-a855f7?style=for-the-badge&logo=anthropic&logoColor=white)
 ![Database](https://img.shields.io/badge/database-kh%C3%B4ng%20c%E1%BA%A7n-8b5cf6?style=for-the-badge)
 
@@ -49,7 +49,7 @@
 | 🗺️ | **Bản đồ route** | Các trang test đi qua và nơi hay fail |
 | 🌿 | **So sánh branch** | Test nào chỉ hỏng ở một branch |
 | 📁 | **Nhiều project** | Mọi project đã mở dashboard trên máy, kèm health score và nút mở |
-| 🎫 | **Gửi Linear** | Tạo issue từ test fail, **chống trùng** bằng fingerprint; không có API key thì nhờ Claude + Linear MCP |
+| 🎫 | **Gửi Linear** | Tạo issue từ test fail, **chống trùng** bằng fingerprint. Có Linear API key thì dùng key (ưu tiên); không có thì tự gửi qua **MCP Linear của Claude CLI** (cần đăng nhập một lần: chạy `claude`, gõ `/mcp`). Cài đặt hệ thống → Tích hợp cho biết đang dùng cách nào |
 | 📰 | **Digest tuần** | Tóm tắt Markdown để dán vào Slack/email |
 | 📟 | **Status line** | Kết quả run mới nhất (hoặc tiến độ) ngay trong Claude Code |
 | 🔔 | **Thông báo desktop** | Báo khi run fail (hoặc mọi run) |
@@ -119,6 +119,7 @@
 | 🧩 | **Mẫu prompt QC** | Prompt có chỗ trống `{{title}}`, `{{evidence}}`…: chép đi dán vào Claude, hoặc để AI viết bug report, báo cáo, mô tả Linear (có nút ngay trong hộp thoại Linear) |
 | 🔗 | **Gắn / gỡ issue Linear có sẵn** | Nhập `ENG-123` hoặc link: xác minh với Linear, lưu liên kết, tự đánh dấu known bug, lần gửi sau không tạo trùng. *Gỡ issue* chỉ xoá liên kết, issue trên Linear giữ nguyên |
 | 🤖 | **Tự log bug (mặc định tắt)** | Công tắc ở Cài đặt → AI: run có test fail do app thì AI soạn và tạo issue Linear (chống trùng); known bug fail lại với lỗi khác thì comment lỗi mới vào issue đó, mỗi dạng lỗi một lần. Có nút bấm tay tương ứng ở Run detail |
+| 🪄 | **AI cho bug** | Ở test fail: *Bước tái hiện* (viết cho người không biết code) và *Mức độ nghiêm trọng* (Critical / High / Medium / Low kèm lý do, để QC duyệt); ở Run detail: *Gom bug trùng* nhóm các test fail cùng nguyên nhân để chỉ tạo một issue cho mỗi nhóm. Dữ liệu từ app đi qua khối không tin cậy, AI chỉ đọc code, không sửa |
 | 📋 | **Test thủ công** | Ca QC chạy tay có trạng thái, người test, lịch sử; thống kê gộp với test tự động |
 | 🧮 | **Ma trận build** | Test × build (branch@commit): thấy build nào làm test đổi kết quả; xuất danh sách bug ra CSV |
 | ✅ | **QC xác nhận** | Known bug mà run mới nhất đã pass nằm trong hàng đợi *Chờ xác nhận* (*Đã sửa* gỡ known bug, *Chưa đúng* giữ lại); **waiver có hạn** (bắt buộc lý do, tối đa 365 ngày) bỏ qua một test fail khỏi cổng chất lượng đến hết hạn; **nhật ký thay đổi** ghi mọi lần đổi ghi chú, known bug, waiver |

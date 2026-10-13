@@ -2,8 +2,8 @@ import { readFile, readdir, stat, lstat, rm, mkdir, writeFile } from 'node:fs/pr
 import { installedBrowsers, configSupport, validBrowser } from './browsers.mjs';
 import { findConfig as findConfigPath } from '../bin/project.mjs';
 import { indexedTestHistory, syncIndex, sqliteSupport, closeIndex, indexPath } from './runindex.mjs';
-import { runSummaryEvidence, whySlowEvidence, groupEvidence, triageEvidence, parseTriage, summaryState, testFiles, ticketEvidence, DRAFT_PATH, selectTestsEvidence, locatorBatchEvidence, duplicateEvidence, releaseEvidence, visualEvidence } from './aiextra.mjs';
-import { envSummary, readEnvFile, writeEnvFile, userSummary, writeUser, setupStatus } from './system.mjs';
+import { failuresEvidence, runSummaryEvidence, whySlowEvidence, groupEvidence, triageEvidence, parseTriage, summaryState, testFiles, ticketEvidence, DRAFT_PATH, selectTestsEvidence, locatorBatchEvidence, duplicateEvidence, releaseEvidence, visualEvidence } from './aiextra.mjs';
+import { envSummary, readEnvFile, writeEnvFile, userSummary, writeUser, setupStatus, aiPrefs } from './system.mjs';
 import { createReadStream, readFileSync, existsSync } from 'node:fs';
 import { pipeline } from 'node:stream';
 import { join, extname, basename, relative, resolve, dirname } from 'node:path';
@@ -47,6 +47,7 @@ import { aiTraceView, aiTraceCall } from './aitrace.mjs';
 import { listCache, clearCache, cacheDir } from './replaycache.mjs';
 import { validateFeedback, buildIssue, rateOk, createIssue, SECRET } from './feedback.mjs';
 import { commentIfNewBug, signatureOf } from './knownbug.mjs';
+import { resolveLinear, detectMcpLinear } from './linear-mcp.mjs';
 import { findDuplicates, splitCandidates, actionPrompt, latestWithResults } from './dupes.mjs';
 import { analyzeQuality } from './quality.mjs';
 import { readTemplates, findTemplate, saveTemplate, resultVars, runVars, renderPrompt, aiParts, keepFingerprint, PLACEHOLDERS } from './qc-templates.mjs';
@@ -231,7 +232,10 @@ const SUITE_EVIDENCE = new Set(['ticket-test', 'select-tests', 'locator-batch', 
 const DRAFT_DIR = /^(?!.*(?:^|\/)\.)(?!.*\.\.)[\w./ -]{1,150}$/;
 const historyTable = async (root, n) => (await indexedTestHistory(root, n).catch(() => null)) ?? testHistory(root, n);
 
-export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER, ai = NO_AI, qcAi = null, env = process.env, linearFetch, github = createGithub({ projectRoot }), ghImport = importFromGithub, automation = null, tracking = null, selfHeal = null }) {
+export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER, ai = NO_AI, qcAi = null, env = process.env, linearFetch, mcpDetect = detectMcpLinear, github = createGithub({ projectRoot }), ghImport = importFromGithub, automation = null, tracking = null, selfHeal = null }) {
+  // Linear: API key nếu có, không thì MCP Linear của Claude CLI. `settings` giống các phiên AI khác (model, effort).
+  const linearBackend = () => resolveLinear({ projectRoot, cfg: readConfig(projectRoot), env, fetchImpl: linearFetch, detect: mcpDetect, settings: () => aiPrefs(env, readConfig(projectRoot)) });
+  const NO_LINEAR = 'Chưa có Linear: nhập LINEAR_API_KEY ở Cài đặt hệ thống → Tích hợp, hoặc đăng nhập MCP Linear cho Claude CLI (chạy `claude`, gõ /mcp).';
   let avgByKey = new Map();
   const refreshAverages = () =>
     historyTable(projectRoot, 10)
@@ -556,8 +560,8 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return send(res, 200, { candidates: out, scan: agentScan(history) });
       }
       if (p === '/api/linear') {
-        const { apiKey, team } = await linearConfig(readConfig(projectRoot), env);
-        return send(res, 200, { configured: Boolean(apiKey), team, links: await readIssueLinks(projectRoot) });
+        const lin = await linearBackend();
+        return send(res, 200, { configured: lin.mode !== null, mode: lin.mode, team: lin.team, mcp: lin.mcp ? { connected: lin.mcp.connected, needsAuth: lin.mcp.needsAuth, installed: lin.mcp.installed, servers: lin.mcp.servers.map((x) => ({ name: x.name, connected: x.connected })) } : null, links: await readIssueLinks(projectRoot) });
       }
       const aiList = /^\/api\/runs\/([^/]+)\/ai$/.exec(p);
       if (aiList) {
@@ -654,7 +658,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return res.end();
       }
       if (p.startsWith('/api/ai/')) {
-        const action = /^\/api\/ai\/(analyze-failure|analyze-run|suggest-locator|why-flaky|explore-to-test|route-test|ask|followup|run-summary|why-slow|explain-group|ticket-test|select-tests|locator-batch|duplicate-tests|release-notes|explain-visual)$/.exec(p)?.[1];
+        const action = /^\/api\/ai\/(analyze-failure|analyze-run|suggest-locator|why-flaky|explore-to-test|route-test|ask|followup|run-summary|why-slow|explain-group|ticket-test|select-tests|locator-batch|duplicate-tests|release-notes|explain-visual|repro-steps|severity|dedupe-failures)$/.exec(p)?.[1];
         if (!action) return send(res, 404, { error: 'unknown action' });
         const body = await readBody(req);
         // a question about the whole suite, or a follow-up in an existing session, needs no run
@@ -708,7 +712,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
           prompt = body.question;
           resume = body.sessionId;
         } else {
-          const perResult = action === 'analyze-failure' || action === 'suggest-locator' || action === 'why-flaky' || action === 'explain-visual';
+          const perResult = action === 'analyze-failure' || action === 'suggest-locator' || action === 'why-flaky' || action === 'explain-visual' || action === 'repro-steps' || action === 'severity';
           if (perResult && !RESULT_ID.test(String(body.resultId ?? ''))) return send(res, 400, { error: 'invalid resultId' });
           const result = perResult && (run.report.run.results ?? []).find((r) => r.id === body.resultId);
           if (perResult && !result) return send(res, 404, { error: 'result not found' });
@@ -730,6 +734,10 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
             evidence = visualEvidence(run.report, body.resultId, relative(projectRoot, run.dir).split('\\').join('/'), typeof body.name === 'string' ? body.name : null);
             if (!evidence) return send(res, 404, { error: 'Không có cặp ảnh expected / actual cho test này' });
             newest = typeof body.name === 'string' ? body.name.slice(0, 120) : '';
+          }
+          if (action === 'dedupe-failures') {
+            evidence = failuresEvidence(run.report);
+            if (evidence.length < 2) return send(res, 400, { error: 'Cần ít nhất 2 test fail để gom' });
           }
           if (action === 'explain-group') {
             if (!/^[0-9a-f]{12}$/.test(String(body.groupId ?? ''))) return send(res, 400, { error: 'invalid groupId' });
@@ -781,10 +789,10 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         if (!RESULT_ID.test(String(b.resultId ?? ''))) return send(res, 400, { error: 'invalid resultId' });
         const failing = (run.report.run.results ?? []).find((x) => x.id === b.resultId);
         if (!failing) return send(res, 404, { error: 'result not found' });
-        const { apiKey, team } = await linearConfig(readConfig(projectRoot), env);
-        if (!apiKey) return send(res, 400, { error: 'Chưa cấu hình LINEAR_API_KEY' });
+        const lin = await linearBackend();
+        if (!lin.client) return send(res, 400, { error: NO_LINEAR });
         try {
-          const linear = createLinear({ apiKey, team, ...(linearFetch ? { fetchImpl: linearFetch } : {}) });
+          const linear = lin.client;
           return send(res, 200, await commentIfNewBug({ projectRoot, run, result: failing, linear, notes: await readNotes(projectRoot) }));
         } catch (e) {
           return send(res, 502, { error: e.message });
@@ -813,12 +821,12 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         if (!failing) return send(res, 404, { error: 'result not found' });
         const identifier = parseIssueRef(b.ref);
         if (!identifier) return send(res, 400, { error: 'Nhập mã issue (ví dụ ENG-123) hoặc link Linear' });
-        const { apiKey, team } = await linearConfig(readConfig(projectRoot), env);
+        const lin = await linearBackend();
         let issue = { identifier, url: null, title: '' };
         let verified = false;
-        if (apiKey) {
+        if (lin.client) {
           try {
-            const found = await createLinear({ apiKey, team, ...(linearFetch ? { fetchImpl: linearFetch } : {}) }).get(identifier);
+            const found = await lin.client.get(identifier);
             if (!found) return send(res, 404, { error: `Linear không có issue ${identifier}` });
             issue = found;
             verified = true;
@@ -838,11 +846,12 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         const cfg = readConfig(projectRoot);
         const saved = await getAi(projectRoot, run.meta.runId, cacheKey('analyze-failure', run.meta.runId, body.resultId));
         const draft = issueDraft({ meta: run.meta, report: run.report, resultId: body.resultId, commits: await commitsFor(projectRoot, run, 'analyze-failure', body.resultId), analysis: saved?.markdown ?? null, project: basename(projectRoot), owners: ownersOf(readCodeowners(projectRoot).rules, (run.report.run.results ?? []).find((r) => r.id === body.resultId)?.source?.file) });
-        const { apiKey, team } = await linearConfig(cfg, env);
+        const lin = p === '/api/linear/draft' ? await linearBackend() : null; // chỉ cần biết chế độ khi mở hộp thoại
+        const { team } = lin ?? (await linearConfig(cfg, env));
         const links = await readIssueLinks(projectRoot);
         // ảnh minh hoạ nằm trong thư mục run: Claude (Linear MCP) nhận đường dẫn trên máy để tự đính kèm nếu được
         const localDraft = { ...draft, description: draft.description.replace(/\(e2ed-image:(\d+)\)/g, (m, i) => (draft.images[i] ? `(${join(run.dir, draft.images[i].path)})` : m)) };
-        if (p === '/api/linear/draft') return send(res, 200, { draft, prompt: claudePrompt(localDraft, team), imagePaths: draft.images.map((im) => join(run.dir, im.path)), configured: Boolean(apiKey), team, link: links[draft.fingerprint] ?? null });
+        if (p === '/api/linear/draft') return send(res, 200, { draft, prompt: claudePrompt(localDraft, team), imagePaths: draft.images.map((im) => join(run.dir, im.path)), configured: lin.mode !== null, mode: lin.mode, team, link: links[draft.fingerprint] ?? null });
         if (p === '/api/linear/rewrite') {
           // viết lại cho tự nhiên; chỉ nhận khi AI giữ đủ dòng fingerprint và mọi chỗ đặt ảnh
           const base = acceptDescription(draft, body.description);
@@ -860,8 +869,9 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
           if (acceptDescription(draft, text) !== text || refs.some((x) => !text.includes(x))) return send(res, 502, { error: 'Bản AI viết lại làm mất dòng fingerprint hoặc ảnh: giữ bản cũ, thử lại.' });
           return send(res, 200, { description: text });
         }
-        if (!apiKey) return send(res, 400, { error: 'Chưa cấu hình LINEAR_API_KEY: dùng nút "Copy cho Claude" để gửi qua Linear MCP.', prompt: claudePrompt(draft, team) });
-        const linear = createLinear({ apiKey, team, ...(linearFetch ? { fetchImpl: linearFetch } : {}) });
+        const back = await linearBackend();
+        if (!back.client) return send(res, 400, { error: `${NO_LINEAR} Hoặc dùng nút "Copy cho Claude".`, prompt: claudePrompt(draft, team) });
+        const linear = back.client;
         const found = await linear.find(draft.fingerprint);
         const failing = (run.report.run.results ?? []).find((x) => x.id === body.resultId);
         const attached = links[draft.fingerprint]; // issue gắn tay: không chứa fingerprint nên find() không thấy
@@ -890,6 +900,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
             const st = full && !isLink(full) && realInside(run.dir, full) ? await lstat(full) : null; // artifacts/ là symlink thì không đọc
             if (!st?.isFile() || st.size > 5 * 1024 * 1024) continue;
             const ext = extname(full).toLowerCase();
+            if (typeof linear.uploadImage !== 'function') break; // MCP không tải ảnh lên: ảnh thành ghi chú đường dẫn
             urls[i] = await linear.uploadImage(await readFile(full), basename(full), ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg');
           } catch {
             // ảnh không tải được: thay bằng ghi chú, không làm hỏng cả issue

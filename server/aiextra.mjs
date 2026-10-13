@@ -17,6 +17,14 @@ const tokensOf = (report, r) => stepsOf(report, r).flatMap((s) => s.events ?? []
 const avg = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 const ms = (v) => (v == null ? '—' : v < 1000 ? `${Math.round(v)}ms` : `${(v / 1000).toFixed(1)}s`);
 
+// Các test fail của một run, mỗi test một dòng (tên, file, mã lỗi, dòng đầu thông báo): bằng chứng để gom bug trùng.
+export function failuresEvidence(report, limit = 40) {
+  return results(report).filter(NOT_PASS).slice(0, limit).map((r) => {
+    const e = resultAttempts(report, r).at(-1)?.error;
+    return `- ${tTitle(r)} (${String(r.source?.file ?? r.file ?? '').slice(0, 200)}:${r.source?.line ?? '?'}) [${r.status}] ${e?.code ?? 'ERROR'}: ${firstLine(e) || '—'}`;
+  });
+}
+
 // ---------------------------------------------------------------- tóm tắt run
 export function runSummaryEvidence(history, runId) {
   const i = history.findIndex((h) => h.meta.runId === runId);

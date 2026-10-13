@@ -1,5 +1,6 @@
 import { listRunDirsSync } from '../reporter/e2e-dashboard.reporter.mjs';
 import './_home.mjs';
+const NO_MCP = async () => ({ servers: [], connected: false, prefixes: [], needsAuth: false, installed: true }); // không gọi `claude mcp list` thật trong test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -207,7 +208,7 @@ test('API: search, anomalies, lint, models, bisect, owners, quarantine, why-flak
   const posted = [];
   const github = { findPr: async (b) => (b === 'main' ? { number: 3, url: 'https://github.com/o/r/pull/3', title: 't' } : null), comment: async (n, body) => posted.push([n, body]) && 'url' };
   const ghImport = async (_root, id) => [{ report: 'r.json', status: id === '9' ? 'archived' : 'exists' }];
-  const server = http.createServer(createApp({ projectRoot: root, token: 't', uiDir: fileURLToPath(new URL('../ui', import.meta.url)), live: createLive({ throttleMs: 1 }), ai, github, ghImport }));
+  const server = http.createServer(createApp({ projectRoot: root, token: 't', uiDir: fileURLToPath(new URL('../ui', import.meta.url)), live: createLive({ throttleMs: 1 }), ai, github, ghImport, mcpDetect: NO_MCP }));
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
   const get = async (p) => (await fetch(`${base}${p}`, { headers: { 'x-e2e-dashboard-token': 't' } })).json();

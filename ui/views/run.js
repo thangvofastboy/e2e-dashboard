@@ -97,6 +97,7 @@ function header(meta, report) {
   const actions = isExport()
     ? savedRun ? `<button class="btn-ai" data-ai="analyze-run">${icon('sparkles', { size: 15 })}Xem phân tích AI</button>` : ''
     : `<button class="btn-ai" data-ai="analyze-run">${icon('sparkles', { size: 15 })}Phân tích run</button>
+       ${flattenResults(report).filter((r) => isFailure(r.status)).length >= 2 ? `<button class="btn-ai" data-ai="dedupe-failures" title="AI gom các test fail cùng nguyên nhân để chỉ tạo một issue cho mỗi nhóm">${icon('layers', { size: 15 })}Gom bug trùng</button>` : ''}
        <button class="btn-ai" data-ai="why-slow" title="So thời gian / token với lịch sử của chính từng test">${icon('timer', { size: 15 })}Vì sao chậm / tốn token?</button>
        ${ui.compareWith ? `<a class="button" href="${compareHref(ui.compareWith.runId, meta.runId)}" title="So với ${ui.compareWith.baseline ? 'baseline' : 'run trước'}">${icon('columns', { size: 15 })}So với ${ui.compareWith.baseline ? 'baseline' : 'run trước'}</a>` : ''}
        <button class="btn-pin${meta.pinned ? ' on' : ''}" data-flag="pin" aria-pressed="${Boolean(meta.pinned)}" title="${meta.pinned ? 'Bỏ ghim' : 'Ghim: không bao giờ bị xoá'}">${icon('pin', { size: 15 })}${meta.pinned ? 'Đã ghim' : 'Ghim'}</button>
@@ -264,7 +265,7 @@ function detail(row, meta, runId) {
   const body = { media: () => mediaTab(row, attempt, runId), log: () => logTab(attempt), trace: () => '<div id="trace" class="md">Đang tải trace…</div>', model: () => '<div id="aitrace" class="ai-trace">Đang tải…</div>', source: () => sourceTab(row, attempt) }[ui.tab]();
   const savedFail = ui.saved.find((e) => e.action === 'analyze-failure' && e.resultId === row.id);
   const aiBtn = isFailure(row.status) && (!isExport() || savedFail)
-    ? `<button type="button" class="btn-ai" data-ai="analyze-failure" data-result="${escapeHtml(row.id)}">${icon('sparkles', { size: 14 })}${isExport() ? 'Xem phân tích lỗi' : 'Phân tích lỗi'}</button>`
+    ? `<button type="button" class="btn-ai" data-ai="analyze-failure" data-result="${escapeHtml(row.id)}">${icon('sparkles', { size: 14 })}${isExport() ? 'Xem phân tích lỗi' : 'Phân tích lỗi'}</button>${isExport() ? '' : `<button type="button" class="btn-ai" data-ai="repro-steps" data-result="${escapeHtml(row.id)}" title="AI viết các bước tái hiện cho người không biết code">${icon('list', { size: 14 })}Bước tái hiện</button><button type="button" class="btn-ai" data-ai="severity" data-result="${escapeHtml(row.id)}" title="AI đề xuất mức độ nghiêm trọng để bạn duyệt">${icon('alert', { size: 14 })}Mức độ nghiêm trọng</button>`}`
     : '';
   const linearBtn = isFailure(row.status) && !isExport()
     ? `<button type="button" data-linear="${escapeHtml(row.id)}">${icon('ticket', { size: 14 })}Gửi Linear</button><button type="button" data-bisect="${escapeHtml(row.id)}">${icon('commit', { size: 14 })}Tìm commit gây lỗi</button><button type="button" data-fix="${escapeHtml(row.id)}" title="Copy lệnh để Claude Code đọc lỗi, sửa và chạy lại test">${icon('bolt', { size: 14 })}Sửa bằng Claude Code</button>`
@@ -281,6 +282,8 @@ function detail(row, meta, runId) {
     <ol class="timeline">${steps || '<li class="muted">Không có step.</li>'}</ol>
     <div class="tabs">${tabs}</div><div class="tab-body">${body}</div>`;
 }
+
+const AI_TITLES = { 'analyze-run': 'Phân tích run', 'why-slow': 'Vì sao chậm / tốn token', 'dedupe-failures': 'Gom bug trùng', 'repro-steps': 'Bước tái hiện', severity: 'Mức độ nghiêm trọng' };
 
 export async function renderRun(main, route) {
   const { runId, resultId } = route;
@@ -394,9 +397,9 @@ export async function renderRun(main, route) {
     el.addEventListener('click', () => {
       const action = el.dataset.ai;
       const resultId = el.dataset.result ?? null;
-      const saved = ui.saved.find((e) => e.action === action && (action === 'analyze-run' || action === 'why-slow' || e.resultId === resultId));
+      const saved = ui.saved.find((e) => e.action === action && (action === 'analyze-run' || action === 'why-slow' || action === 'dedupe-failures' || e.resultId === resultId));
       const row = all.find((r) => r.id === resultId);
-      openAiPanel({ action, runId, resultId, saved, title: action === 'analyze-run' ? 'Phân tích run' : action === 'why-slow' ? 'Vì sao chậm / tốn token' : `Phân tích lỗi · ${row?.title ?? ''}` });
+      openAiPanel({ action, runId, resultId, saved, title: AI_TITLES[action] ? `${AI_TITLES[action]}${resultId ? ` · ${row?.title ?? ''}` : ''}` : `Phân tích lỗi · ${row?.title ?? ''}` });
     }));
   main.querySelectorAll('[data-fix]').forEach((el) =>
     el.addEventListener('click', async () => {

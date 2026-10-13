@@ -74,7 +74,7 @@ export async function openLinearDialog({ runId, resultId }) {
       <select data-qc-tpl aria-label="Mẫu QC" class="linear-tpl"></select>
       <button type="button" class="btn-ai" data-qc-linear title="AI viết nội dung theo mẫu QC đã chọn, giữ dòng fingerprint">${icon('sparkles', { size: 14 })}Viết bằng mẫu QC</button>
       <button type="button" data-copy-claude title="Dán vào Claude Code có Linear MCP">${icon('copy', { size: 14 })}Copy cho Claude (Linear MCP)</button>
-      ${d.configured ? `<button type="button" class="primary" data-send>${icon('send', { size: 14 })}Gửi lên Linear</button>` : '<span class="muted small">Đặt Linear API key ở <a href="#/system">Cài đặt hệ thống</a> (hoặc <code>LINEAR_API_KEY</code>) để gửi trực tiếp.</span>'}
+      ${d.configured ? `<button type="button" class="primary" data-send title="${d.mode === 'mcp' ? 'Gửi qua MCP Linear của Claude CLI (có thể mất vài chục giây)' : 'Gửi bằng Linear API key'}">${icon('send', { size: 14 })}Gửi lên Linear${d.mode === 'mcp' ? ' (qua MCP)' : ''}</button>` : '<span class="muted small">Chưa gửi trực tiếp được: nhập Linear API key ở <a href="#/system?tab=integrations">Cài đặt hệ thống</a>, hoặc đăng nhập MCP Linear cho Claude CLI (<code>claude</code> → <code>/mcp</code>).</span>'}
     </footer>`;
 
   const $ = (q) => body.querySelector(q);
