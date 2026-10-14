@@ -8,6 +8,9 @@ import { currentLang, setLang } from '../i18n.js';
 import { replaceParams } from '../router.js';
 import { fmtBytes } from './settings.js';
 import { FONT_SCALES, storedTheme, setTheme, storedFont, setFont } from '../prefs.js';
+import { storedIconOnly, setIconOnly } from '../icon-only.js';
+import { renderMarkdown } from '../markdown.js';
+import { GUIDE_MD } from '../guide.js';
 
 const STATE = { set: ['good', 'check', 'Đã điền'], placeholder: ['warn', 'alert', 'Còn giá trị mẫu'], empty: ['bad', 'x', 'Trống'], missing: ['bad', 'x', 'Chưa có'] };
 const chip = (state) => {
@@ -27,11 +30,84 @@ const setRow = (title, desc, control) => `<div class="set-row"><div class="set-t
 const SYS_TABS = [
   ['appearance', 'Giao diện', 'sun', 'Theme, cỡ chữ, ngôn ngữ'],
   ['project', 'Project', 'folder', 'Setup và file .env'],
+  ['sources', 'Dự án', 'layers', 'Thư mục nguồn, prompt cho AI'],
   ['integrations', 'Tích hợp', 'bolt', 'Linear, webhook'],
   ['ai', 'AI & tự sửa lỗi', 'sparkles', 'Model, effort, PR tự động'],
   ['about', 'Hệ thống', 'cpu', 'Phiên bản, dữ liệu, SQLite'],
   ['reset', 'Dọn dẹp', 'recycle', 'Dọn rác, reset dữ liệu'],
+  ['guide', 'Hướng dẫn', 'bulb', 'Cài đặt, viết và chạy test'],
 ];
+
+const SRC_MAX = 20;
+const SRC_DESC_MAX = 500;
+const PROMPT_MAX = 8000;
+const srcRowHtml = (s = {}) => `<li class="src-row" data-src-row>
+    <input name="srcPath" value="${escapeHtml(s.path ?? '')}" placeholder="../crm-backend" aria-label="Đường dẫn thư mục" autocomplete="off" spellcheck="false">
+    <textarea name="srcDesc" rows="2" maxlength="${SRC_DESC_MAX}" placeholder="Backend NestJS: API, auth, job nền" aria-label="Mô tả thư mục">${escapeHtml(s.description ?? '')}</textarea>
+    <button type="button" class="small-btn" data-src-del>${icon('close', { size: 13 })}Xoá</button></li>`;
+
+// Tab Dự án: các thư mục nguồn (đường dẫn + mô tả) và Prompt; mọi lần gọi AI đều kèm khối bối cảnh này
+export function projectSourcesHtml(prefs) {
+  const sources = prefs?.sources ?? [];
+  const prompt = prefs?.prompt ?? '';
+  return `<section class="panel"><h2>${icon('layers', { size: 18 })} Dự án</h2>
+    <p class="muted">Các thư mục mã nguồn của hệ thống (vd. backend, frontend) kèm mô tả, và Prompt mô tả hệ thống, rule, workflow. Mọi lần gọi AI của dashboard đều gửi kèm phần này, và AI được đọc các thư mục đó.</p>
+    <form data-sources-form>
+      <h3>Thư mục nguồn <span class="muted small">(tối đa ${SRC_MAX}; đường dẫn tương đối với project hoặc tuyệt đối)</span></h3>
+      <ul class="src-list" data-src-list>${sources.map(srcRowHtml).join('')}</ul>
+      <p><button type="button" data-src-add${sources.length >= SRC_MAX ? ' disabled' : ''}>${icon('folder', { size: 14 })}Thêm thư mục</button></p>
+      <label class="fb-field"><span>Prompt <span class="muted small" data-prompt-count>${prompt.length}/${PROMPT_MAX}</span></span>
+        <textarea class="proj-prompt" name="prompt" rows="8" maxlength="${PROMPT_MAX}" placeholder="Hệ thống gồm… Quy ước đặt tên… Luồng nghiệp vụ chính…" aria-label="Prompt cho AI">${escapeHtml(prompt)}</textarea></label>
+      <p class="err small tone-bad" data-sources-err hidden></p>
+      <div class="form-row"><button type="submit" class="primary">${icon('check', { size: 14 })}Lưu</button></div>
+    </form></section>`;
+}
+
+// đọc form Dự án; trả { sources, prompt } hoặc { error }
+function readSourcesForm(f) {
+  const sources = [...f.querySelectorAll('[data-src-row]')].map((r) => ({ path: r.querySelector('[name=srcPath]').value.trim(), description: r.querySelector('[name=srcDesc]').value.trim() }));
+  if (sources.length > SRC_MAX) return { error: `Tối đa ${SRC_MAX} thư mục.` };
+  const i = sources.findIndex((s) => !s.path);
+  if (i >= 0) return { error: `Dòng ${i + 1}: chưa nhập đường dẫn thư mục.` };
+  const j = sources.findIndex((s) => s.description.length > SRC_DESC_MAX);
+  if (j >= 0) return { error: `Dòng ${j + 1}: mô tả dài quá ${SRC_DESC_MAX} ký tự.` };
+  const prompt = f.prompt.value;
+  if (prompt.length > PROMPT_MAX) return { error: `Prompt dài quá ${PROMPT_MAX} ký tự.` };
+  return { sources, prompt };
+}
+
+const GB = (n) => `${Math.round(n * 10) / 10} GB`;
+const NA = '<span class="muted">không đo được</span>';
+// Bảng cấu hình máy: hostname / OS / arch / Node từ /api/system, phần cứng từ /api/resources (null = không có endpoint),
+// trình duyệt Playwright từ /api/settings (browsers.installed: true / false / null = không đọc được)
+export function machineHtml(sys, res, browsers) {
+  const m = res?.machine;
+  const has = (v) => v != null && v !== '';
+  const os = [sys.platform, sys.arch].filter(has).map(escapeHtml).join(' · ') || '—';
+  const cpu = has(m?.cpuModel) || has(m?.cores) ? `${escapeHtml(m.cpuModel ?? '?')} × ${escapeHtml(m.cores ?? '?')}` : NA;
+  const ram = has(m?.memTotalMb) ? GB(m.memTotalMb / 1024) : NA;
+  const disk = has(m?.diskTotalGb) ? `${GB(m.diskFreeGb ?? 0)} trống / ${GB(m.diskTotalGb)}` : NA;
+  const list = browsers ? Object.entries(browsers) : [];
+  const br = !list.length || list.every(([, v]) => v == null) ? NA : list.filter(([, v]) => v).map(([k]) => `<code>${escapeHtml(k)}</code>`).join(', ') || '<span class="muted">Chưa cài</span>';
+  const row = (k, v) => `<tr><td>${k}</td><td>${v}</td></tr>`;
+  return `<h3>Cấu hình máy</h3><table class="table keys"><tbody>
+    ${row('Hostname', has(sys.hostname) ? escapeHtml(sys.hostname) : '—')}
+    ${row('Hệ điều hành', os)}
+    ${row('CPU', cpu)}
+    ${row('RAM', ram)}
+    ${row('Ổ đĩa (project)', disk)}
+    ${row('Node.js', escapeHtml(sys.node ?? '—'))}
+    ${row('Trình duyệt Playwright', br)}
+  </tbody></table>`;
+}
+
+// Tab Hướng dẫn: mục lục bên trái (nút cuộn tới từng phần ##), nội dung Markdown bên phải
+function guideHtml() {
+  const secs = GUIDE_MD.split('\n').filter((l) => /^##\s/.test(l)).map((l) => l.replace(/^##\s+/, ''));
+  return `<section class="panel"><div class="guide">
+    <nav class="guide-toc" aria-label="Mục lục hướng dẫn">${secs.map((s, i) => `<button type="button" class="small-btn" data-guide-sec="${i}">${escapeHtml(s)}</button>`).join('')}</nav>
+    <div class="md">${renderMarkdown(GUIDE_MD)}</div></div></section>`;
+}
 
 function appearanceHtml() {
   return `<section class="panel"><h2>${icon('sun', { size: 18 })} Giao diện</h2>
@@ -39,6 +115,7 @@ function appearanceHtml() {
     ${setRow('Theme', 'Sáng, tối hoặc theo hệ điều hành', seg('theme', [['system', 'Theo hệ thống'], ['light', 'Sáng'], ['dark', 'Tối']], storedTheme() ?? 'system', 'Theme'))}
     ${setRow('Cỡ chữ', 'Áp dụng cho toàn bộ dashboard', seg('font', FONT_SCALES, storedFont(), 'Cỡ chữ'))}
     ${setRow('Ngôn ngữ', 'Giao diện tiếng Anh còn ở bản beta', seg('lang', [['vi', 'Tiếng Việt'], ['en', 'English']], currentLang(), 'Ngôn ngữ'))}
+    ${setRow('Nút chỉ hiện icon', 'Ẩn chữ trên nút có icon, rê chuột hoặc Tab tới để xem tên. Mặc định bật', `<label class="switch"><input type="checkbox" name="iconOnly"${storedIconOnly() ? ' checked' : ''}><span class="track"></span><span class="sr-only">Nút chỉ hiện icon</span></label>`)}
   </section>`;
 }
 
@@ -229,7 +306,7 @@ function openResetDialog(p, scopes, onDone) {
   input.focus();
 }
 
-function infoHtml(d) {
+function infoHtml(d, res = null, browsers = null) {
   return `<section class="panel"><h2>${icon('cpu', { size: 18 })} Hệ thống</h2>
     ${sysStats(sysStat('Dashboard', `v${escapeHtml(d.version)}`), sysStat('Node.js', escapeHtml(d.node)), sysStat('Hệ điều hành', escapeHtml(d.platform)), sysStat('Chỉ mục SQLite', d.sqlite ? 'Bật' : 'Tắt', d.sqlite ? 'good' : 'muted'))}
     <table class="table keys"><tbody>
@@ -239,6 +316,7 @@ function infoHtml(d) {
       <tr><td>Project</td><td><code>${escapeHtml(d.projectRoot)}</code></td></tr>
       <tr><td>Dữ liệu dashboard</td><td><code>${escapeHtml(d.dataDir)}</code></td></tr>
     </tbody></table>
+    ${machineHtml(d, res, browsers)}
     <form class="form-row" data-sqlite><label class="switch small"><input type="checkbox" name="sqlite"${d.sqlite ? ' checked' : ''}${!d.sqlite && !d.sqliteSupport.ok ? ' disabled' : ''}><span class="track"></span><span>Dùng chỉ mục SQLite (nhanh hơn khi lịch sử lớn; mặc định tắt)</label></form>
     ${d.sqliteSupport.ok ? '' : `<p class="small tone-warn">${icon('alert', { size: 13 })} ${escapeHtml(d.sqliteSupport.reason)}</p>`}
     <p class="small"><a href="#/settings">${icon('gauge', { size: 13 })} Số worker, watch, lịch chạy, dung lượng → Tự động & lưu trữ</a></p>
@@ -247,13 +325,14 @@ function infoHtml(d) {
 
 export async function renderSystem(main) {
   // song song: /api/linear có thể chạy `claude mcp list` (vài giây), không bắt các request khác chờ nối đuôi
-  let [d, heal, resetInfo, junkInfo, linearInfo, prefs] = await Promise.all([
+  let [d, heal, resetInfo, junkInfo, linearInfo, prefs, resources] = await Promise.all([
     getJson('/api/system'),
     getJson('/api/selfheal').catch(() => ({ errors: [] })),
     getJson('/api/reset/preview').catch(() => null),
     getJson('/api/junk').catch(() => null),
     getJson('/api/linear').catch(() => null),
     getJson('/api/settings').catch(() => null),
+    getJson('/api/resources').catch(() => null), // chưa có endpoint (404) → "không đo được"
   ]);
   let editing = null; // file env đang mở
   const urlTab = () => new URLSearchParams(location.hash.split('?')[1] ?? '').get('tab');
@@ -263,7 +342,7 @@ export async function renderSystem(main) {
     return todo ? `<span class="sys-badge" title="Cần xem">${todo}</span>` : '';
   };
   const draw = () => {
-    const panes = { appearance: appearanceHtml(), project: setupHtml(d.setup) + envHtml(d.env), integrations: userHtml(d.user, linearInfo) + linearIssuesFormHtml(prefs?.linear ?? { emails: [], statuses: [] }), ai: healHtml(heal, d.user.selfHeal, d.user.ai), about: infoHtml(d), reset: junkHtml(junkInfo) + resetHtml(resetInfo) };
+    const panes = { appearance: appearanceHtml(), project: setupHtml(d.setup) + envHtml(d.env), integrations: userHtml(d.user, linearInfo) + linearIssuesFormHtml(prefs?.linear ?? { emails: [], statuses: [] }), ai: healHtml(heal, d.user.selfHeal, d.user.ai), about: infoHtml(d, resources, prefs?.browsers?.installed), reset: junkHtml(junkInfo) + resetHtml(resetInfo), sources: projectSourcesHtml(prefs), guide: guideHtml() };
     main.innerHTML = `${pageHead('Cài đặt hệ thống', 'settings', 'Giao diện, biến môi trường của project, key của dashboard và tình trạng setup.')}
       <div class="sys">
         <div class="sys-nav" role="tablist" aria-orientation="vertical" aria-label="Nhóm cài đặt">${SYS_TABS.map(([k, label, ic, sub]) => `<button type="button" role="tab" id="sys-tab-${k}" data-sys-tab="${k}" aria-selected="${k === tab}" aria-controls="sys-pane-${k}" tabindex="${k === tab ? 0 : -1}"><span class="sys-nav-ic">${icon(ic, { size: 20 })}</span><span class="sys-nav-t"><strong>${label}</strong><span class="small">${sub}</span></span>${badge(k)}</button>`).join('')}</div>
@@ -354,9 +433,15 @@ export async function renderSystem(main) {
       postJson('/api/system/user', { autoSummary: t.checked }).then(() => toast(t.checked ? 'Đã bật tự tóm tắt run' : 'Đã tắt tự tóm tắt run')).catch((x) => toast(x.message, 'bad'));
       return;
     }
+    if (t.name === 'iconOnly') return setIconOnly(t.checked);
     if (t.name === 'theme') setTheme(t.value === 'system' ? null : t.value);
     else if (t.name === 'font') setFont(t.value);
     else if (t.name === 'lang') setLang(t.value);
+  });
+  main.addEventListener('input', (e) => {
+    if (e.target.name !== 'prompt') return;
+    const c = main.querySelector('[data-prompt-count]');
+    if (c) c.textContent = `${e.target.value.length}/${PROMPT_MAX}`;
   });
   main.addEventListener('keydown', (e) => {
     if (e.target.matches('.env-text') && (e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -376,6 +461,17 @@ export async function renderSystem(main) {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.sysTab) return showTab(b.dataset.sysTab);
+    if (b.dataset.guideSec) return void main.querySelectorAll('#sys-pane-guide .md h2')[Number(b.dataset.guideSec)]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if ('srcAdd' in b.dataset || 'srcDel' in b.dataset) {
+      const list = main.querySelector('[data-src-list]');
+      if ('srcDel' in b.dataset) b.closest('[data-src-row]').remove();
+      else if (list.children.length < SRC_MAX) {
+        list.insertAdjacentHTML('beforeend', srcRowHtml());
+        list.lastElementChild.querySelector('input').focus();
+      }
+      main.querySelector('[data-src-add]').disabled = list.children.length >= SRC_MAX;
+      return;
+    }
     try {
       if (b.dataset.envOpen) {
         const ta = editor().querySelector('textarea');
@@ -457,6 +553,22 @@ export async function renderSystem(main) {
   main.addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = e.target;
+    if (f.matches('[data-sources-form]')) {
+      const err = f.querySelector('[data-sources-err]');
+      const v = readSourcesForm(f);
+      err.hidden = !v.error;
+      err.textContent = v.error ?? '';
+      if (v.error) return;
+      try {
+        await postJson('/api/settings', v);
+        prefs = { ...prefs, ...v };
+        toast('Đã lưu thư mục nguồn và Prompt');
+      } catch (x) {
+        err.hidden = false;
+        err.textContent = x.message.replace(/^\d{3}: /, ''); // 400 của server: đường dẫn không tồn tại, quá dài…
+      }
+      return;
+    }
     try {
       if (f.matches('[data-linear-key]')) {
         await postJson('/api/system/user', { linearApiKey: f.key.value.trim() });

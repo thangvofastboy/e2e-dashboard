@@ -47,6 +47,18 @@ export function renderMarkdown(src) {
       out.push(`<pre><code${fence[2] ? ` class="language-${escapeHtml(fence[2].toLowerCase())}"` : ''}>${escapeHtml(code.join('\n'))}\n</code></pre>`);
       continue;
     }
+    // bảng pipe: dòng đầu là tiêu đề, dòng sau phải là |---|:-:|; `\|` là ký tự | trong ô
+    if (/^\s*\|/.test(line) && /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(lines[i + 1] ?? '')) {
+      flushPara();
+      flushList();
+      const cells = (l) => l.trim().replace(/^\||\|$/g, '').split(/(?<!\\)\|/).map((c) => inline(c.trim().replace(/\\\|/g, '|')));
+      const head = cells(line);
+      const body = [];
+      for (i += 2; i < lines.length && /^\s*\|/.test(lines[i]); i++) body.push(cells(lines[i]));
+      i--;
+      out.push(`<table class="table md-table"><thead><tr>${head.map((c) => `<th>${c}</th>`).join('')}</tr></thead><tbody>${body.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`);
+      continue;
+    }
     const h = /^(#{1,3})\s+(.*)$/.exec(line);
     const ul = /^\s*[-*]\s+(.*)$/.exec(line);
     const ol = /^\s*\d+\.\s+(.*)$/.exec(line);
