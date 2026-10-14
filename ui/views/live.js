@@ -385,8 +385,9 @@ export async function renderLive(main) {
         const t = snap.tests.find((x) => x.key === d.rerunOne);
         if (!t) return;
         const r = rep.runId === runId ? rep.results[t.key] : null;
-        // chưa có báo cáo thì không biết dòng: chạy lại cả file của test đó
-        const spec = r?.line ? `${r.file}:${r.line}` : t.file;
+        // event live không có số dòng: chưa có báo cáo thì tra danh mục test theo testId; không thấy mới chạy lại cả file
+        const line = r?.line ?? (await getJson('/api/tests').then((rows) => rows.find((x) => x.testId === t.testId)?.line, () => null));
+        const spec = line ? `${r?.file ?? t.file}:${line}` : t.file;
         return openRunDialog({ tests: [spec], targets: [t.target], agents: [t.agent], rerunOf: runId, title: `Chạy lại ${t.title}` });
       }
       if (d.liveAi) return openAiPanel({ action: d.liveAi, runId, resultId: d.result, title: `${d.liveAi === 'repro-steps' ? 'Bước tái hiện' : 'Phân tích lỗi'} · ${d.title ?? ''}` });
