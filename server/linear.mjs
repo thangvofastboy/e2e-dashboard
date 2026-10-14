@@ -214,6 +214,13 @@ export function createLinear({ apiKey, team, fetchImpl = globalThis.fetch, timeo
       }
       return out;
     },
+    // một issue kèm mô tả và comment để AI phân tích; null khi Linear không biết mã này
+    async getWithComments(identifier) {
+      if (!/^[A-Z][A-Z0-9]{1,9}-\d{1,7}$/.test(identifier)) throw new Error('invalid identifier');
+      const data = await gql(`query($id: String!) { issue(id: $id) { identifier title description comments(first: 30) { nodes { body } } } }`, { id: identifier });
+      if (!data.issue) return null;
+      return { identifier: data.issue.identifier, title: data.issue.title, description: data.issue.description ?? '', comments: (data.issue.comments?.nodes ?? []).map((c) => c?.body ?? '').filter(Boolean) };
+    },
     async create(draft) {
       const data = await gql(`mutation($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { ${ISSUE} } } }`, { input: { teamId: await teamId(), title: draft.title, description: draft.description } });
       if (!data.issueCreate?.success) throw new Error('Linear: tạo issue thất bại.');

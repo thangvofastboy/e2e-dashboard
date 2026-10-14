@@ -119,6 +119,13 @@ ${data.length ? `<${fence}>\n${data.map(noFence).join('\n')}\n</${fence}>\n\n` :
         .map((x) => ({ identifier: String(x?.identifier ?? ''), title: clip(x?.title, 300), url: String(x?.url ?? ''), state: clip(x?.state?.name, 60), assignee: String(x?.assignee?.email ?? '').toLowerCase() }))
         .filter((i) => ID.test(i.identifier) && i.state && i.assignee);
     },
+    async getWithComments(identifier) {
+      if (!ID.test(identifier)) throw new Error('invalid identifier');
+      const out = await ask(`Lấy issue ${identifier} kèm mô tả và 30 comment đầu. Trả về {"issue":{"identifier":"…","title":"…","description":"…","comments":["…"]}}; không có issue này thì {"issue":null}.`);
+      const i = out.issue;
+      if (!i || typeof i !== 'object') return null;
+      return { identifier: String(i.identifier ?? identifier), title: clip(i.title, 300), description: clip(i.description, 8000), comments: (Array.isArray(i.comments) ? i.comments : []).map((c) => clip(c, 4000)).filter(Boolean).slice(0, 30) };
+    },
     async create(draft) {
       const out = await ask(`Tạo MỘT issue mới${team ? ` trong team ${team}` : ''} với đúng tiêu đề và mô tả (Markdown) trong khối dữ liệu, chép nguyên văn từng ký tự, không thêm bớt. Trả về {"issues":[issue vừa tạo]} theo dạng ${SHAPE}.`, { data: [`TIÊU ĐỀ: ${clip(draft.title, 300)}`, 'MÔ TẢ:', clip(draft.description, 20_000)] });
       const issue = issueOf(out.issues?.[0]);
