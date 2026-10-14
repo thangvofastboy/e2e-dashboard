@@ -75,7 +75,7 @@
 | 💾 | **Dung lượng** | Xem dung lượng theo loại, xoá video cũ, xoá run, giữ run fail lâu hơn |
 | ⌨️ | **Phím tắt & bộ lọc trên URL** | `?`, `g`+phím, `/`, `j`/`k`/`r`/`a`/`l` ở trang run; link chia sẻ mở đúng bộ lọc |
 | 🎯 | **Agent step → locator** | Step `agent.act` replay ổn định được dựng thành code `screen.getByRole(...)` từ cache của e2e |
-| 🔌 | **MCP server** | Claude Code hỏi thẳng lịch sử test: `e2e_runs`, `e2e_run`, `e2e_test`, `e2e_flaky`, `e2e_errors`, `e2e_search`, `e2e_health`, `e2e_gate`, `e2e_coverage`, `e2e_digest` |
+| 🔌 | **MCP server** | Claude Code hỏi thẳng lịch sử test: `e2e_runs`, `e2e_run`, `e2e_test`, `e2e_flaky`, `e2e_errors`, `e2e_search`, `e2e_health`, `e2e_gate`, `e2e_coverage`, `e2e_digest`; và **chạy / dừng test qua dashboard**: `e2e_run_start`, `e2e_run_stop` (cần dashboard đang mở; có nút Dừng, tài nguyên và tiến độ ở Live như khi bấm tay) |
 | 🛠️ | **Sửa bằng Claude Code** | Nút ở test fail copy lệnh `/e2e-dashboard:e2e-dashboard fix <run> <test>`: Claude đọc lỗi, sửa app hoặc test, chạy lại đúng test đó |
 | 🕳️ | **Khoảng trống coverage** | Trang của app (`app/`, `pages/`, `src/routes`, `sitemap.xml`, router) chưa test nào đi qua, nút nhờ AI viết test |
 | 🚧 | **Cổng chất lượng** | `/e2e-dashboard gate`: trả mã lỗi khi có test mới fail, health/SLO dưới ngưỡng, vượt token |
@@ -131,6 +131,17 @@
 | 🧹 | **Dọn rác** | Cài đặt hệ thống → Dọn dẹp: quét 6 nhóm rác (file ghi dở `.tmp-*`, run lưu thiếu file, log lớn, báo cáo xuất cũ, replay cache cũ / mồ côi, thư mục tạm nhập từ GitHub), cho biết số mục và dung lượng từng nhóm, chỉ xoá nhóm bạn chọn sau popup xác nhận |
 | ⚠️ | **Reset All** | Cài đặt hệ thống → Reset: xoá cài đặt, dữ liệu, hoặc cả cấu hình chung của máy. Có popup cảnh báo và phải gõ `RESET`; không có bản sao lưu |
 | 🛡️ | **Xác nhận mọi thao tác nguy hiểm** | Một hộp thoại dùng chung cho mọi thao tác xoá, gỡ, dừng run, ghi đè snapshot, bật tự động; mặc định focus vào *Huỷ*, Esc để thoát |
+| 🖥️ | **Chạy có / không giao diện** | Công tắc *headed* ở Tự động & lưu trữ → Chạy & lịch (mặc định tắt) và trong hộp thoại Run; áp cho chạy tay, chạy lại, chạy theo lịch và chạy qua MCP |
+| 🌳 | **Tests dạng cây thư mục** | Thư mục gập / mở kèm số test và số fail, mỗi file một dòng tóm tắt (pass rate, thời gian TB, trạng thái mới nhất), chọn cả thư mục, nút *Tải lại*; tên test dài tự xuống dòng |
+| 🔎 | **Chọn test có ô lọc** | Ô chọn test ở QC xác nhận và Mẫu QC: lọc theo tên, file, tag (gõ không dấu vẫn khớp), hiện theo cây, dùng được bằng bàn phím |
+| 🧯 | **Live: danh sách test fail riêng** | Ngay dưới Gantt, cập nhật trong lúc chạy; run xong có đủ nút như Runs: Phân tích lỗi, Bước tái hiện, Gửi Linear, Tìm commit gây lỗi, Sửa bằng Claude Code, Chạy lại đúng test |
+| 📟 | **Tài nguyên máy & app** | Live hiện CPU, RAM, disk trống của máy (cả khi chưa chạy) và RAM / CPU / số tiến trình của run đang chạy (gồm trình duyệt); Cài đặt hệ thống có bảng cấu hình máy |
+| 🎯 | **Chất lượng test: AI đánh giá lại** | Nút *Tính lại* và *AI đánh giá lại* chọn được model và effort cho riêng lần đó |
+| 🗺️ | **Coverage chia tab** | Tab *Route* và *Domain trong source*, nhớ tab trên URL |
+| 📁 | **Bối cảnh dự án cho AI** | Cài đặt hệ thống → Dự án: nhiều thư mục nguồn kèm mô tả (vd. backend, frontend) và một Prompt về hệ thống, rule, workflow. Mọi lần gọi AI đều gửi kèm (`--append-system-prompt`), AI được đọc các thư mục đó (`--add-dir`, chỉ đọc) |
+| 📘 | **Hướng dẫn trong app** | Cài đặt hệ thống → Hướng dẫn: từng bước cài đặt, Claude Code, e2e, mở dashboard, viết và chạy test, đọc kết quả, AI, cấu hình, xử lý sự cố |
+| 🔘 | **Nút chỉ hiện icon** | Mặc định nút chỉ còn icon, rê chuột hiện tên; trình đọc màn hình vẫn đọc tên nút. Tắt ở Cài đặt hệ thống → Giao diện |
+| 🏷️ | **Gửi Linear: loại Task / Bug** | Hộp thoại Gửi Linear có *Loại* và *Mã issue liên quan* (bắt buộc với Bug); gắn label Bug / Task của team nếu có |
 | 🗂️ | **Cài đặt chia tab dọc** | Cài đặt hệ thống và Tự động & lưu trữ chia nhóm ở menu dọc, hiện số liệu tổng quan, nút và công tắc lớn rõ ràng |
 
 > [!TIP]
@@ -253,9 +264,9 @@ Lệnh này copy `e2e-dashboard.reporter.mjs` (kèm `.d.mts`) vào project và t
 <summary>🧑‍💻 <b>Hằng ngày: chạy test và xem kết quả</b></summary>
 
 1. Mở dashboard một lần: `/e2e-dashboard` (server chạy nền, lần sau gõ lại chỉ mở trình duyệt).
-2. Chạy test như bình thường (`npx e2e run`, hoặc nhờ Claude chạy). Trang **Live** hiện tiến độ từng test, Gantt theo làn và ETA.
+2. Chạy test như bình thường (`npx e2e run`), nhờ Claude chạy (*"chạy test checkout"*: Claude dùng tool MCP `e2e_run_start` khi dashboard đang mở), hoặc bấm **Chạy** trên dashboard. Trang **Live** hiện tiến độ từng test, Gantt theo làn, ETA, danh sách test fail riêng và tài nguyên máy.
 3. Run xong tự vào **Runs** và **Overview**: thẻ KPI đổi màu theo ngưỡng, health score 0–100, heatmap test × run.
-4. Muốn chạy lại: trang **Tests** → tick test (hoặc *Chọn tất cả fail*) → **Chạy**; hoặc trang **Live** → *Chạy toàn bộ suite*.
+4. Muốn chạy lại: trang **Tests** → tick test hoặc cả thư mục (hoặc *Chọn tất cả fail*) → **Chạy**; hoặc trang **Live** → *Chạy toàn bộ suite* / *Chạy lại* ở từng test fail. Muốn thấy trình duyệt: bật *headed* trong hộp thoại Run.
 5. Đang ở trang khác vẫn biết có run đang chạy: nhãn **● Đang chạy 3/9** nổi ở góc dưới, bấm vào là sang Live.
 6. Đóng máy cũng không mất gì: lịch sử nằm trong `.e2e-dashboard/` của project. Tắt server bằng `/e2e-dashboard stop`.
 

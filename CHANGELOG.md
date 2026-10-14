@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.14.0 — 2026-10-14
+
+- **Chạy có / không giao diện (headed)**: công tắc ở *Tự động & lưu trữ → Chạy & lịch* (mặc định tắt) và trong hộp thoại Run; áp cho chạy tay, chạy lại, chạy theo lịch và chạy qua MCP.
+- **Claude chạy test qua dashboard**: tool MCP `e2e_run_start` / `e2e_run_stop` (cần dashboard đang mở). Run đi qua dashboard nên có nút Dừng, tài nguyên và tiến độ ở Live như khi bấm tay.
+- **Tests dạng cây thư mục**: gập / mở thư mục kèm số test và số fail, mỗi file một dòng tóm tắt, chọn cả thư mục, nút *Tải lại*; tên test dài tự xuống dòng. Ô chọn test ở QC xác nhận và Mẫu QC có ô lọc (gõ không dấu vẫn khớp) và hiện theo cây.
+- **Live**: danh sách test fail riêng ngay dưới Gantt, run xong có đủ nút như Runs (Phân tích lỗi, Bước tái hiện, Gửi Linear, Tìm commit gây lỗi, Sửa bằng Claude Code, Chạy lại đúng test); thanh CPU / RAM / disk của máy và RAM / CPU / số tiến trình của run đang chạy; *Xem ở Runs* mở thẳng run vừa chạy.
+- **Bối cảnh dự án cho AI** (*Cài đặt hệ thống → Dự án*): nhiều thư mục nguồn kèm mô tả và một Prompt về hệ thống, rule, workflow; mọi lần gọi AI đều gửi kèm (`--append-system-prompt`), AI được đọc các thư mục đó (chỉ đọc). Không nhận `/` hay thư mục home.
+- **Chất lượng test**: *Tính lại* và *AI đánh giá lại* chọn model và effort cho riêng lần đó.
+- **Gửi Linear: Loại Task / Bug**: Bug bắt buộc *Mã issue liên quan*; dòng `Loại: … · Liên quan: …` đứng đầu mô tả, gắn label Bug / Task của team nếu có. Tự log bug gắn Bug.
+- **Giao diện**: nút chỉ còn icon, rê chuột hiện tên (tắt ở *Giao diện*); Coverage chia tab *Route* / *Domain trong source*; tab *Hướng dẫn* từng bước trong Cài đặt hệ thống; bảng cấu hình máy (hostname, OS, CPU, RAM, ổ đĩa, trình duyệt).
+- **Sửa lỗi**: trang Issue Linear trắng vì icon không tồn tại (thêm test quét mọi tên icon); *Viết test cho* route lấy từ `coverage.source` / `coverage.routes` báo 404; ô lọc và dropdown đè lên nhau ở Tests, Runs, Digest, Report, Build, Branches; panel Xu hướng chồng nhau ở màn hẹp; nút phóng to che chip; mô tả trang chưa full width; lưu setting khi một thư mục nguồn tạm vắng mặt từng làm mất cả danh sách.
+- **Hiệu năng**: `/api/resources` ~200 ms → ~1,5 ms; quét `coverage.source` giữ 30 giây (~350 ms → <1 ms trên repo frontend lớn); `/api/system` không chạy git hai lần; Live không vẽ lại cả trang mỗi lần cập nhật tài nguyên; ô chọn test lọc nhanh hơn ~50 lần.
+
 ## v0.13.0 — 2026-10-14
 
 - **Issue Linear → testcase → e2e** (menu mới *Theo dõi → Issue Linear*): lấy issue được giao cho các email đã chọn và có status trong danh sách (nhập ở *Cài đặt hệ thống → Tích hợp*), thêm issue bằng mã hoặc link, nút *Lấy lại danh sách*. *Phân tích* để AI đọc tiêu đề, mô tả và comment rồi đề xuất testcase; sửa, lưu, mở lại bản đã lưu. *Gen e2e* để AI viết `tests/linear/<ID>.e2e.ts` theo quy ước của project, không ghi đè file có sẵn.

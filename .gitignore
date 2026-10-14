@@ -17,6 +17,8 @@ e2e-dashboard.reporter.d.mts
 .superpowers/
 .claude/settings.local.json
 .claude/autoharness/
+.claude/skills/
+.claude/worktrees/
 
 # ── Logs & temp ───────────────────────────────────────────────
 *.log
