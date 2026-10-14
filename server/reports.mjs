@@ -118,6 +118,8 @@ export function mimeMessage({ to, from, subject, html }) {
 export function sendMail(message, { execImpl = execFile } = {}) {
   return new Promise((ok) => {
     const child = execImpl('sendmail', ['-t', '-oi'], { timeout: 30_000 }, (err) => ok(err ? { ok: false, error: err.code === 'ENOENT' ? 'không có sendmail trên máy' : err.message } : { ok: true }));
+    // sendmail thoát trước khi đọc hết stdin → EPIPE trên stdin; không bắt thì làm sập cả server (callback đã báo lỗi)
+    child?.stdin?.on?.('error', () => {});
     child?.stdin?.end(message);
   });
 }

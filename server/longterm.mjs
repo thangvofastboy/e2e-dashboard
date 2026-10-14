@@ -224,6 +224,15 @@ export function mainBranch(index, cfg = {}) {
 }
 
 const overlap = (s, e, from, to) => Math.max(0, Math.min(e, to) - Math.max(s, from));
+// run mới nhất đã gom: vòng lặp, không Math.max(...): index.seen giữ mãi mọi run, >~150k phần tử thì spread vỡ stack
+const latestSeen = (index) => {
+  let m = 0;
+  for (const s of Object.values(index.seen)) {
+    const t = Date.parse(s);
+    if (t > m) m = t;
+  }
+  return m;
+};
 const median = (xs) => {
   if (!xs.length) return null;
   const s = [...xs].sort((a, b) => a - b);
@@ -235,7 +244,7 @@ export function reliability(index, { days = 30, now = Date.now(), branch = null 
   const from = now - days * DAY;
   const fixed = [];
   const open = [];
-  const latest = Math.max(0, ...Object.values(index.seen).map((s) => Date.parse(s)).filter(Number.isFinite));
+  const latest = latestSeen(index);
   for (const [key, x] of Object.entries(index.tests)) {
     for (const i of x.incidents ?? []) {
       const e = Date.parse(i.end);
@@ -282,7 +291,7 @@ export function reliability(index, { days = 30, now = Date.now(), branch = null 
 // Tests added, removed (not seen for `staleDays` while the suite kept running), renamed.
 export function lifecycle(index, { days = 30, now = Date.now(), staleDays = 14 } = {}) {
   const from = now - days * DAY;
-  const latest = Math.max(0, ...Object.values(index.seen).map((s) => Date.parse(s)).filter(Number.isFinite));
+  const latest = latestSeen(index);
   const entries = Object.entries(index.tests).map(([key, x]) => ({ key, ...x }));
   const gone = (x) => x.renamedTo || latest - Date.parse(x.lastSeen) > staleDays * DAY;
   const active = entries.filter((x) => !gone(x));

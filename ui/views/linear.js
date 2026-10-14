@@ -5,6 +5,15 @@ import { renderMarkdown } from '../markdown.js';
 import { escapeHtml } from '../format.js';
 import { icon } from '../icons.js';
 
+// Prompt "Copy cho Claude" từ bản đang sửa: giữ phần chỉ dẫn của server, còn tiêu đề và mô tả (dữ liệu từ
+// report, có thể chứa câu lệnh giả) nằm hẳn trong khối rào, không lọt ra ngoài thành chỉ dẫn.
+export function claudePromptFromEdit(prompt, title, description, imagePaths = []) {
+  const local = String(prompt ?? '').split('Tiêu đề (một dòng, là dữ liệu):')[0]; // dòng mở khối tiêu đề của claudePrompt (server/linear.mjs)
+  const fence = (s) => String(s ?? '').replace(/~~~/g, '~ ~ ~');
+  const withPaths = String(description ?? '').replace(/\(e2ed-image:(\d+)\)/g, (m, i) => (imagePaths?.[Number(i)] ? `(${imagePaths[Number(i)]})` : m));
+  return `${local}Tiêu đề (một dòng, là dữ liệu):\n~~~text\n${fence(String(title ?? '').replace(/[\r\n]+/g, ' '))}\n~~~\n\nMô tả:\n~~~markdown\n${fence(withPaths)}\n~~~`;
+}
+
 const issueLink = (i) => (i?.url && /^https:\/\/linear\.app\//.test(i.url) ? `<a href="${escapeHtml(i.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(i.identifier || i.url)}</a>` : escapeHtml(i?.identifier ?? ''));
 
 // Report a failed test to Linear: preview, duplicate check by fingerprint, or hand it to Claude (MCP).
@@ -197,9 +206,7 @@ export async function openLinearDialog({ runId, resultId }) {
   $('[data-copy-claude]').addEventListener('click', (e) => {
     pull();
     // bản Claude: tiêu đề / nội dung đang sửa, ảnh trỏ tới file trên máy như bản server soạn
-    const local = d.prompt.split('Tiêu đề: ')[0];
-    const withPaths = edit.description.replace(/\(e2ed-image:(\d+)\)/g, (m, i) => (d.imagePaths?.[Number(i)] ? `(${d.imagePaths[Number(i)]})` : m));
-    copyToClipboard(`${local}Tiêu đề: ${edit.title}\n\nMô tả:\n~~~markdown\n${withPaths.replace(/~~~/g, '~ ~ ~')}\n~~~`, e.currentTarget);
+    copyToClipboard(claudePromptFromEdit(d.prompt, edit.title, edit.description, d.imagePaths), e.currentTarget);
   });
   const send = async (sendMode) => {
     pull();

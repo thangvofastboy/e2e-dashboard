@@ -69,7 +69,13 @@ const FILE_TYPES = {
 };
 const UI_CSP = "default-src 'self'; img-src 'self' data:; media-src 'self' https:; style-src 'self' 'unsafe-inline'";
 
-const same = (a, b) => typeof a === 'string' && a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+// so độ dài theo byte: token có ký tự ngoài ASCII cùng số ký tự làm timingSafeEqual ném RangeError (500)
+const same = (a, b) => {
+  if (typeof a !== 'string') return false;
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+};
 // one cookie per port: several project dashboards can be open at once
 const cookieName = (req) => `e2ed_${req.socket.localPort}`;
 const cookieToken = (req) =>
@@ -89,7 +95,10 @@ async function readBody(req) {
     if (size > MAX_BODY) throw Object.assign(new Error('body too large'), { status: 413 });
     chunks.push(c);
   }
-  return chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {};
+  const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {};
+  // mọi handler đọc body.x: null / số / chuỗi là lỗi của client (400), không phải TypeError 500
+  if (body === null || typeof body !== 'object') throw Object.assign(new Error('body phải là JSON object'), { status: 400 });
+  return body;
 }
 
 async function serveFile(req, res, path) {
@@ -138,8 +147,9 @@ async function commitsFor(projectRoot, run, action, resultId) {
   const i = metas.findIndex((m) => m.runId === run.meta.runId);
   const older = metas.slice(i + 1, i + 21);
   // phân tích cả run (không gắn test nào): commit giữa run trước và run này
-  if (action === 'analyze-run' || !resultId) return commitsBetween(projectRoot, older[0]?.git?.commit, to);
-  const r = (run.report.run.results ?? []).find((x) => x.id === resultId);
+  const r = resultId ? (run.report.run.results ?? []).find((x) => x.id === resultId) : null;
+  // resultId không có trong run (các action không kiểm tra nó): coi như cả run, không đọc r.testId của undefined
+  if (action === 'analyze-run' || !r) return commitsBetween(projectRoot, older[0]?.git?.commit, to);
   const ids = new Set(older.map((m) => m.runId));
   for (const { meta: m, report } of (await loadHistory(projectRoot, i + 21)).filter((h) => ids.has(h.meta.runId))) {
     const same = report.run.results?.find((x) => x.testId === r.testId && x.targetId === r.targetId && (x.agent ?? 'default') === (r.agent ?? 'default'));

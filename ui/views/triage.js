@@ -76,7 +76,8 @@ export async function renderTriage(main, route = {}) {
     toast(`Đã áp dụng gợi ý: “${TRIAGE_LABEL[s.status][0]}”`);
     renderTriage(main);
   }));
-  main.querySelector('[data-tri-who]')?.addEventListener('input', (e) => {
+  // 'change' (Enter / rời ô): 'input' tải lại cả trang mỗi phím, ô bị dựng lại nên mất focus sau ký tự đầu
+  main.querySelector('[data-tri-who]')?.addEventListener('change', (e) => {
     triageWho = e.target.value;
     renderTriage(main);
   });

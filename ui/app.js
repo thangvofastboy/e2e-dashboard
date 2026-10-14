@@ -287,7 +287,8 @@ function watchLive() {
     syncPill();
     if (lastStatus === 'running' && s.status !== 'running') {
       const view = parseRoute(location.hash).view;
-      if (['overview', 'runs', 'tests', 'flaky', 'errors', 'cost'].includes(view)) setTimeout(route, 1500); // give archive() time to finish
+      // give archive() time to finish; người xem đã sang trang khác trong lúc chờ thì không vẽ lại trang đó (mất chữ đang gõ)
+      if (['overview', 'runs', 'tests', 'flaky', 'errors', 'cost'].includes(view)) setTimeout(() => parseRoute(location.hash).view === view && route(), 1500);
     }
     lastStatus = s.status;
   }, { lite: true });

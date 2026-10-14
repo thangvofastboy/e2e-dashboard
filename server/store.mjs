@@ -1,4 +1,4 @@
-import { readdir, readFile, writeFile, mkdir, rename, rm, lstat, stat } from 'node:fs/promises';
+import { readdir, readFile, writeFile, mkdir, rename, rm, lstat } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { join, relative } from 'node:path';
 import { serial } from './jsonstate.mjs';
@@ -26,7 +26,8 @@ export async function listRuns(root) {
     const p = join(runsDir(root), dir, 'meta.json');
     live.add(p);
     try {
-      const st = await stat(p);
+      const st = await lstat(p);
+      if (!st.isFile()) return null; // meta.json repo cài sẵn là symlink: không đọc theo
       const hit = metaCache.get(p);
       if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return { ...hit.meta, dir };
       const meta = await readJson(p);
@@ -69,7 +70,8 @@ async function cachedReport(root, dir) {
     return hit.report;
   }
   const entry = { bytes: 0, report: null };
-  entry.report = readFile(join(key, 'report.json'), 'utf8')
+  // report.json là symlink (repo lạ cài sẵn): không đọc theo, nếu không export sẽ nhúng file JSON bất kỳ của máy
+  entry.report = (isLink(join(key, 'report.json')) ? Promise.reject(new Error('symlink')) : readFile(join(key, 'report.json'), 'utf8'))
     .then((text) => {
       const report = JSON.parse(text);
       if (reportCache.get(key) === entry) {
@@ -112,7 +114,7 @@ export async function loadHistory(root, n = 30) {
 
 export async function getRun(root, runId) {
   const dir = await findRunDir(root, runId);
-  if (!dir) return null;
+  if (!dir || isLink(join(dir, 'meta.json'))) return null;
   return { meta: await readJson(join(dir, 'meta.json')), report: await cachedReport(root, relative(runsDir(root), dir)), dir };
 }
 

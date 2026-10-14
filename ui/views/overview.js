@@ -74,7 +74,7 @@ export function kpiCard(c) {
   const h = HEALTH[c.health];
   return `<div class="kpi tone-${c.health}">
     <div class="kpi-top"><span class="kpi-ic">${icon(v.icon, { size: 17 })}</span>
-      <button type="button" class="chip tone-${c.health}" data-th aria-controls="thresholds" title="Cách tính trạng thái">${icon(h.icon, { size: 12 })}${h.label}</button></div>
+      <button type="button" class="chip tone-${c.health}" data-th aria-controls="thresholds" aria-expanded="false" title="Cách tính trạng thái">${icon(h.icon, { size: 12 })}${h.label}</button></div>
     <div class="kpi-label">${v.label}</div>
     <div class="kpi-value">${escapeHtml(v.value)}</div>
     <div class="kpi-sub">${v.sub}</div>

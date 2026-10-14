@@ -28,7 +28,9 @@ async function load(dir) {
     const key = `${file}:${st.size}:${st.mtimeMs}`;
     if (last.key === key) return last.doc;
     const doc = JSON.parse(await readFile(file, 'utf8'));
-    last = { key, doc: Array.isArray(doc?.runs) && Array.isArray(doc?.steps) ? doc : null };
+    // file đến từ run (repo, artifact CI): phần tử không phải object bị bỏ, không làm hỏng cả trang
+    const obj = (x) => x && typeof x === 'object';
+    last = { key, doc: Array.isArray(doc?.runs) && Array.isArray(doc?.steps) ? { runs: doc.runs.filter(obj), steps: doc.steps.filter(obj) } : null };
     return last.doc;
   } catch {
     return null;
@@ -46,10 +48,12 @@ const textOf = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((p) 
 
 function preview(step) {
   const inp = json(step.input) ?? {};
-  const last = [...(inp.prompt ?? [])].reverse().find((m) => m?.role === 'user' || m?.role === 'tool');
+  const prompt = Array.isArray(inp.prompt) ? inp.prompt : [];
+  const last = [...prompt].reverse().find((m) => m?.role === 'user' || m?.role === 'tool');
   const out = json(step.output) ?? {};
-  const outText = textOf(out.content) || textOf(out.response?.messages?.at(-1)?.content);
-  return { prompt: clip(textOf(last?.content).replace(/\s+/g, ' ').trim(), PREVIEW), response: clip(outText.replace(/\s+/g, ' ').trim(), PREVIEW), finishReason: out.finishReason ?? null, messages: (inp.prompt ?? []).length, tools: (inp.tools ?? []).length };
+  const msgs = out.response?.messages;
+  const outText = textOf(out.content) || textOf(Array.isArray(msgs) ? msgs.at(-1)?.content : null);
+  return { prompt: clip(textOf(last?.content).replace(/\s+/g, ' ').trim(), PREVIEW), response: clip(outText.replace(/\s+/g, ' ').trim(), PREVIEW), finishReason: out.finishReason ?? null, messages: prompt.length, tools: Array.isArray(inp.tools) ? inp.tools.length : 0 };
 }
 
 // testId (optional): only the runs recorded for that test

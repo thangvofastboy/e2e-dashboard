@@ -42,6 +42,8 @@ export async function renderFeedback(main) {
       return;
     }
     const btn = form.querySelector('button[type="submit"]');
+    if (btn.disabled) return; // đang gửi: Enter / bấm hai lần không tạo hai issue công khai
+    btn.disabled = true;
     btn.setAttribute('aria-busy', 'true');
     status.textContent = '';
     try {
@@ -59,6 +61,7 @@ export async function renderFeedback(main) {
       status.textContent = x.message.replace(/^\d{3}: /, '');
       status.className = 'small tone-bad';
     } finally {
+      btn.disabled = false;
       btn.removeAttribute('aria-busy');
     }
   });

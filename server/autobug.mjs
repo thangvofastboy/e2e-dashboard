@@ -42,17 +42,26 @@ async function describe({ ai, template, vars, fingerprintLine, fallback }) {
 export async function autoLogBugs({ projectRoot, runId, ai = null, env = process.env, cfg = {}, makeLinear = createLinear, linear = null, resolve = null, limit = AUTO_BUG_LIMIT }) {
   const handledKey = `${projectRoot}:${runId}`;
   if (handled.has(handledKey)) return { status: 'already-handled', rows: [] };
-  const run = await getRun(projectRoot, runId);
-  if (!run) return { status: 'no-run', rows: [] };
-  const candidates = bugCandidates(run.report);
-  if (!candidates.length) return { status: 'no-candidates', rows: [] };
-  // resolve(): API key nếu có, không thì MCP Linear (server/linear-mcp.mjs); không truyền thì chỉ dùng API key
-  const backend = linear || !resolve ? null : await resolve();
-  const { apiKey, team } = backend ? { apiKey: null, team: backend.team } : await linearConfig(cfg, env);
-  const client = linear ?? backend?.client ?? (apiKey ? makeLinear({ apiKey, team }) : null);
-  if (!client) return { status: 'no-key', rows: [] };
+  // đánh dấu ngay, trước mọi await: reporter và watcher archive gần như cùng lúc, cả hai không được cùng qua đây
+  // (cả hai cùng find() chưa thấy issue rồi cùng tạo = issue trùng). Không xử lý được thì bỏ dấu để lần sau thử lại.
   handled.add(handledKey);
   if (handled.size > HANDLED_MAX) handled.delete(handled.values().next().value);
+  const give = (status) => (handled.delete(handledKey), { status, rows: [] });
+  let run, candidates, client;
+  try {
+    run = await getRun(projectRoot, runId);
+    if (!run) return give('no-run');
+    candidates = bugCandidates(run.report);
+    if (!candidates.length) return give('no-candidates');
+    // resolve(): API key nếu có, không thì MCP Linear (server/linear-mcp.mjs); không truyền thì chỉ dùng API key
+    const backend = linear || !resolve ? null : await resolve();
+    const { apiKey, team } = backend ? { apiKey: null, team: backend.team } : await linearConfig(cfg, env);
+    client = linear ?? backend?.client ?? (apiKey ? makeLinear({ apiKey, team }) : null);
+    if (!client) return give('no-key');
+  } catch (e) {
+    give();
+    throw e;
+  }
   const templates = await readTemplates(projectRoot);
   const template = findTemplate(templates, 'bug-linear');
   const notes = await readNotes(projectRoot);

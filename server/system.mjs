@@ -62,6 +62,8 @@ export async function ensureEnvFile(root) {
   if (existsSync(env)) return [];
   if (!existsSync(example)) return ['Project chưa có .env (và không có .env.example để tạo) — test cần biến môi trường sẽ fail.'];
   await refuseSymlink(env);
+  // .env.example của repo là symlink (vd. tới ~/.aws/credentials): copyFile sẽ chép file bí mật đó vào project
+  if ((await lstat(example)).isSymbolicLink()) return ['.env.example là symlink: không tạo .env từ nó — tạo .env bằng tay.'];
   await copyFile(example, env);
   await chmod(env, 0o600).catch(() => {});
   await ensureIgnored(root, '.env');

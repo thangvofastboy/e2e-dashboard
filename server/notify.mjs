@@ -16,7 +16,8 @@ export function notifyCommand(title, body, platform = process.platform) {
     const ps = 'Add-Type -AssemblyName System.Windows.Forms; $n = New-Object System.Windows.Forms.NotifyIcon; $n.Icon = [System.Drawing.SystemIcons]::Information; $n.Visible = $true; $n.ShowBalloonTip(8000, $env:E2ED_TITLE, $env:E2ED_BODY, 0); Start-Sleep -Seconds 9; $n.Dispose()';
     return ['powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { env: { ...process.env, E2ED_TITLE: t, E2ED_BODY: b } }];
   }
-  return ['notify-send', ['--app-name=e2e-dashboard', t, b], {}];
+  // `--`: tiêu đề / nội dung bắt đầu bằng "-" (tên test trong cảnh báo) không bị đọc thành option của notify-send
+  return ['notify-send', ['--app-name=e2e-dashboard', ...(/^-/.test(t) || /^-/.test(b) ? ['--'] : []), t, b], {}];
 }
 
 export function runMessage(meta, project = '') {

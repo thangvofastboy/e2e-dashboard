@@ -120,7 +120,7 @@ export function verifyQueue(history, notes) {
 
 export async function readManual(root) {
   const s = await readState(root, MANUAL, null);
-  return Array.isArray(s) ? s : [];
+  return Array.isArray(s) ? s.filter((x) => x && typeof x === 'object' && typeof x.id === 'string') : []; // phần tử null làm saveManual / manualSummary ném lỗi
 }
 
 export function manualSummary(list) {

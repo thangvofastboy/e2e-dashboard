@@ -7,16 +7,19 @@ function safeHref(url) {
 }
 
 function inline(text) {
-  const codes = [];
-  let s = escapeHtml(text).replace(/`([^`]+)`/g, (_m, c) => `\u0000${codes.push(c) - 1}\u0000`);
+  // code và thẻ <a> giữ chỗ bằng \u0000n\u0000: */** trong URL không bị biến thành <em> làm hỏng href.
+  // NUL trong văn bản gốc bị bỏ trước, để không giả được chỗ giữ (sẽ chèn lặp code khác hoặc "undefined").
+  const held = [];
+  const hold = (html) => `\u0000${held.push(html) - 1}\u0000`;
+  let s = escapeHtml(String(text).replace(/\u0000/g, '')).replace(/`([^`]+)`/g, (_m, c) => hold(`<code>${c}</code>`));
   s = s
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>')
     .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, label, href) => {
       const ok = safeHref(href.replace(/&amp;/g, '&'));
-      return ok ? `<a href="${escapeHtml(ok)}" rel="noopener noreferrer" target="_blank">${label}</a>` : label;
-    });
-  return s.replace(/\u0000(\d+)\u0000/g, (_m, i) => `<code>${codes[i]}</code>`);
+      return ok ? `${hold(`<a href="${escapeHtml(ok)}" rel="noopener noreferrer" target="_blank">`)}${label}${hold('</a>')}` : label;
+    })
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>');
+  return s.replace(/\u0000(\d+)\u0000/g, (_m, i) => held[i]);
 }
 
 export function renderMarkdown(src) {

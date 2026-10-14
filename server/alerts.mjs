@@ -86,7 +86,8 @@ export function evaluateAlerts(rules, { history, index = null, now = Date.now(),
 
 export async function readAlerts(root) {
   const s = await readState(root, FILE, null);
-  return s && typeof s.active === 'object' && Array.isArray(s.log) ? s : { active: {}, log: [] };
+  // file state có thể bị commit sẵn / hỏng: active null hay mảng thì mọi lần ghi cảnh báo đều ném lỗi
+  return s && s.active && typeof s.active === 'object' && !Array.isArray(s.active) && Array.isArray(s.log) ? s : { active: {}, log: [] };
 }
 
 // Records the current alerts; returns the ones that just started.

@@ -91,7 +91,7 @@ export async function sharePush(root, dir) {
   for (const rel of isLink(runsDir(root)) ? [] : await listRunDirs(runsDir(root))) {
     const name = runSortKey(rel);
     if (there.has(name) || rel.split('/').some((_, i, a) => isLink(join(runsDir(root), ...a.slice(0, i + 1))))) continue;
-    const meta = JSON.parse(await readFile(join(runsDir(root), rel, 'meta.json'), 'utf8').catch(() => 'null'));
+    const meta = await readFile(join(runsDir(root), rel, 'meta.json'), 'utf8').then(JSON.parse).catch(() => null); // meta.json hỏng: bỏ run này, không dừng cả lần push
     if (!meta || meta.source === 'shared') continue; // only our own runs travel
     const tmp = join(target, `.tmp-${randomBytes(6).toString('hex')}`);
     try {

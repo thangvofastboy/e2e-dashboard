@@ -235,11 +235,14 @@ function infoHtml(d) {
 }
 
 export async function renderSystem(main) {
-  let d = await getJson('/api/system');
-  let heal = await getJson('/api/selfheal').catch(() => ({ errors: [] }));
-  let resetInfo = await getJson('/api/reset/preview').catch(() => null);
-  let junkInfo = await getJson('/api/junk').catch(() => null);
-  const linearInfo = await getJson('/api/linear').catch(() => null);
+  // song song: /api/linear có thể chạy `claude mcp list` (vài giây), không bắt các request khác chờ nối đuôi
+  let [d, heal, resetInfo, junkInfo, linearInfo] = await Promise.all([
+    getJson('/api/system'),
+    getJson('/api/selfheal').catch(() => ({ errors: [] })),
+    getJson('/api/reset/preview').catch(() => null),
+    getJson('/api/junk').catch(() => null),
+    getJson('/api/linear').catch(() => null),
+  ]);
   let editing = null; // file env đang mở
   const urlTab = () => new URLSearchParams(location.hash.split('?')[1] ?? '').get('tab');
   let tab = SYS_TABS.some(([k]) => k === urlTab()) ? urlTab() : 'appearance';

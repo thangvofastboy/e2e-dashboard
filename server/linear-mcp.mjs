@@ -91,6 +91,7 @@ ${data.length ? `<${fence}>\n${data.map(noFence).join('\n')}\n</${fence}>\n\n` :
     let out;
     try {
       out = JSON.parse(m?.[1] ?? '');
+      if (!out || typeof out !== 'object') throw new Error('shape'); // null / số / chuỗi: không phải kết quả
     } catch {
       throw new Error('Linear MCP: Claude không trả về kết quả hợp lệ. Kiểm tra MCP Linear đã đăng nhập (chạy `claude`, gõ /mcp).');
     }

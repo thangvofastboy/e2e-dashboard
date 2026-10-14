@@ -12,7 +12,10 @@ async function walk(dir, visit) {
   for (const e of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
     const p = join(dir, e.name);
     if (e.isDirectory()) await walk(p, visit);
-    else if (e.isFile()) await visit(p, (await lstat(p)).size);
+    else if (e.isFile()) {
+      const st = await lstat(p).catch(() => null); // retention / xoá run xoá file giữa readdir và lstat: bỏ qua, không làm hỏng cả trang
+      if (st) await visit(p, st.size);
+    }
   }
 }
 

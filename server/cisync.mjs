@@ -22,7 +22,10 @@ export function ciConfig(cfg) {
 
 export async function readCiState(root) {
   const s = await readState(root, FILE, null);
-  return s && typeof s.imported === 'object' ? s : { imported: {}, lastSync: null, lastError: null, lastImported: 0 };
+  const obj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+  if (!obj(s) || !obj(s.imported)) return { imported: {}, lastSync: null, lastError: null, lastImported: 0 };
+  if (!obj(s.failed)) delete s.failed; // failed: 5 / "x" thì state.failed[id] = … ném lỗi (ESM strict)
+  return s;
 }
 
 export function listCiRuns(root, c, { execImpl = execFile } = {}) {

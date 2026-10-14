@@ -6,7 +6,7 @@ const KEY = /^[^\n|]{1,600}\|[\w.-]{1,80}\|[\w.-]{1,80}$/;
 
 export async function readQuarantine(root) {
   const list = await readState(root, 'quarantine.json', []); // state/quarantine.json (đọc cả vị trí cũ)
-  return Array.isArray(list) ? list.filter((q) => q && typeof q.key === 'string' && KEY.test(q.key)) : [];
+  return Array.isArray(list) ? list.filter((q) => q && typeof q.key === 'string' && KEY.test(q.key) && typeof q.title === 'string' && typeof q.until === 'string') : [];
 }
 
 const save = (root, list) => writeState(root, 'quarantine.json', list);

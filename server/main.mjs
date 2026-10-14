@@ -11,7 +11,7 @@ import { mkdir, writeFile, rm, readFile, rename } from 'node:fs/promises';
 import { join, resolve, basename, dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DATA_DIR, VERSION, RUN_ID, readConfig, archive, isLink, dataPath } from '../reporter/e2e-dashboard.reporter.mjs';
+import { DATA_DIR, VERSION, RUN_ID, readConfig, archive, isLink, dataPath, ensureDataDir } from '../reporter/e2e-dashboard.reporter.mjs';
 import { createNotifier, notifyMode, runMessage } from './notify.mjs';
 import { createScheduler, scheduleTimes, createTestWatcher } from './automation.mjs';
 import { webhookConfig, sendWebhooks, mentionMap, mentionsFor } from './webhook.mjs';
@@ -124,6 +124,8 @@ function watchCrashes(projectRoot) {
 }
 
 export async function startServer({ projectRoot, port, token = randomToken(), uiDir = UI_DIR, register = true, notifier }) {
+  // .e2e-dashboard/ là symlink (repo clone cài sẵn): từ chối trước khi bật watcher / timer nào
+  if (!(await ensureDataDir(projectRoot))) throw new Error('unsafe data dir');
   const cfg = readConfig(projectRoot);
   const preferred = port ?? cfg.port ?? 4477;
   const live = createLive();
@@ -241,8 +243,10 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
     }
   }
   const infoPath = join(projectRoot, DATA_DIR, 'server.json');
-  await mkdir(join(projectRoot, DATA_DIR), { recursive: true });
-  await writeFile(infoPath, JSON.stringify({ port: bound, pid: process.pid, token, version: VERSION }), { mode: 0o600 });
+  // tmp + rename: symlink server.json cài sẵn trong repo bị thay thế, không bị ghi xuyên qua (ghi đè file đích bằng token)
+  const infoTmp = `${infoPath}.tmp-${randomBytes(4).toString('hex')}`;
+  await writeFile(infoTmp, JSON.stringify({ port: bound, pid: process.pid, token, version: VERSION }), { mode: 0o600, flag: 'wx' });
+  await rename(infoTmp, infoPath);
   if (register) await registerProject(projectRoot).catch(() => {}); // the Projects page lists every dashboard ever opened
   return {
     port: bound,

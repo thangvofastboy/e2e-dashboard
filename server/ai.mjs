@@ -489,11 +489,13 @@ export function parseStreamLine(line) {
   } catch {
     return [];
   }
+  // dòng lạ (null, số, content không phải mảng) không được ném lỗi: lỗi trong handler 'data' làm sập cả server
+  if (!m || typeof m !== 'object') return [];
   if (m.type === 'system' && m.subtype === 'init') return [{ type: 'session', sessionId: m.session_id }];
   if (m.type === 'assistant')
-    return (m.message?.content ?? [])
+    return (Array.isArray(m.message?.content) ? m.message.content : [])
       .map((c) =>
-        c.type === 'text' ? { type: 'text', text: c.text } : c.type === 'tool_use' ? { type: 'tool', name: c.name, detail: String(c.input?.file_path ?? c.input?.pattern ?? c.input?.command ?? '') } : null)
+        c?.type === 'text' ? { type: 'text', text: c.text } : c?.type === 'tool_use' ? { type: 'tool', name: c.name, detail: String(c.input?.file_path ?? c.input?.pattern ?? c.input?.command ?? '') } : null)
       .filter(Boolean);
   if (m.type === 'result') return [{ type: 'done', sessionId: m.session_id, isError: Boolean(m.is_error), result: m.result }];
   return [];

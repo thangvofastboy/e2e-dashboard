@@ -39,12 +39,16 @@ export async function renderManual(main) {
       ${d.items.length ? `<section class="panel"><div class="table-wrap"><table class="table manual-table"><thead><tr><th>Ca test</th><th>Module</th><th>Người test</th><th>Trạng thái</th><th>Ghi chú</th><th>Cập nhật</th><th></th></tr></thead><tbody>${d.items.map(rowHtml).join('')}</tbody></table></div></section>` : emptyBox('Chưa có ca test thủ công', 'Thêm ca ở trên. Mỗi lần đổi trạng thái được ghi lịch sử.')}`;
     main.querySelector('[data-add]').addEventListener('submit', async (e) => {
       e.preventDefault();
+      const btn = e.target.querySelector('button[type="submit"]');
+      if (btn.disabled) return; // Enter hai lần không thêm hai ca giống nhau
+      btn.disabled = true;
       const f = new FormData(e.target);
       try {
         await postJson('/api/qc/manual', { title: f.get('title'), module: f.get('module'), owner: f.get('owner'), steps: f.get('steps') });
         toast('Đã thêm ca test');
         await draw();
       } catch (x) {
+        btn.disabled = false;
         toast(x.message.replace(/^\d{3}: /, ''), 'bad');
       }
     });

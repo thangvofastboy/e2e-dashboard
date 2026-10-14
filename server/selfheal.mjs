@@ -137,6 +137,7 @@ function ask(ai, prompt) {
 export function createSelfHeal({ projectRoot, env = process.env, aiFactory = createAi, run = sh, now = () => Date.now() }) {
   const queue = [];
   let busy = false;
+  let current = null; // lỗi đang được phân tích / sửa trong process này
 
   const config = () => {
     const c = readUserConfig(env).selfHeal ?? {};
@@ -166,8 +167,8 @@ export function createSelfHeal({ projectRoot, env = process.env, aiFactory = cre
     busy = true;
     try {
       while (queue.length) {
-        const fp = queue.shift();
-        await handle(fp).catch((e) => update(fp, { status: 'error', note: clip(e.message, 500) }));
+        const fp = (current = queue.shift());
+        await handle(fp).catch((e) => update(fp, { status: 'error', note: clip(e.message, 500) })).finally(() => { current = null; });
       }
     } finally {
       busy = false;
@@ -347,7 +348,8 @@ export function createSelfHeal({ projectRoot, env = process.env, aiFactory = cre
     },
     async retry(fp) {
       const e = (await load()).errors[fp];
-      if (!e || e.prUrl || ['awaiting-review', 'testing'].includes(e.status)) return false; // đã có PR / đang chờ duyệt: không mở thêm
+      // đã có PR / đang chờ duyệt: không mở thêm. Đang phân tích / sửa: chạy lại sẽ ghi đè bản sửa và bỏ rơi branch cũ
+      if (!e || e.prUrl || fp === current || queue.includes(fp) || ['awaiting-review', 'testing'].includes(e.status)) return false;
       await update(fp, { status: 'new', note: null });
       return enqueue(fp);
     },

@@ -1,9 +1,12 @@
 // Test trùng và test nên tách / gộp, tìm từ report của run mới nhất. Chỉ phát hiện và soạn prompt cho Claude Code:
 // dashboard không tự sửa hay xoá mã test (việc đó cần người đọc diff). Heuristic, không phải chứng minh.
+import { resultAttempts } from '../reporter/e2e-dashboard.reporter.mjs';
+
 const SPLIT_STEPS = 15; // test dài hơn ngưỡng này và có nhiều lần đổi trang: đề nghị tách
 const norm = (s) => String(s ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
 const titleOf = (r) => (Array.isArray(r.titlePath) ? r.titlePath.join(' › ') : String(r.testId ?? r.id));
-const stepsOf = (r) => (r.attempts ?? [])[0]?.steps ?? [];
+// test trong serial group không có attempts riêng: lấy từ group (resultAttempts), không thì không bao giờ bị phát hiện
+const stepsOf = (r, report) => (report ? resultAttempts(report, r) : (r.attempts ?? []))[0]?.steps ?? [];
 
 // The newest run that has test results to analyse (an empty or explore run has none). history: newest first.
 export function latestWithResults(history) {
@@ -11,8 +14,8 @@ export function latestWithResults(history) {
 }
 
 // The behaviour of a test: its steps in order (action + label). Typed values are not part of it.
-export function stepSignature(r) {
-  return stepsOf(r).map((s) => `${s.api ?? ''}:${norm(s.label)}`).join('|');
+export function stepSignature(r, report = null) {
+  return stepsOf(r, report).map((s) => `${s.api ?? ''}:${norm(s.label)}`).join('|');
 }
 
 const member = (r) => ({ testId: r.testId, file: r.file ?? r.source?.file ?? '', line: r.source?.line ?? null, title: titleOf(r), target: r.targetId, status: r.status });
@@ -26,7 +29,7 @@ export function findDuplicates(report) {
   for (const r of results) {
     const t = norm(titleOf(r));
     if (t) byTitle.set(t, [...(byTitle.get(t) ?? []), r]);
-    const sig = stepSignature(r);
+    const sig = stepSignature(r, report);
     if (sig.split('|').length >= 2) bySteps.set(sig, [...(bySteps.get(sig) ?? []), r]);
   }
   const oneEach = (rs) => [...new Map(rs.map((r) => [r.testId, r])).values()]; // one row per test, its targets are not repeated
@@ -35,7 +38,7 @@ export function findDuplicates(report) {
     if (distinct(rs)) groups.push({ kind: 'same-title', key: `title:${t}`, why: `cùng tên "${titleOf(rs[0])}"`, members: oneEach(rs).map(member) });
   }
   for (const [sig, rs] of bySteps) {
-    if (distinct(rs)) groups.push({ kind: 'same-steps', key: `steps:${sig.slice(0, 80)}`, why: `${stepsOf(rs[0]).length} bước giống hệt nhau`, members: oneEach(rs).map(member) });
+    if (distinct(rs)) groups.push({ kind: 'same-steps', key: `steps:${sig.slice(0, 80)}`, why: `${stepsOf(rs[0], report).length} bước giống hệt nhau`, members: oneEach(rs).map(member) });
   }
   return groups;
 }
@@ -44,7 +47,7 @@ export function findDuplicates(report) {
 export function splitCandidates(report) {
   const out = [];
   for (const r of report.run.results ?? []) {
-    const steps = stepsOf(r);
+    const steps = stepsOf(r, report);
     if (steps.length < SPLIT_STEPS) continue;
     const navs = steps.flatMap((s, i) => (s.events ?? []).filter((e) => e.kind === 'navigation').map(() => i));
     if (navs.length < 2) continue;

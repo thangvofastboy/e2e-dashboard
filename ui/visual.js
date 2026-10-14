@@ -122,10 +122,12 @@ export function attachVisualCompare(root) {
     const stat = box.querySelector('[data-vstat]');
     const { left, right, diff } = box.dataset;
     const side = body.innerHTML;
+    let modeSeq = 0; // so pixel xong sau khi người xem đã đổi kiểu khác: không vẽ đè
     box.querySelectorAll('[data-vmode]').forEach((btn) =>
       btn.addEventListener('click', async () => {
         box.querySelectorAll('[data-vmode]').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
         const mode = btn.dataset.vmode;
+        const my = ++modeSeq;
         if (mode === 'side') {
           body.className = 'visual-body';
           body.innerHTML = side;
@@ -147,11 +149,13 @@ export function attachVisualCompare(root) {
         body.innerHTML = '<p class="muted">Đang so từng pixel…</p>';
         try {
           const r = await diffCanvas(left, right);
+          if (my !== modeSeq) return;
           body.innerHTML = '';
           body.append(r.canvas);
           stat.textContent = `${r.changed.toLocaleString('vi-VN')} pixel khác (${((r.changed / r.total) * 100).toFixed(2)}%)${r.sizeDiffers ? ' · kích thước ảnh khác nhau' : ''}`;
           if (diff) body.insertAdjacentHTML('beforeend', `<p class="muted small">Ảnh diff do e2e tạo: <a href="${escapeHtml(diff)}" target="_blank" rel="noopener">mở</a></p>`);
         } catch (e) {
+          if (my !== modeSeq) return;
           body.innerHTML = diff ? `<img src="${escapeHtml(diff)}" alt="diff">` : `<p class="error">${escapeHtml(e.message)}</p>`;
         }
       }));

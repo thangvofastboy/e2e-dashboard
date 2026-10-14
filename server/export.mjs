@@ -65,7 +65,8 @@ export async function buildExportHtml(root, runId) {
     .replace('<meta charset="utf-8">', () => `<meta charset="utf-8">\n  <meta http-equiv="Content-Security-Policy" content="${csp}">`)
     .replace('<link rel="stylesheet" href="/style.css">', () => `<style>\n${css}\n</style>`)
     .replace('<script src="/app.js"></script>', () => `<script>${dataScript}</script>\n<script>${appScript}</script>`);
-  return { html, runId: run.meta.runId };
+  // id đã qua RUN_ID (findRunDir); meta.runId là dữ liệu trong repo / CI, không được thành tên file hay header
+  return { html, runId: id };
 }
 
 export async function exportRun(root, runId) {

@@ -150,6 +150,8 @@ async function runTool(root, name, args = {}) {
 
 // One JSON-RPC message in, at most one out (null for notifications).
 export async function handleMessage(msg, root) {
+  // `null`, `5`, `[]` là JSON hợp lệ: msg.id ném lỗi ngoài try → promise bị reject không ai bắt → tiến trình MCP chết
+  if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'invalid request' } };
   const reply = (result) => ({ jsonrpc: '2.0', id: msg.id, result });
   if (msg.id === undefined) return null; // notifications/initialized and friends
   try {

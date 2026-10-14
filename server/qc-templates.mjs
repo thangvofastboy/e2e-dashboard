@@ -67,7 +67,9 @@ Lỗi cấp run: {{runErrors}}`,
 
 export async function readTemplates(root) {
   const s = await readState(root, FILE, null);
-  return Array.isArray(s) && s.length ? s : DEFAULTS.map((t) => ({ ...t }));
+  // phần tử hỏng (null, body không phải chuỗi) làm findTemplate / saveTemplate ném lỗi: bỏ qua
+  const list = Array.isArray(s) ? s.filter((t) => t && typeof t.id === 'string' && typeof t.body === 'string') : [];
+  return list.length ? list : DEFAULTS.map((t) => ({ ...t }));
 }
 
 export function findTemplate(list, id) {
