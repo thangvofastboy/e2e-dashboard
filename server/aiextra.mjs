@@ -176,7 +176,10 @@ export async function writeNewTest(root, rel, content) {
   const parts = rel.split('/');
   for (let i = 1; i < parts.length; i++) if (isLink(join(root, ...parts.slice(0, i)))) throw fail(400, 'Thư mục đích là symlink');
   await mkdir(dirname(full), { recursive: true });
-  await writeFile(full, content.endsWith('\n') ? content : `${content}\n`, { flag: 'wx' });
+  // hai lần Gen đồng thời cùng qua existsSync: lần thua nhận EEXIST từ 'wx', báo 409 như trường hợp đã có file
+  await writeFile(full, content.endsWith('\n') ? content : `${content}\n`, { flag: 'wx' }).catch((e) => {
+    throw e.code === 'EEXIST' ? fail(409, `${rel} đã tồn tại: đổi tên rồi lưu lại`) : e;
+  });
   return { saved: rel };
 }
 

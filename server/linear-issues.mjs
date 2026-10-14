@@ -13,7 +13,9 @@ export const ID = /^[A-Z][A-Z0-9]{1,9}-\d{1,7}$/;
 // Mã issue từ chuỗi người dùng nhập: "ENG-12", "eng-12", hoặc link Linear. Không nhận ra thì 400.
 export function normalizeIssueId(input) {
   const text = String(input ?? '').trim();
-  const id = ID.test(text.toUpperCase()) ? text.toUpperCase() : parseIssueRef(text);
+  // link Linear: mã nằm ngay sau /issue/ (slug workspace như "acme-1" không được nhầm là mã)
+  const fromLink = /\/issue\/([A-Za-z][A-Za-z0-9]{1,9}-\d{1,7})(?![A-Za-z0-9])/i.exec(text)?.[1];
+  const id = fromLink ? fromLink.toUpperCase() : ID.test(text.toUpperCase()) ? text.toUpperCase() : parseIssueRef(text);
   if (!id || !ID.test(id)) throw Object.assign(new Error('Mã issue không đúng dạng ENG-123 hoặc link Linear'), { status: 400 });
   return id;
 }
@@ -93,7 +95,7 @@ const ITEM = /^\/api\/linear\/issues\/([A-Z][A-Z0-9]{1,9}-\d{1,7})\/(analyze|tes
 
 // Route của tính năng Issue Linear. Trả null khi đường dẫn không thuộc tính năng này.
 // Lỗi có status (400 / 404 / 409 / 502) đi ra đúng mã; lỗi khác để app.mjs xử lý như 500.
-export function createLinearIssuesApi({ projectRoot, linearBackend, runAi, settings = readSettings }) {
+export function createLinearIssuesApi({ projectRoot, linearBackend, runAi, settings = async (root) => (await readSettings(root)).linear }) {
   const client = async () => {
     const lin = await linearBackend();
     if (!lin.client) throw Object.assign(new Error('Chưa có Linear: nhập LINEAR_API_KEY ở Cài đặt hệ thống → Tích hợp, hoặc đăng nhập MCP Linear cho Claude CLI.'), { status: 400 });
@@ -107,13 +109,17 @@ export function createLinearIssuesApi({ projectRoot, linearBackend, runAi, setti
   const patch = (identifier, change) =>
     serial(`${projectRoot}:${FILE}`, async () => {
       const { items, fetchedAt } = await readIssues(projectRoot);
+      // refresh có thể xoá issue giữa lúc kiểm tra và lúc ghi: không khớp thì báo 404, không báo thành công
+      if (!items.some((i) => i.identifier === identifier)) throw Object.assign(new Error(`Issue ${identifier} không còn trong danh sách`), { status: 404 });
       await save(projectRoot, { items: items.map((i) => (i.identifier === identifier ? { ...i, ...change } : i)), fetchedAt });
     });
 
   const route = async (req, p, method, readBody) => {
     if (p === '/api/linear/issues' && method === 'GET') return { status: 200, body: await readIssues(projectRoot) };
     if (p === '/api/linear/issues/refresh' && method === 'POST') {
-      const body = await refreshIssues({ root: projectRoot, client: await client(), settings: await settings(projectRoot) });
+      const cfg = await settings(projectRoot);
+      if (!cfg.emails?.length) throw Object.assign(new Error('Chưa chọn email người được giao: thêm ở Cài đặt → Tích hợp'), { status: 400 });
+      const body = await refreshIssues({ root: projectRoot, client: await client(), settings: cfg });
       return { status: 200, body };
     }
     if (p === '/api/linear/issues/add' && method === 'POST') {
@@ -158,6 +164,8 @@ export function createLinearIssuesApi({ projectRoot, linearBackend, runAi, setti
       return await route(...args);
     } catch (e) {
       if (e.status) return { status: e.status, body: { error: e.message } };
+      // lỗi từ Linear / Claude CLI là sự cố bên ngoài, không phải lỗi server: 502, không đẩy vào selfHeal như 500
+      if (/^Linear( MCP)?:/.test(e.message)) return { status: 502, body: { error: e.message } };
       throw e;
     }
   };

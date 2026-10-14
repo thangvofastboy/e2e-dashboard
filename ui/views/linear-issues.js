@@ -19,7 +19,8 @@ function liIssuesTable(items) {
       const s = liStateOf(i);
       return `<tr><td>${liIssueLink(i)}</td><td>${escapeHtml(i.title)}</td><td>${escapeHtml(i.state)}</td><td class="muted small">${escapeHtml(i.assignee)}</td>
         <td><span class="chip tone-${LI_TONE[s]}">${s}</span></td>
-        <td><button type="button" class="small-btn" data-analyze="${escapeHtml(i.identifier)}">${icon('sparkles', { size: 13 })}Phân tích</button></td></tr>`;
+        <td><button type="button" class="small-btn" data-open="${escapeHtml(i.identifier)}"${i.testcases?.length ? '' : ' hidden'}>${icon('ticket', { size: 13 })}Mở testcase</button>
+          <button type="button" class="small-btn" data-analyze="${escapeHtml(i.identifier)}">${icon('sparkles', { size: 13 })}Phân tích</button></td></tr>`;
     }).join('')}</tbody></table></div></section>`;
 }
 
@@ -52,7 +53,7 @@ function liReadEditor(main) {
 // Gọi API với nút tạm khoá; lỗi hiện toast (bỏ tiền tố mã HTTP như các trang khác)
 async function liBusy(btn, fn) {
   btn.disabled = true;
-  btn.setAttribute('aria-liBusy', 'true');
+  btn.setAttribute('aria-busy', 'true');
   try {
     return await fn();
   } catch (x) {
@@ -60,7 +61,7 @@ async function liBusy(btn, fn) {
     return null;
   } finally {
     btn.disabled = false;
-    btn.removeAttribute('aria-liBusy');
+    btn.removeAttribute('aria-busy');
   }
 }
 
@@ -93,6 +94,13 @@ export async function renderLinearIssues(main) {
       const input = main.querySelector('[data-add-id]');
       const r = await liBusy(btn, () => postJson('/api/linear/issues/add', { id: input.value }));
       if (r) toast(`Đã thêm ${r.identifier}`);
+      return draw();
+    }
+    // mở testcase đã lưu để sửa / Gen: không tốn một lượt AI
+    if (btn.dataset.open) {
+      const d = await getJson('/api/linear/issues');
+      const item = d.items.find((i) => i.identifier === btn.dataset.open);
+      if (item?.testcases?.length) liEditing = { identifier: item.identifier, testcases: item.testcases };
       return draw();
     }
     if (btn.dataset.analyze) {

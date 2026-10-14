@@ -122,3 +122,7 @@ test('addManualIssue: thêm tay một issue, không trùng; mã không có trên
   assert.equal(items[0].source, 'manual');
   await assert.rejects(addManualIssue({ root, client, id: 'ENG-404' }), (e) => e.status === 404);
 });
+
+test('normalizeIssueId: link có slug workspace giống mã issue vẫn lấy đúng mã sau /issue/', () => {
+  assert.equal(normalizeIssueId('https://linear.app/acme-1/issue/ENG-12/fix'), 'ENG-12');
+});

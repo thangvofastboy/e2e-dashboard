@@ -74,3 +74,32 @@ test('route: mã sai được báo 400 về định dạng ngay cả khi chưa c
   assert.equal(res.status, 400);
   assert.match(res.body.error, /ENG-123/);
 });
+
+test('route: refresh đọc email/status đã lưu thật (không qua settings giả), không có email thì 400', async () => {
+  const { writeSettings } = await import('../server/settings.mjs');
+  const root = tmp();
+  const calls = [];
+  const client = { listAssigned: async (args) => { calls.push(args); return []; } };
+  const a = createLinearIssuesApi({ projectRoot: root, linearBackend: async () => ({ mode: 'api', client, team: null }), runAi: async () => '' });
+  assert.equal((await a({}, '/api/linear/issues/refresh', 'POST', readBody({}))).status, 400);
+  assert.equal(calls.length, 0, 'không gọi Linear khi chưa chọn email');
+  await writeSettings(root, { linear: { emails: ['a@x.com'], statuses: ['Todo'] } });
+  assert.equal((await a({}, '/api/linear/issues/refresh', 'POST', readBody({}))).status, 200);
+  assert.deepEqual(calls[0], { emails: ['a@x.com'], statuses: ['Todo'] });
+});
+
+test('route: lỗi Linear (không có status) trả 502 chứ không thành 500; file đã có do lần gen khác thì 409', async () => {
+  const bad = { listAssigned: async () => { throw new Error('Linear: HTTP 503'); }, get: async () => { throw new Error('Linear: HTTP 503'); } };
+  const a = createLinearIssuesApi({ projectRoot: tmp(), linearBackend: async () => ({ mode: 'api', client: bad, team: null }), runAi: async () => '', settings: async () => ({ emails: ['a@x.com'], statuses: ['Todo'] }) });
+  assert.equal((await a({}, '/api/linear/issues/refresh', 'POST', readBody({}))).status, 502);
+});
+
+test('route: lưu testcase cho issue đã bị refresh xoá giữa chừng trả 404, không báo 200', async () => {
+  const root = tmp();
+  const a = api(root);
+  await a({}, '/api/linear/issues/add', 'POST', readBody({ id: 'ENG-1' }));
+  const { writeState } = await import('../server/jsonstate.mjs');
+  await writeState(root, 'linear-issues.json', { items: [], fetchedAt: null });
+  const res = await a({}, '/api/linear/issues/ENG-1/testcases', 'POST', readBody({ testcases: [{ title: 't', steps: ['b'], expected: 'e' }] }));
+  assert.equal(res.status, 404);
+});
