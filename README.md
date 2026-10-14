@@ -106,6 +106,7 @@
 | 🧹 | **Dọn run theo khoảng ngày** | Lọc theo trạng thái và khoảng thời gian rồi xoá run cũ trong một lần |
 | 🗂️ | **Thu gọn menu & phóng to** | Menu trái gập thành thanh icon; mỗi chart, bảng, danh sách phóng to toàn màn hình (Esc để thoát) |
 | 🧾 | **Linear có xem trước** | Sửa tiêu đề và nội dung, xem trước, nhờ AI viết lại theo giọng tự nhiên, đính kèm ảnh minh hoạ trước khi gửi |
+| 🎟️ | **Issue Linear → testcase → e2e** | Lấy issue được giao cho các email đã chọn (lọc theo status), AI đọc mô tả và comment rồi đề xuất testcase; sửa, lưu, rồi AI viết `tests/linear/<ID>.e2e.ts` (không ghi đè file có sẵn) |
 | 🧠 | **Model calls (`--ai-trace`)** | Tab *Model* ở Run detail: từng lần gọi model của test (model, token, độ trễ, prompt và phản hồi đầy đủ khi mở), từ `ai-trace.json` |
 | 🧭 | **Phân loại lỗi theo lớp** | Lỗi hạ tầng / cấu hình (model provider, credential, worker…) không tính vào pass rate; cổng chất lượng báo riêng, Run detail hiện nhãn và ý nghĩa exit code |
 | ♻️ | **Replay cache** | Danh sách bản ghi theo test (tuổi, action, dung lượng), cảnh báo bản ghi cũ, xoá theo test / bản ghi mồ côi / toàn bộ (tương đương `e2e cache ls\|stats\|clear`) |
@@ -403,6 +404,15 @@ Các trang ở nhóm **Phân tích** trên sidebar; mỗi trang chọn được 
 - Có `LINEAR_API_KEY` (và `LINEAR_TEAM`, vd. `ENG`, khi tài khoản có nhiều team): server tìm issue chứa fingerprint trước. Đang mở → báo trùng, nút *Thêm comment run này*; đã đóng → tạo issue mới ghi "Tái phát của …"; chưa có → tạo mới.
 - Không có key: **Copy cho Claude** tạo prompt để Claude Code dùng Linear MCP làm đúng các bước trên.
 - Key chỉ đọc từ biến môi trường hoặc `~/.e2e-dashboard/config.json` → `"linear": { "apiKey", "team" }`, **không bao giờ** từ repo.
+
+**🎟️ Issue Linear → testcase → e2e.** Ở *Cài đặt hệ thống → Tích hợp*, phần **Issue Linear**: nhập email người được giao (mỗi dòng một email, tối đa 20) và các status cần lấy (vd. `Todo`, `In Progress`). Lưu ở `.e2e-dashboard/settings.json` của project. Rồi mở menu **Theo dõi → Issue Linear**:
+
+1. **Lấy lại danh sách**: lấy các issue được giao cho các email đó, có status trong danh sách. Issue đã có testcase hoặc thêm tay được giữ lại khi không còn khớp; lỗi Linear thì danh sách cũ giữ nguyên.
+2. **Thêm** một issue bằng mã (`ENG-123`) hoặc link Linear.
+3. **Phân tích**: AI đọc tiêu đề, mô tả và comment của issue rồi đề xuất testcase (tiêu đề, các bước, kết quả mong đợi). Đây chỉ là đề xuất: sửa, thêm, xoá rồi bấm **Lưu testcase**. **Mở testcase** mở lại bản đã lưu mà không gọi AI.
+4. **Gen e2e**: AI đọc quy ước của project (`e2e.config.*`, vài file `.e2e.ts`) rồi viết một file `tests/linear/<ID>.e2e.ts`, mỗi testcase một `test()`. File đã có thì báo lỗi, không ghi đè.
+
+Cần Linear API key hoặc MCP Linear đã đăng nhập (như *Gửi Linear*). Nội dung issue và comment được coi là dữ liệu, không phải chỉ dẫn cho AI.
 
 **📰 Digest tuần.** Trang *Digest tuần* hoặc `/e2e-dashboard digest`: số run, pass rate so với tuần trước, token, replay cache, health score, test mới fail, flaky, nhóm lỗi, step chậm nhất. Muốn tự động hằng tuần: tạo Routine trong Claude Code chạy `/e2e-dashboard digest`.
 

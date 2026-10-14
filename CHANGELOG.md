@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.13.0 — 2026-10-14
+
+- **Issue Linear → testcase → e2e** (menu mới *Theo dõi → Issue Linear*): lấy issue được giao cho các email đã chọn và có status trong danh sách (nhập ở *Cài đặt hệ thống → Tích hợp*), thêm issue bằng mã hoặc link, nút *Lấy lại danh sách*. *Phân tích* để AI đọc tiêu đề, mô tả và comment rồi đề xuất testcase; sửa, lưu, mở lại bản đã lưu. *Gen e2e* để AI viết `tests/linear/<ID>.e2e.ts` theo quy ước của project, không ghi đè file có sẵn.
+- **Lấy lại danh sách giữ công sức đã làm**: issue đã có testcase hoặc thêm tay không bị bỏ khi đổi người hay đổi status; lỗi Linear thì danh sách cũ giữ nguyên.
+- **An toàn**: nội dung issue, comment và output AI nằm trong khối dữ liệu, không thành chỉ dẫn; mã issue và đường dẫn file được kiểm tra; lỗi Linear trả 502, không bị ghi như lỗi server.
+
 ## v0.12.0 — 2026-10-14
 
 - **Bảo mật**: thư mục `.e2e-dashboard`, `server.json`, `report.json` / `meta.json` hay `.env.example` là symlink (repo clone cài sẵn) không còn bị đọc hay ghi xuyên qua; file export lấy tên theo run id đã kiểm tra; token có ký tự lạ trả 401 thay vì lỗi 500; tiêu đề test trong prompt "Copy cho Claude" nằm trong khối dữ liệu, không thành chỉ dẫn; thông báo desktop không bị tiêu đề bắt đầu bằng `-` làm hỏng.
