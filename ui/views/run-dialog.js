@@ -28,6 +28,7 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
       ${fld('Repeat each', `<input type="number" name="repeatEach" min="1" max="50" placeholder="1"${Number.isInteger(repeatEach) ? ` value="${repeatEach}"` : ''}>`, 'Chạy mỗi test N lần liên tiếp để dò flaky. Mặc định: 1.')}
       ${fld('Trình duyệt', `<select name="browser" aria-label="Trình duyệt">${['chromium', 'firefox', 'webkit'].map((b) => `<option value="${b}">${b === 'webkit' ? 'WebKit' : b.charAt(0).toUpperCase() + b.slice(1)}</option>`).join('')}</select>`, 'Trình duyệt chạy lần này. Mặc định: giá trị đặt ở Tự động & lưu trữ (Chromium).')}
       ${fld('Workers', '<input type="number" name="workers" min="1" max="1024" placeholder="tự động">', 'Số test chạy song song. Để trống = tự động theo số lõi CPU.')}
+      ${sw('headed', 'Có giao diện (headed)', 'Mở cửa sổ trình duyệt khi chạy (--headed), cần màn hình. Mặc định: theo Tự động & lưu trữ.')}
     </div>
     ${sw('noCache', '--no-cache', 'Bỏ qua replay cache: mọi step agent gọi model thật (chậm, tốn token). Mặc định: tắt.')}
     <details class="run-adv"${preset.updateSnapshots ? ' open' : ''}><summary>Nâng cao</summary>
@@ -72,6 +73,8 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
       browser: fd.get('browser') || 'chromium',
       // trống = tự động cho lần này (null); chưa tải được Settings thì không gửi để server dùng mặc định
       ...(fd.get('workers') !== '' ? { workers: Number(fd.get('workers')) } : settingsLoaded ? { workers: null } : {}),
+      // chưa tải được Settings mà người dùng không bật: không gửi để server lấy mặc định
+      ...(settingsLoaded || fd.get('headed') === 'on' ? { headed: fd.get('headed') === 'on' } : {}),
       ...(fd.get('excludeQuarantined') === 'on' && !dlg.querySelector('[data-q-wrap]').hidden ? { excludeQuarantined: true } : {}),
       ...(csv(fd.get('tag')).length ? { tag: csv(fd.get('tag')) } : {}),
       ...(fd.get('tagMode') ? { tagMode: fd.get('tagMode') } : {}),
@@ -102,6 +105,7 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
     const input = form.elements.workers;
     input.placeholder = `Tự động (${s.autoWorkers})`;
     if (s.workers && input.value === '') input.value = String(s.workers);
+    form.elements.headed.checked = s.headed === true;
     const sel = form.elements.browser;
     sel.value = s.browser ?? 'chromium';
     for (const o of sel.options) {
