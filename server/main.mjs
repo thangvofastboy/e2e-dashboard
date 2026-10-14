@@ -185,8 +185,8 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
   const grepInvert = async () => quarantineFlags(await readQuarantine(projectRoot)).args.filter((x) => x !== '--grep-invert');
   const startAuto = async (opts) => {
     try {
-      const { workers, browser } = await readSettings(projectRoot); // worker / trình duyệt mặc định ở Settings
-      return runner.start({ ...opts, ...(workers ? { workers } : {}), browser, grepInvert: await grepInvert() });
+      const { workers, browser, headed } = await readSettings(projectRoot); // worker / trình duyệt / headed mặc định ở Settings
+      return runner.start({ ...opts, ...(workers ? { workers } : {}), browser, headed, grepInvert: await grepInvert() });
     } catch (e) {
       return { ok: false, error: e.message };
     }

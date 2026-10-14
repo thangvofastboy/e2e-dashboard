@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // MCP server (stdio, JSON-RPC, no dependencies): lets Claude Code ask about the e2e history of the
-// project it is working in, without opening the dashboard. Read-only.
+// project it is working in, without opening the dashboard. Đọc lịch sử là chính; hai tool chạy / dừng
+// test đi qua server dashboard đang chạy (cùng API với nút Chạy trên giao diện), không tự spawn e2e.
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
+import { readServerInfo } from '../reporter/e2e-dashboard.reporter.mjs';
 import { findProjectRoot } from './project.mjs';
 import { loadHistory, listRuns, getRun } from '../server/store.mjs';
 import { flakyTests, groupErrors, compareRuns, testKey, routeMap } from '../server/analytics.mjs';
@@ -40,11 +42,49 @@ export const TOOLS = [
   { name: 'e2e_trends', description: 'Xu hướng dài hạn (giữ cả khi run cũ đã bị xoá): pass rate theo tuần, MTTR, thời gian branch chính đỏ, test đang fail lâu nhất.', inputSchema: { type: 'object', properties: { days: { type: 'integer', description: 'Số ngày (mặc định 90, tối đa 730)' } } } },
   { name: 'e2e_triage', description: 'Danh sách lỗi đang cần xử lý: trạng thái (mới / đang xem / đã biết / đã sửa / bỏ qua), người phụ trách, ghi chú, issue Linear.', inputSchema: { type: 'object', properties: {} } },
   { name: 'e2e_groups', description: 'Bảng điểm theo module, tag hoặc owner (CODEOWNERS): pass rate, test đang fail, flaky.', inputSchema: { type: 'object', properties: { by: { type: 'string', enum: ['module', 'tag', 'owner'] } } } },
+  { name: 'e2e_run_start', description: 'Chạy test e2e qua dashboard (cần dashboard đang chạy: /e2e-dashboard). Không truyền tests = chạy toàn bộ suite. Tiến độ hiện ở trang Live; kết quả vào Runs khi xong.', inputSchema: { type: 'object', properties: {
+    tests: { type: 'array', items: { type: 'string' }, description: 'File hoặc file:line, vd ["tests/checkout.e2e.ts"] (để trống = cả suite)' },
+    targets: { type: 'array', items: { type: 'string' } },
+    browser: { type: 'string', enum: ['chromium', 'firefox', 'webkit'] },
+    workers: { type: 'integer', description: 'Số worker song song (không truyền = mặc định ở Settings)' },
+    headed: { type: 'boolean', description: 'Mở cửa sổ trình duyệt (không truyền = mặc định ở Settings)' },
+    grep: { type: 'string' },
+    tag: { type: 'array', items: { type: 'string' } },
+  } } },
+  { name: 'e2e_run_stop', description: 'Dừng run đang chạy trên dashboard (run chạy từ terminal chỉ được đánh dấu dừng).', inputSchema: { type: 'object', properties: {} } },
   { name: 'e2e_report', description: 'Báo cáo tuần hoặc tháng (Markdown) từ số liệu dài hạn, giống bản gửi tự động.', inputSchema: { type: 'object', properties: { kind: { type: 'string', enum: ['week', 'month'] } } } },
 ];
 
+// Gọi API của dashboard đang chạy cho project này (port + token trong .e2e-dashboard/server.json)
+export async function dashboardCall(root, method, p, body) {
+  const info = readServerInfo(root);
+  if (!info) throw new Error('Dashboard chưa chạy cho project này: mở /e2e-dashboard trước.');
+  const res = await fetch(`http://127.0.0.1:${info.port}${p}`, {
+    method,
+    headers: { 'x-e2e-dashboard-token': info.token, ...(body ? { 'content-type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(15_000),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { status: res.status, data };
+}
+
+const RUN_START_KEYS = ['tests', 'targets', 'browser', 'workers', 'headed', 'grep', 'tag'];
+
 async function runTool(root, name, args = {}) {
   if (!root) return 'Không thấy project e2e (e2e.config.*) từ thư mục hiện tại.';
+  if (name === 'e2e_run_start') {
+    const body = Object.fromEntries(RUN_START_KEYS.filter((k) => args[k] !== undefined).map((k) => [k, args[k]]));
+    body.tests ??= [];
+    const { status, data } = await dashboardCall(root, 'POST', '/api/run', body);
+    if (status === 202) return `Đã bắt đầu run${data.pid ? ` (pid ${data.pid})` : ''}. Xem tiến độ ở trang Live.`;
+    return `Không chạy được (HTTP ${status}): ${data.error ?? 'lỗi không rõ'}`;
+  }
+  if (name === 'e2e_run_stop') {
+    const { status, data } = await dashboardCall(root, 'POST', '/api/run/stop', {});
+    if (status !== 200) return `Không dừng được (HTTP ${status}): ${data.error ?? 'lỗi không rõ'}`;
+    return data.stopped ? 'Đã dừng run.' : 'Không có run nào đang chạy.';
+  }
   if (name === 'e2e_runs') {
     const metas = (await listRuns(root)).slice(0, int(args.limit, 10, 50));
     return metas.length ? metas.map(line).join('\n') : 'Chưa có run nào trong lịch sử (.e2e-dashboard/runs).';
