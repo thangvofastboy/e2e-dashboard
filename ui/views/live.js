@@ -248,10 +248,14 @@ export async function renderLive(main) {
   function draw() {
     if (!alive) return;
     if (!snap || snap.status === 'idle') {
-      main.innerHTML = `<h1>Live</h1>${snap?.disconnected ? LOST_BANNER : ''}<div class="empty-state"><h2>Chưa có run nào đang chạy</h2>
+      // chưa có run vẫn hiện tài nguyên máy; chỉ vẽ lại khi nội dung đổi (poll 2 giây không làm mất focus nút)
+      const idle = `<h1>Live</h1>${resHtml}${snap?.disconnected ? LOST_BANNER : ''}<div class="empty-state"><h2>Chưa có run nào đang chạy</h2>
         <p>Chạy <code>npx e2e run</code> hoặc bấm nút dưới — tiến độ sẽ hiện ở đây.</p>
         <p><button type="button" class="primary" data-run-all>${icon('play', { size: 14 })}Chạy toàn bộ suite</button></p>
         ${info.reporter.installed ? '' : '<p class="hint">Cần reporter để xem live: chạy <code>/e2e-dashboard setup</code>.</p>'}</div>`;
+      if (main.dataset.liveIdle === idle && main.querySelector(':scope > .empty-state')) return; // <main> dùng chung giữa các trang: chỉ bỏ qua khi đang hiện đúng màn này
+      main.dataset.liveIdle = idle;
+      main.innerHTML = idle;
       main.querySelector('[data-run-all]')?.addEventListener('click', () => openRunDialog({ tests: [], title: 'Chạy toàn bộ suite' }));
       return;
     }
