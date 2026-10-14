@@ -5,6 +5,7 @@ import { toast } from '../toast.js';
 import { escapeHtml } from '../format.js';
 import { icon } from '../icons.js';
 import { runHref } from '../router.js';
+import { pickerHtml, bindPicker } from '../test-picker.js';
 
 // QC xác nhận: bug đã biết mà run mới nhất đã pass (chờ xác nhận đã sửa), waiver có hạn cho lỗi chưa sửa kịp, nhật ký thay đổi.
 const VERIFY_FIELD = { note: 'Ghi chú', known: 'Known bug', waiver: 'Waiver', ack: 'Chưa sửa (đã xem run)' };
@@ -18,6 +19,8 @@ const vName = (key) => {
 };
 const vWhen = (iso) => escapeHtml(String(iso ?? '').slice(0, 16).replace('T', ' '));
 const vFail = (x) => toast(x.message.replace(/^\d{3}: /, ''), 'bad');
+// test fail → dòng cho ô chọn test: file lấy từ key "file::tên|target|agent"
+const failingRows = (failing) => failing.map((f) => ({ value: f.key, title: f.title, file: String(f.key).split('|')[0].split('::')[0], tags: [], sub: String(f.key).split('|')[1] ?? '' }));
 
 function verifyQueueHtml(queue) {
   if (!queue.length) return emptyBox('Không có bug nào chờ xác nhận', 'Khi test có known bug pass ở run mới nhất, nó hiện ở đây để bạn xác nhận đã sửa hoặc báo chưa đúng.');
@@ -31,7 +34,7 @@ function verifyWaiverHtml(d) {
   const inAWeek = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
   const rows = d.waivers.map((w) => `<tr data-key="${escapeHtml(w.key)}"><td>${escapeHtml(vName(w.key))}</td><td class="${w.active ? '' : 'muted'}">${escapeHtml(w.until)}${w.active ? '' : ' (hết hạn)'}</td><td>${escapeHtml(w.reason)}</td><td><button type="button" class="small-btn" data-unwaive>${icon('close', { size: 13 })}Gỡ</button></td></tr>`).join('');
   return `<form class="fb-form" data-waive>
-      <div class="form-row"><select name="key" required aria-label="Test đang fail">${d.failing.length ? d.failing.map((f) => `<option value="${escapeHtml(f.key)}">${escapeHtml(f.title)}</option>`).join('') : '<option value="">Run mới nhất không có test vFail</option>'}</select>
+      <div class="form-row">${pickerHtml({ name: 'key', rows: failingRows(d.failing), value: d.failing[0]?.key ?? '', placeholder: 'Run mới nhất không có test fail', attrs: 'aria-label="Test đang fail"' })}
       <input name="until" type="date" value="${inAWeek}" required aria-label="Hết hạn"><input name="reason" required minlength="5" maxlength="300" placeholder="Lý do bỏ qua (bắt buộc)" aria-label="Lý do"><button type="submit" class="primary"${d.failing.length ? '' : ' disabled'}>${icon('check', { size: 14 })}Tạo waiver</button></div>
       <p class="muted small">Test có waiver còn hạn không bị tính là fail mới ở cổng chất lượng; hết hạn là tính lại.</p></form>
     ${d.waivers.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Test</th><th>Hết hạn</th><th>Lý do</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}`;
@@ -54,6 +57,7 @@ export async function renderVerify(main) {
       });
       tr.querySelector('[data-notfixed]').addEventListener('click', () => save(tr.dataset.key, { ack: tr.dataset.run }, 'Giữ known bug, chờ run pass tiếp theo'));
     }
+    bindPicker(main.querySelector('[data-waive] [data-tpick]'), failingRows(d.failing));
     main.querySelector('[data-waive]').addEventListener('submit', (e) => {
       e.preventDefault();
       const f = new FormData(e.target);

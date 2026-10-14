@@ -53,6 +53,9 @@ export async function renderSettings(main) {
         <div class="sys-pane" role="tabpanel" id="set-pane-run" aria-labelledby="set-tab-run">
           <div class="settings-grid">
       ${prefs ? workersPanelHtml(prefs) : ''}
+      ${prefs ? `<section class="panel"><h2>${icon('eye', { size: 15 })} Trình duyệt có giao diện</h2>
+        <label class="pill switch"><input type="checkbox" data-headed ${prefs.headed ? 'checked' : ''}><span class="track"></span><span>Mở trình duyệt khi chạy (headed)</span></label>
+        <p class="muted small">Mặc định cho mọi run bấm từ dashboard, đổi được từng lần ở hộp Chạy test. Cần màn hình: máy chủ không có màn hình (CI) thì runner báo lỗi.</p></section>` : ''}
       <section class="panel"><h2>${icon('eye', { size: 15 })} Chế độ watch</h2>
         <p class="muted small">Lưu một file <code>*.e2e.ts</code> là dashboard tự chạy lại đúng file đó (bỏ qua test đang cách ly), xem ở trang Live.</p>
         <label class="pill switch"><input type="checkbox" data-watch ${auto.watch.enabled ? 'checked' : ''}><span class="track"></span><span>Bật watch</span></label>
@@ -96,6 +99,13 @@ export async function renderSettings(main) {
     const r = await postJson('/api/settings', { browser: e.target.value }).catch((x) => ({ error: x.message }));
     if (r.error) toast(r.error, 'bad');
     else toast(`Trình duyệt mặc định: ${BROWSER_NAMES[r.browser]}`);
+  });
+  main.querySelector('[data-headed]')?.addEventListener('change', async (e) => {
+    const r = await postJson('/api/settings', { headed: e.target.checked }).catch((x) => ({ error: x.message }));
+    if (r.error) {
+      toast(r.error, 'bad');
+      e.target.checked = !e.target.checked;
+    } else toast(r.headed ? 'Mặc định chạy có giao diện (headed)' : 'Mặc định chạy ẩn (headless)');
   });
   const wf = main.querySelector('[data-workers]');
   wf?.auto.addEventListener('change', () => {

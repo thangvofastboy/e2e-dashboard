@@ -1141,3 +1141,21 @@ td > :where(button, a.button) + :where(button, a.button), p > :where(button, a.b
 .failed-row:last-child { border-bottom: 0; padding-bottom: 0; }
 .live-failed:empty { display: none; }
 /* end batch2-live */
+
+/* batch2-ui-tests */
+.tt details > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; cursor: pointer; border-radius: var(--radius); }
+.tt details > summary:hover { background: var(--surface-2); }
+.tt .tt-dir > :not(summary) { margin-left: 18px; }
+.tt .tt-file > .table { margin: 4px 0 10px 18px; width: calc(100% - 18px); }
+.tt .tt-file td:first-child { white-space: normal; overflow-wrap: anywhere; }
+.tpick { position: relative; display: inline-block; min-width: 260px; max-width: 100%; }
+.tpick-btn { display: inline-flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; text-align: left; }
+.tpick-cur { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tpick-pop { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; display: flex; flex-direction: column; gap: 6px; width: min(520px, 90vw); padding: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 8px 24px rgb(0 0 0 / 0.18); }
+.tpick-pop[hidden] { display: none; }
+.tpick-list { display: flex; flex-direction: column; max-height: 320px; overflow: auto; }
+.tpick-dir, .tpick-opt { display: flex; align-items: center; gap: 5px; padding: 3px 6px 3px calc(6px + var(--d, 0) * 14px); }
+.tpick-dir { color: var(--text-secondary); font-size: calc(12.5px * var(--fs)); }
+.tpick-opt { cursor: pointer; border-radius: var(--radius); overflow-wrap: anywhere; }
+.tpick-opt:hover, .tpick-opt[aria-selected="true"] { background: var(--info-bg); }
+/* end batch2-ui-tests */

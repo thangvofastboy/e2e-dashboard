@@ -4,13 +4,18 @@ import { pageHead } from '../analysis.js';
 import { toast } from '../toast.js';
 import { escapeHtml } from '../format.js';
 import { icon } from '../icons.js';
+import { pickerHtml, bindPicker } from '../test-picker.js';
 
 // Mẫu prompt QC: sửa mẫu, chọn một test hoặc cả run, rồi chép prompt hoặc để AI viết nội dung (bug report, báo cáo, mô tả Linear).
+const ALL_RUN = 'Cả run mới nhất';
 const KINDS = [['linear', 'Mô tả Linear'], ['bug', 'Bug ngắn'], ['report', 'Báo cáo run'], ['custom', 'Khác']];
 
 export async function renderQcTemplates(main) {
   const [t, res] = await Promise.all([getJson('/api/qc/templates'), getJson('/api/qc/results')]);
   let cur = t.templates[0]?.id ?? null;
+  // /api/qc/results không trả file nên cây chỉ có một cấp; giữ lựa chọn qua các lần vẽ lại
+  const srcRows = res.results.map((r) => ({ value: r.id, title: r.test, file: r.file ?? '', tags: [], sub: `${r.target} · ${r.status}` }));
+  let src = '';
   const draw = () => {
     const tpl = cur === '' ? { id: '', name: '', kind: 'custom', body: '' } : t.templates.find((x) => x.id === cur) ?? null;
     main.innerHTML = `${pageHead('Mẫu prompt QC', 'file', 'Viết mẫu có chỗ trống {{tên}}, điền dữ liệu của test hoặc run, rồi chép prompt hoặc để AI viết nội dung.')}
@@ -29,9 +34,7 @@ export async function renderQcTemplates(main) {
                 <button type="button" data-tpl-reset>${icon('recycle', { size: 14 })}Khôi phục mẫu gốc</button></div>
             </form></section>` : '<section class="panel"><p class="muted">Chọn một mẫu hoặc tạo mẫu mới.</p></section>'}
           <section class="panel"><h2>${icon('sparkles', { size: 18 })} Dùng mẫu</h2>
-            <div class="form-row"><span class="form-label">Dữ liệu</span><select data-src aria-label="Test hoặc run">
-              <option value="">Cả run mới nhất</option>
-              ${res.results.map((r) => `<option value="${escapeHtml(r.id)}">${escapeHtml(r.test)} · ${escapeHtml(r.target)} · ${escapeHtml(r.status)}</option>`).join('')}</select></div>
+            <div class="form-row"><span class="form-label">Dữ liệu</span>${pickerHtml({ name: 'src', rows: srcRows, value: src, emptyLabel: ALL_RUN, attrs: 'data-src aria-label="Test hoặc run"' })}</div>
             <div class="form-row"><button type="button" data-use="prompt">${icon('copy', { size: 14 })}Chép prompt</button>
               <button type="button" class="primary" data-use="ai">${icon('sparkles', { size: 14 })}Để AI viết</button></div>
             <p class="muted small" data-missing></p>
@@ -43,6 +46,7 @@ export async function renderQcTemplates(main) {
     bind();
   };
   const bind = () => {
+    bindPicker(main.querySelector('[data-tpick]'), srcRows, { emptyLabel: ALL_RUN, onChange: (v) => { src = v; } });
     main.querySelectorAll('[data-tpl]').forEach((b) => b.addEventListener('click', () => { cur = b.dataset.tpl; draw(); }));
     main.querySelector('[data-tpl-new]')?.addEventListener('click', () => { cur = ''; draw(); });
     main.querySelector('[data-tpl-form]')?.addEventListener('submit', async (e) => {
