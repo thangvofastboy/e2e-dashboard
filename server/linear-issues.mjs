@@ -118,7 +118,8 @@ export function createLinearIssuesApi({ projectRoot, linearBackend, runAi, setti
     }
     if (p === '/api/linear/issues/add' && method === 'POST') {
       const body = await readBody(req);
-      return { status: 200, body: await addManualIssue({ root: projectRoot, client: await client(), id: body.id }) };
+      const id = normalizeIssueId(body.id); // mã sai báo ngay, không cần chờ kiểm tra cấu hình Linear
+      return { status: 200, body: await addManualIssue({ root: projectRoot, client: await client(), id }) };
     }
     const m = ITEM.exec(p);
     if (!m) return null;

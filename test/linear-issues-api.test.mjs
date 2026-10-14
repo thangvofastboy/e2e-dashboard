@@ -67,3 +67,10 @@ test('route: gen khi chưa lưu testcase trả 400', async () => {
   await a({}, '/api/linear/issues/add', 'POST', readBody({ id: 'ENG-1' }));
   assert.equal((await a({}, '/api/linear/issues/ENG-1/gen', 'POST', readBody({}))).status, 400);
 });
+
+test('route: mã sai được báo 400 về định dạng ngay cả khi chưa cấu hình Linear', async () => {
+  const a = createLinearIssuesApi({ projectRoot: tmp(), linearBackend: async () => ({ mode: null, client: null }), runAi: async () => '', settings: async () => ({ emails: [], statuses: [] }) });
+  const res = await a({}, '/api/linear/issues/add', 'POST', readBody({ id: 'xx' }));
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /ENG-123/);
+});
