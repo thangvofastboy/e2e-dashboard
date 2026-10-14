@@ -38,6 +38,7 @@ before(async () => {
     linearCalls.push(body);
     if (body.query.includes('issues(')) return Response.json({ data: { issues: { nodes: linearState.open ? [linearState.open] : [] } } });
     if (body.query.includes('teams')) return Response.json({ data: { teams: { nodes: [{ id: 'team-1', key: 'ENG', name: 'Eng' }] } } });
+    if (body.query.includes('issueLabels')) return Response.json({ data: { issueLabels: { nodes: [{ id: `lbl-${body.variables.name.toLowerCase()}`, team: null }] } } });
     if (body.query.includes('issueCreate')) {
       linearState.open = { id: 'i1', identifier: 'ENG-7', url: 'https://linear.app/x/issue/ENG-7', title: body.variables.input.title, state: { name: 'Todo', type: 'unstarted' } };
       return Response.json({ data: { issueCreate: { success: true, issue: linearState.open } } });
@@ -202,3 +203,21 @@ test('Linear: detach removes the known-bug mark and the saved link, and leaves t
   assert.equal((await post('/api/linear/detach', { runId, resultId: 'f'.repeat(64) })).status, 404);
 });
 
+
+test('Linear: type Bug needs a related issue id; the type line heads the description and the Bug label is attached', async () => {
+  const runId = runs[2].meta.runId;
+  const resultId = runs[2].report.run.results[1].id;
+  linearState.open = null;
+  const before = linearCalls.filter((c) => c.query.includes('issueCreate')).length;
+  const missing = await post('/api/linear/issue', { runId, resultId, type: 'bug', relatedId: '' });
+  assert.equal(missing.status, 400);
+  assert.match(missing.body.error, /bắt buộc/);
+  assert.equal((await post('/api/linear/issue', { runId, resultId, type: 'epic' })).status, 400);
+  assert.equal((await post('/api/linear/issue', { runId, resultId, type: 'task', relatedId: 'xx' })).status, 400);
+  assert.equal(linearCalls.filter((c) => c.query.includes('issueCreate')).length, before, 'rejected before talking to Linear');
+  const ok = await post('/api/linear/issue', { runId, resultId, type: 'bug', relatedId: 'eng-42' });
+  assert.equal(ok.status, 201);
+  const input = linearCalls.filter((c) => c.query.includes('issueCreate')).at(-1).variables.input;
+  assert.match(input.description, /^Loại: Bug · Liên quan: ENG-42\n\n/);
+  assert.deepEqual(input.labelIds, ['lbl-bug']);
+});

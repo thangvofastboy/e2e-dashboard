@@ -222,7 +222,16 @@ export function createLinear({ apiKey, team, fetchImpl = globalThis.fetch, timeo
       return { identifier: data.issue.identifier, title: data.issue.title, description: data.issue.description ?? '', comments: (data.issue.comments?.nodes ?? []).map((c) => c?.body ?? '').filter(Boolean) };
     },
     async create(draft) {
-      const data = await gql(`mutation($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { ${ISSUE} } } }`, { input: { teamId: await teamId(), title: draft.title, description: draft.description } });
+      const tid = await teamId();
+      const input = { teamId: tid, title: draft.title, description: draft.description };
+      if (Object.hasOwn(TYPES, draft.type ?? '')) {
+        // label trùng tên loại: ưu tiên label của team, rồi label workspace; không có / lỗi thì tạo issue không label (loại đã ghi trong mô tả)
+        const nodes = await gql('query($name: String!) { issueLabels(first: 50, filter: { name: { eqIgnoreCase: $name } }) { nodes { id team { id } } } }', { name: TYPES[draft.type] })
+          .then((d) => d.issueLabels?.nodes ?? [], () => []);
+        const label = nodes.find((l) => l?.team?.id === tid) ?? nodes.find((l) => l && !l.team);
+        if (label?.id) input.labelIds = [label.id];
+      }
+      const data = await gql(`mutation($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { ${ISSUE} } } }`, { input });
       if (!data.issueCreate?.success) throw new Error('Linear: tạo issue thất bại.');
       return data.issueCreate.issue;
     },
@@ -282,6 +291,26 @@ export function acceptDescription(draft, text) {
 // Thay chỗ đặt ảnh (e2ed-image:N) bằng link: ảnh đã tải lên Linear, hoặc ghi chú khi không tải được
 export function placeImages(text, urls, images) {
   return text.replace(/!\[([^\]]*)\]\(e2ed-image:(\d+)\)/g, (m, alt, i) => (urls[i] ? `![${alt}](${urls[i]})` : `_(${alt || 'Ảnh'}: ${images[i]?.path ? `không tải lên được, xem ${md(images[i].path, 200)} trong thư mục run` : 'không có'})_`));
+}
+
+// Loại issue (Task / Bug) và mã issue liên quan: Bug bắt buộc có mã, Task không. Không gửi loại = như trước (tự log bug, client cũ)
+const TYPES = { bug: 'Bug', task: 'Task' };
+export function issueMeta({ type, relatedId } = {}) {
+  if (type == null || type === '') return { type: null, relatedId: null };
+  if (!Object.hasOwn(TYPES, type)) throw new Error('Loại issue không hợp lệ (Task hoặc Bug).');
+  const id = String(relatedId ?? '').trim().toUpperCase();
+  if (!id) {
+    if (type === 'bug') throw new Error('Bug bắt buộc nhập mã issue liên quan (vd. ENG-123).');
+    return { type, relatedId: null };
+  }
+  if (!/^[A-Z][A-Z0-9]{1,9}-\d{1,7}$/.test(id)) throw new Error(`Mã issue liên quan không hợp lệ: "${id.slice(0, 40)}" (vd. ENG-123).`);
+  return { type, relatedId: id };
+}
+
+// Dòng đầu mô tả; ui/views/linear.js metaLine dựng cùng chuỗi cho "Copy cho Claude"
+export function metaLine({ type, relatedId }) {
+  if (!type) return '';
+  return `Loại: ${TYPES[type]}${relatedId ? ` · Liên quan: ${relatedId}` : ''}`;
 }
 
 // Tiêu đề người dùng sửa: làm sạch như tiêu đề tự soạn (không HTML, không fingerprint giả, một dòng, ≤ 240)

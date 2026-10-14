@@ -16,7 +16,7 @@ import { resetPreview, resetAll } from './reset.mjs';
 import { scanJunk, cleanJunk } from './junk.mjs';
 import { flakyTests, compareRuns, groupErrors, costStats, slowSteps, routeMap, branchStats, compareBranches, locatorCandidates, traceToCode, testKey, resultError } from './analytics.mjs';
 import { projectSummaries, forgetProject } from './projects.mjs';
-import { acceptDescription, acceptTitle, placeImages, issueDraft, claudePrompt, linearConfig, readIssueLinks, saveIssueLink, parseIssueRef, removeIssueLink, fingerprint as issueFingerprint } from './linear.mjs';
+import { acceptDescription, acceptTitle, issueMeta, metaLine, placeImages, issueDraft, claudePrompt, linearConfig, readIssueLinks, saveIssueLink, parseIssueRef, removeIssueLink, fingerprint as issueFingerprint } from './linear.mjs';
 import { healthScore } from '../ui/health.js';
 import { search, anomalies, lintAgentSteps, agentScan, LINT_RULES, modelStats, bisectPlan, flakyEvidence, testDetail, appErrors, setupTiming } from './insights.mjs';
 import { changedFiles, impactedTests } from './impact.mjs';
@@ -897,6 +897,12 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
           if (acceptDescription(draft, text) !== text || refs.some((x) => !text.includes(x))) return send(res, 502, { error: 'Bản AI viết lại làm mất dòng fingerprint hoặc ảnh: giữ bản cũ, thử lại.' });
           return send(res, 200, { description: text });
         }
+        let meta;
+        try {
+          meta = body.mode === 'comment' ? issueMeta() : issueMeta({ type: body.type, relatedId: body.relatedId }); // Bug bắt buộc có mã liên quan
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
         const back = await linearBackend();
         if (!back.client) return send(res, 400, { error: `${NO_LINEAR} Hoặc dùng nút "Copy cho Claude".`, prompt: claudePrompt(draft, team) });
         const linear = back.client;
@@ -935,8 +941,9 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
           }
         }
         description = placeImages(description, urls, draft.images);
+        if (meta.type) description = `${metaLine(meta)}\n\n${description}`;
         const old = found.closed[0];
-        const issue = await linear.create({ ...draft, title: acceptTitle(draft, body.title), description: old ? `Tái phát của ${old.identifier} (đã đóng).\n\n${description}` : description });
+        const issue = await linear.create({ ...draft, type: meta.type, title: acceptTitle(draft, body.title), description: old ? `Tái phát của ${old.identifier} (đã đóng).\n\n${description}` : description });
         await saveIssueLink(projectRoot, draft.fingerprint, issue);
         await markKnown(projectRoot, failing, issue, signatureOf(run.report, failing)); // thêm task lên Linear = tự đánh dấu known bug
         return send(res, 201, { status: 'created', issue, reopenedFrom: old?.identifier ?? null, fingerprint: draft.fingerprint, images: urls.filter(Boolean).length });

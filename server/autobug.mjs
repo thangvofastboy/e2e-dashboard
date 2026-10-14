@@ -90,7 +90,7 @@ export async function autoLogBugs({ projectRoot, runId, ai = null, env = process
       const { description: written, aiUsed } = await describe({ ai, template, vars, fingerprintLine: fpLine, fallback: draft.description });
       const old = found.closed[0];
       const described = placeImages(written, [], draft.images); // ảnh không tải tự động: thay bằng ghi chú
-      const issue = await client.create({ ...draft, title: acceptTitle(draft, draft.title), description: old ? `Tái phát của ${old.identifier} (đã đóng).\n\n${described}` : described });
+      const issue = await client.create({ ...draft, type: 'bug', title: acceptTitle(draft, draft.title), description: old ? `Tái phát của ${old.identifier} (đã đóng).\n\n${described}` : described });
       await saveIssueLink(projectRoot, draft.fingerprint, issue);
       await markKnown(projectRoot, r, issue, signatureOf(run.report, r));
       rows.push({ resultId: r.id, status: 'created', issue: issue.identifier ?? issue.id, aiUsed, reopenedFrom: old?.identifier ?? null });

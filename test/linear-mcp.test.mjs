@@ -147,3 +147,12 @@ test('new AI prompts: repro steps, severity and bug grouping keep evidence insid
   assert.match(p, /Các nhóm nên gộp/);
   assert.match(p, /ASSERTION_FAILED: giá sai/);
 });
+
+test('MCP create: type asks Claude to attach the matching label, no type asks nothing', async () => {
+  const ai = fakeAi(R({ issues: [ISSUE] }), R({ issues: [ISSUE] }));
+  const c = createMcpLinear({ ai, team: 'ENG' });
+  await c.create({ title: 'x', description: 'D', type: 'bug' });
+  await c.create({ title: 'x', description: 'D' });
+  assert.match(ai.prompts[0], /label tên "Bug"/);
+  assert.doesNotMatch(ai.prompts[1], /label/);
+});

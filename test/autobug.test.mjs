@@ -49,6 +49,7 @@ test('creates one issue per app failure, with the AI text and the draft fingerpr
   assert.equal(r.status, 'done');
   assert.deepEqual(r.rows.map((x) => [x.status, x.issue, x.aiUsed]), [['created', 'ENG-1', true]]);
   assert.equal(linear.created.length, 1);
+  assert.equal(linear.created[0].type, 'bug', 'auto-logged issues get the Bug label');
   assert.match(linear.created[0].description, /## Tóm tắt\nNút không phản hồi/);
   assert.match(linear.created[0].description, /fingerprint: `[^`]+`/);
   const links = await readIssueLinks(root);

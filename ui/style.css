@@ -878,6 +878,9 @@ figure:fullscreen figcaption { font-size: calc(17px * var(--fs)); }
 .draft-save { display: flex; gap: 6px; width: 100%; }
 .draft-save input { flex: 1; }
 .linear-edit { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+.linear-meta { align-items: flex-end; }
+.linear-meta label { display: flex; flex-direction: column; gap: 4px; }
+.linear-meta input[aria-invalid="true"] { border-color: var(--bad); }
 .linear-edit textarea { font: calc(12.5px * var(--fs))/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-primary); resize: vertical; }
 .linear-shot-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 .linear-shot-row figure { margin: 0; width: 160px; }

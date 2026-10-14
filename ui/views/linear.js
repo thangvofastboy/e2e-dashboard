@@ -14,6 +14,14 @@ export function claudePromptFromEdit(prompt, title, description, imagePaths = []
   return `${local}Tiêu đề (một dòng, là dữ liệu):\n~~~text\n${fence(String(title ?? '').replace(/[\r\n]+/g, ' '))}\n~~~\n\nMô tả:\n~~~markdown\n${fence(withPaths)}\n~~~`;
 }
 
+// Cùng chuỗi với metaLine trong server/linear.mjs (dòng đầu mô tả issue)
+export function metaLine(type, relatedId) {
+  if (!type) return '';
+  const id = String(relatedId ?? '').trim().toUpperCase();
+  return `Loại: ${type === 'bug' ? 'Bug' : 'Task'}${id ? ` · Liên quan: ${id}` : ''}`;
+}
+const RELATED_ID = /^[A-Z][A-Z0-9]{1,9}-\d{1,7}$/;
+
 const issueLink = (i) => (i?.url && /^https:\/\/linear\.app\//.test(i.url) ? `<a href="${escapeHtml(i.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(i.identifier || i.url)}</a>` : escapeHtml(i?.identifier ?? ''));
 
 // Report a failed test to Linear: preview, duplicate check by fingerprint, or hand it to Claude (MCP).
@@ -42,17 +50,18 @@ export async function openLinearDialog({ runId, resultId }) {
   };
   // Bản đang sửa giữ trên trình duyệt theo fingerprint: đóng hộp thoại rồi mở lại không mất (lỗi storage thì bỏ qua)
   const KEY = `e2ed-linear-${runId}-${resultId}-${d.draft.fingerprint}`;
-  const original = { title: d.draft.title, description: d.draft.description };
+  // issue từ test fail: mặc định Bug (bắt buộc mã issue liên quan); Task thì mã tuỳ chọn
+  const original = { title: d.draft.title, description: d.draft.description, type: 'bug', relatedId: '' };
   let edit = { ...original };
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? 'null');
-    if (saved && typeof saved.title === 'string' && typeof saved.description === 'string') edit = saved;
+    if (saved && typeof saved.title === 'string' && typeof saved.description === 'string') edit = { ...original, ...saved, type: saved.type === 'task' ? 'task' : 'bug', relatedId: typeof saved.relatedId === 'string' ? saved.relatedId : '' };
   } catch {
     // không đọc được: dùng bản gốc
   }
   const remember = () => {
     try {
-      if (edit.title === original.title && edit.description === original.description) localStorage.removeItem(KEY);
+      if (['title', 'description', 'type', 'relatedId'].every((k) => edit[k] === original[k])) localStorage.removeItem(KEY);
       else localStorage.setItem(KEY, JSON.stringify(edit));
     } catch {
       // storage bị chặn: chỉ giữ trong lần mở này
@@ -63,6 +72,11 @@ export async function openLinearDialog({ runId, resultId }) {
 
   body.innerHTML = `
     ${d.link ? `<div class="banner tone-info">${icon('info', { size: 15 })}<span>Đã gửi trước đây: ${issueLink(d.link)}</span> <button type="button" class="small-btn" data-unlink title="Gỡ liên kết (issue trên Linear không bị xoá)">${icon('close', { size: 13 })}Gỡ liên kết</button></div>` : ''}
+    <div class="form-row linear-meta">
+      <label class="small">Loại<select data-type><option value="bug">Bug</option><option value="task">Task</option></select></label>
+      <label class="small">Mã issue liên quan <span data-req class="muted">(bắt buộc với Bug)</span><input data-related placeholder="ENG-123" maxlength="20" autocomplete="off" aria-describedby="linear-related-hint"></label>
+      <span id="linear-related-hint" class="muted small" data-related-hint></span>
+    </div>
     <div class="seg-btns linear-modes" role="tablist">
       <button type="button" role="tab" data-mode="preview">${icon('eye', { size: 14 })}Xem trước</button>
       <button type="button" role="tab" data-mode="edit">${icon('file', { size: 14 })}Sửa nội dung</button>
@@ -89,6 +103,35 @@ export async function openLinearDialog({ runId, resultId }) {
   const $ = (q) => body.querySelector(q);
   const titleEl = $('[data-title]');
   const desc = $('[data-desc]');
+  const typeEl = $('[data-type]');
+  const relatedEl = $('[data-related]');
+  typeEl.value = edit.type;
+  relatedEl.value = edit.relatedId;
+  // Bug bắt buộc mã issue liên quan; mã có nhập thì phải đúng dạng ENG-123 (server kiểm lại)
+  const relatedError = () => {
+    const id = edit.relatedId.trim().toUpperCase();
+    if (!id) return edit.type === 'bug' ? 'Bug bắt buộc nhập mã issue liên quan (vd. ENG-123).' : '';
+    return RELATED_ID.test(id) ? '' : 'Mã issue liên quan không hợp lệ (vd. ENG-123).';
+  };
+  const syncMeta = (show) => {
+    relatedEl.required = edit.type === 'bug';
+    $('[data-req]').textContent = edit.type === 'bug' ? '(bắt buộc với Bug)' : '(tuỳ chọn)';
+    const err = show ? relatedError() : '';
+    relatedEl.setAttribute('aria-invalid', String(Boolean(err)));
+    $('[data-related-hint]').textContent = err;
+    $('[data-related-hint]').className = err ? 'err small' : 'muted small';
+  };
+  syncMeta(false);
+  typeEl.addEventListener('change', () => {
+    edit = { ...edit, type: typeEl.value === 'task' ? 'task' : 'bug' };
+    remember();
+    syncMeta(Boolean(edit.relatedId));
+  });
+  relatedEl.addEventListener('input', () => {
+    edit = { ...edit, relatedId: relatedEl.value };
+    remember();
+    syncMeta(true);
+  });
   // xem trước giống trên Linear: ảnh nằm đúng chỗ của dòng ![…](e2ed-image:N)
   const renderPreview = () => {
     const figs = [];
@@ -122,7 +165,7 @@ export async function openLinearDialog({ runId, resultId }) {
   // đọc ô sửa vào bản đang dùng (nếu đang ở chế độ sửa)
   const pull = () => {
     if (mode !== 'edit') return;
-    edit = { title: titleEl.value.trim() || original.title, description: desc.value };
+    edit = { ...edit, title: titleEl.value.trim() || original.title, description: desc.value };
     remember();
     markDirty();
   };
@@ -131,7 +174,7 @@ export async function openLinearDialog({ runId, resultId }) {
     setMode(b.dataset.mode);
   }));
   for (const el of [titleEl, desc]) el.addEventListener('input', () => {
-    edit = { title: titleEl.value, description: desc.value };
+    edit = { ...edit, title: titleEl.value, description: desc.value };
     remember();
     markDirty();
   });
@@ -141,7 +184,7 @@ export async function openLinearDialog({ runId, resultId }) {
   });
   $('[data-reset]').addEventListener('click', async () => {
     if (!(await confirmDialog({ title: 'Khôi phục bản gốc', message: 'Bỏ mọi chỗ đã sửa và quay về bản gốc?', confirmLabel: 'Khôi phục' }))) return;
-    edit = { ...original };
+    edit = { ...edit, title: original.title, description: original.description }; // loại / mã liên quan giữ nguyên
     remember();
     setMode(mode);
   });
@@ -206,12 +249,19 @@ export async function openLinearDialog({ runId, resultId }) {
   $('[data-copy-claude]').addEventListener('click', (e) => {
     pull();
     // bản Claude: tiêu đề / nội dung đang sửa, ảnh trỏ tới file trên máy như bản server soạn
-    copyToClipboard(claudePromptFromEdit(d.prompt, edit.title, edit.description, d.imagePaths), e.currentTarget);
+    const head = relatedError() ? '' : metaLine(edit.type, edit.relatedId);
+    copyToClipboard(claudePromptFromEdit(d.prompt, edit.title, head ? `${head}\n\n${edit.description}` : edit.description, d.imagePaths), e.currentTarget);
   });
   const send = async (sendMode) => {
     pull();
     if (sendMode === 'create' && !edit.description.includes(`fingerprint: \`${d.draft.fingerprint}\``)) {
       status(`${icon('alert', { size: 15 })}Nội dung đã mất dòng fingerprint cuối cùng: thêm lại (hoặc Khôi phục bản gốc) rồi gửi.`, 'bad');
+      return;
+    }
+    if (sendMode === 'create' && relatedError()) {
+      syncMeta(true);
+      relatedEl.focus();
+      status(`${icon('alert', { size: 15 })}${escapeHtml(relatedError())}`, 'bad');
       return;
     }
     const sendBtn = $('[data-send]');
@@ -221,7 +271,7 @@ export async function openLinearDialog({ runId, resultId }) {
     if (sendBtn) sendBtn.disabled = true;
     status(`${icon('loader', { size: 14 })} Đang kiểm tra trùng trên Linear…`);
     try {
-      const r = await postJson('/api/linear/issue', { runId, resultId, mode: sendMode, title: edit.title, description: edit.description });
+      const r = await postJson('/api/linear/issue', { runId, resultId, mode: sendMode, title: edit.title, description: edit.description, type: edit.type, relatedId: edit.relatedId.trim() });
       if (r.status === 'duplicate') {
         status(`${icon('alert', { size: 15 })}Đã có issue đang mở: ${issueLink(r.issue)} (${escapeHtml(r.issue.state?.name ?? '')}). <button type="button" data-comment>Thêm comment run này</button>`, 'warn');
         $('[data-comment]').addEventListener('click', () => send('comment'));

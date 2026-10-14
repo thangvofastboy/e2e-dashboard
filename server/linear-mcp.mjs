@@ -127,7 +127,7 @@ ${data.length ? `<${fence}>\n${data.map(noFence).join('\n')}\n</${fence}>\n\n` :
       return { identifier: String(i.identifier ?? identifier), title: clip(i.title, 300), description: clip(i.description, 8000), comments: (Array.isArray(i.comments) ? i.comments : []).map((c) => clip(c, 4000)).filter(Boolean).slice(0, 30) };
     },
     async create(draft) {
-      const out = await ask(`Tạo MỘT issue mới${team ? ` trong team ${team}` : ''} với đúng tiêu đề và mô tả (Markdown) trong khối dữ liệu, chép nguyên văn từng ký tự, không thêm bớt. Trả về {"issues":[issue vừa tạo]} theo dạng ${SHAPE}.`, { data: [`TIÊU ĐỀ: ${clip(draft.title, 300)}`, 'MÔ TẢ:', clip(draft.description, 20_000)] });
+      const out = await ask(`Tạo MỘT issue mới${team ? ` trong team ${team}` : ''} với đúng tiêu đề và mô tả (Markdown) trong khối dữ liệu, chép nguyên văn từng ký tự, không thêm bớt.${draft.type === 'bug' || draft.type === 'task' ? ` Nếu team có label tên "${draft.type === 'bug' ? 'Bug' : 'Task'}" thì gắn label đó, không có thì bỏ qua.` : ''} Trả về {"issues":[issue vừa tạo]} theo dạng ${SHAPE}.`, { data: [`TIÊU ĐỀ: ${clip(draft.title, 300)}`, 'MÔ TẢ:', clip(draft.description, 20_000)] });
       const issue = issueOf(out.issues?.[0]);
       if (!issue) throw new Error('Linear MCP: không thấy issue vừa tạo trong kết quả.');
       // Claude phải đã tạo đúng issue được yêu cầu: tiêu đề khác nghĩa là nó làm việc khác (ví dụ bị dữ liệu từ app dẫn đi)
