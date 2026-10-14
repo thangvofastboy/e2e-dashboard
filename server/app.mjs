@@ -2,7 +2,7 @@ import { readFile, readdir, stat, lstat, rm, mkdir, writeFile } from 'node:fs/pr
 import { installedBrowsers, configSupport, validBrowser } from './browsers.mjs';
 import { findConfig as findConfigPath } from '../bin/project.mjs';
 import { indexedTestHistory, syncIndex, sqliteSupport, closeIndex, indexPath } from './runindex.mjs';
-import { failuresEvidence, runSummaryEvidence, whySlowEvidence, groupEvidence, triageEvidence, parseTriage, summaryState, testFiles, ticketEvidence, DRAFT_PATH, selectTestsEvidence, locatorBatchEvidence, duplicateEvidence, releaseEvidence, visualEvidence } from './aiextra.mjs';
+import { failuresEvidence, runSummaryEvidence, whySlowEvidence, groupEvidence, triageEvidence, parseTriage, summaryState, testFiles, ticketEvidence, writeNewTest, selectTestsEvidence, locatorBatchEvidence, duplicateEvidence, releaseEvidence, visualEvidence } from './aiextra.mjs';
 import { envSummary, readEnvFile, writeEnvFile, userSummary, writeUser, setupStatus, aiPrefs } from './system.mjs';
 import { createReadStream, readFileSync, existsSync } from 'node:fs';
 import { pipeline } from 'node:stream';
@@ -988,14 +988,12 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         // lưu test nháp AI viết từ ticket: chỉ trong project, đuôi .e2e.ts, không ghi đè, không đi qua symlink
         const b = await readBody(req);
         const rel = String(b.path ?? '').replace(/^\.\//, '');
-        if (!DRAFT_PATH.test(rel) || typeof b.content !== 'string' || !b.content.trim() || b.content.length > 200_000) return send(res, 400, { error: 'Đường dẫn phải là file .e2e.ts trong project (không có .., không thư mục ẩn)' });
-        const full = join(projectRoot, rel);
-        if (existsSync(full)) return send(res, 409, { error: `${rel} đã tồn tại: đổi tên rồi lưu lại` });
-        const parts = rel.split('/');
-        for (let i = 1; i < parts.length; i++) if (isLink(join(projectRoot, ...parts.slice(0, i)))) return send(res, 400, { error: 'Thư mục đích là symlink' });
-        await mkdir(dirname(full), { recursive: true });
-        await writeFile(full, b.content.endsWith('\n') ? b.content : `${b.content}\n`, { flag: 'wx' });
-        return send(res, 200, { saved: rel });
+        try {
+          return send(res, 200, await writeNewTest(projectRoot, rel, b.content));
+        } catch (e) {
+          if (e.status) return send(res, e.status, { error: e.message });
+          throw e;
+        }
       }
       if (p === '/api/ai/triage-suggest') {
         // gợi ý triage cho các test đang fail; nhớ theo run mới nhất (đổi khi có run mới)

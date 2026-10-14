@@ -1,9 +1,12 @@
 // Tính năng AI thêm: tóm tắt run tự động, giải thích nhóm lỗi, vì sao run chậm / tốn token, triage gợi ý.
 // Ở đây chỉ soạn bằng chứng (mảng dòng) và đọc kết quả; prompt ở ai.mjs, mọi bằng chứng nằm trong khối dữ liệu không tin cậy.
+import { mkdir, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import { buildPrompt, cacheKey } from './ai.mjs';
 import { getAi, writeAi, loadHistory } from './store.mjs';
 import { groupErrors, compareRuns } from './analytics.mjs';
-import { resultAttempts } from '../reporter/e2e-dashboard.reporter.mjs';
+import { resultAttempts, isLink } from '../reporter/e2e-dashboard.reporter.mjs';
 import { TRIAGE_STATUSES } from './triage.mjs';
 
 const NOT_PASS = (r) => r.status !== 'passed' && r.status !== 'skipped';
@@ -163,6 +166,19 @@ export const ticketEvidence = (ticket, folder, files) => [
 
 // đường dẫn nháp hợp lệ: trong project, đuôi .e2e.ts, không .., không thư mục ẩn
 export const DRAFT_PATH = /^(?!\/)(?!.*(?:^|\/)\.)(?!.*\.\.)[\w./ -]{1,200}\.e2e\.ts$/;
+
+// Ghi file test mới trong project: đuôi .e2e.ts, không ghi đè, không đi qua symlink. Lỗi có status 400 / 409.
+export async function writeNewTest(root, rel, content) {
+  const fail = (status, error) => Object.assign(new Error(error), { status });
+  if (!DRAFT_PATH.test(rel) || typeof content !== 'string' || !content.trim() || content.length > 200_000) throw fail(400, 'Đường dẫn phải là file .e2e.ts trong project (không có .., không thư mục ẩn)');
+  const full = join(root, rel);
+  if (existsSync(full)) throw fail(409, `${rel} đã tồn tại: đổi tên rồi lưu lại`);
+  const parts = rel.split('/');
+  for (let i = 1; i < parts.length; i++) if (isLink(join(root, ...parts.slice(0, i)))) throw fail(400, 'Thư mục đích là symlink');
+  await mkdir(dirname(full), { recursive: true });
+  await writeFile(full, content.endsWith('\n') ? content : `${content}\n`, { flag: 'wx' });
+  return { saved: rel };
+}
 
 // ---------------------------------------------------------------- chọn test theo thay đổi
 export function selectTestsEvidence(base, files, tests) {
