@@ -16,6 +16,7 @@ import { renderLocators } from './views/locators.js';
 import { renderModels } from './views/models.js';
 import { renderLint } from './views/lint.js';
 import { openSearch, bindSearchShortcut } from './views/search.js';
+import { bindDownloads } from './download.js';
 import { renderTest } from './views/test.js';
 import { renderAppErrors } from './views/app-errors.js';
 import { renderSystem } from './views/system.js';
@@ -167,6 +168,7 @@ function shell() {
   document.addEventListener('keydown', (e) => e.key === 'Escape' && document.querySelectorAll('details.more[open]').forEach((d) => d.removeAttribute('open')));
   if (!isExport()) {
     bindSearchShortcut();
+bindDownloads();
     bindShortcuts({ onSearch: openSearch });
   }
 }

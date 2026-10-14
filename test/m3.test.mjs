@@ -5,7 +5,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { healthScore } from '../ui/health.js';
-import { registerProject, readRegistry, forgetProject, projectSummaries } from '../server/projects.mjs';
+import { registerProject, readRegistry, forgetProject, projectSummaries, addProject, listDirs } from '../server/projects.mjs';
 import { fingerprint, issueDraft, claudePrompt, createLinear, linearConfig, saveIssueLink, readIssueLinks } from '../server/linear.mjs';
 import { notifyMode, notifyCommand, runMessage, createNotifier } from '../server/notify.mjs';
 import { statusText } from '../bin/statusline.mjs';
@@ -47,6 +47,28 @@ test('project registry: newest first, deduplicated, forgettable, summarized', as
   assert.equal(s[1].url, null);
   assert.equal(await forgetProject(b, env), true);
   assert.equal((await readRegistry(env)).length, 1);
+});
+
+test('addProject: adds a folder once, reports a duplicate, rejects a non-folder', async () => {
+  const env = { E2E_DASHBOARD_HOME: tmp('e2ed-home-') };
+  const a = tmp();
+  assert.deepEqual(await addProject(a, env), { added: true, root: a });
+  assert.deepEqual(await addProject(`${a}/`, env), { added: false, root: a });
+  assert.equal((await readRegistry(env)).length, 1);
+  await assert.rejects(addProject(join(a, 'missing'), env), /Không phải thư mục/);
+  writeFileSync(join(a, 'f.txt'), 'x');
+  await assert.rejects(addProject(join(a, 'f.txt'), env), /Không phải thư mục/);
+});
+
+test('listDirs: sorted visible subfolders, files and dot-folders left out', async () => {
+  const a = tmp();
+  for (const d of ['b', 'a', '.git']) mkdirSync(join(a, d));
+  writeFileSync(join(a, 'f.txt'), 'x');
+  const r = await listDirs(a);
+  assert.deepEqual(r.dirs, ['a', 'b']);
+  assert.equal(r.path, a);
+  assert.equal(typeof r.parent, 'string');
+  assert.equal((await listDirs('/')).parent, null);
 });
 
 test('Linear fingerprint: same test + same error shape, whatever the numbers', () => {

@@ -18,6 +18,7 @@ import { webhookConfig, sendWebhooks, mentionMap, mentionsFor } from './webhook.
 import { readCodeowners, ownersOf } from './owners.mjs';
 import { readQuarantine, quarantineFlags } from './quarantine.mjs';
 import { registerProject } from './projects.mjs';
+import { createScheduleRunner, recordRun } from './schedules.mjs';
 import { createRunner } from './runner.mjs';
 import { createAi, AI_NO_TOOLS_ARGS } from './ai.mjs';
 import { annotateRun, loadHistory, getRun } from './store.mjs';
@@ -189,12 +190,47 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
       return { ok: false, error: e.message };
     }
   };
+  // Lịch tạo trên UI (~/.e2e-dashboard/schedules.json): project này chạy qua runner chính (thấy ở Live),
+  // project khác qua một runner riêng cho thư mục đó; reporter + finishDashboardRun lưu run vào project đó.
+  const otherRunners = new Map();
+  const runnerFor = (root, scheduleId) => {
+    if (!otherRunners.has(root)) {
+      const out = readConfig(root).output;
+      let before = null;
+      otherRunners.set(root, createRunner({
+        projectRoot: root,
+        live: createLive(),
+        beforeStart: () => readReportId(root, out).then((id) => (before = id)),
+        onExit: async ({ exitCode, browser }) => {
+          await finishDashboardRun({ projectRoot: root, beforeId: before, rerunOf: null, outputDir: out, browser }).catch(() => {});
+          await recordRun(otherRunners.get(root).scheduleId, { exitCode }).catch(() => {});
+        },
+      }));
+    }
+    const r = otherRunners.get(root);
+    r.scheduleId = scheduleId;
+    return r;
+  };
+  const startScheduled = async (s) => {
+    const { excludeQuarantined, ...opts } = s.options ?? {};
+    const root = resolve(s.root);
+    try {
+      const defaults = await readSettings(root);
+      const q = excludeQuarantined === false ? [] : quarantineFlags(await readQuarantine(root)).args.filter((x) => x !== '--grep-invert');
+      const full = { ...(defaults.workers ? { workers: defaults.workers } : {}), browser: defaults.browser, ...opts, grepInvert: q };
+      return root === resolve(projectRoot) ? runner.start(full) : runnerFor(root, s.id).start(full);
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  };
+  const userSchedules = createScheduleRunner({ start: startScheduled });
   const tests = Array.isArray(cfg.schedule?.tests) ? cfg.schedule.tests.filter((t) => typeof t === 'string').slice(0, 200) : [];
   let lastScheduled = null;
   const scheduler = createScheduler({ times: scheduleTimes(cfg), start: () => void startAuto({ tests }).then((r) => (lastScheduled = r)) });
   let lastWatch = null;
   const testWatcher = createTestWatcher({ projectRoot, onChange: (files) => void startAuto({ tests: files }).then((r) => (lastWatch = { at: new Date().toISOString(), files, ok: r.ok, error: r.error ?? null })) });
   const automation = {
+    runSchedule: startScheduled,
     state: () => ({ schedule: { ...scheduler.state(), lastResult: lastScheduled }, watch: { enabled: testWatcher.enabled(), last: lastWatch } }),
     setWatch: (on) => {
       const ok = on ? testWatcher.enable() : (testWatcher.disable(), true);
@@ -203,12 +239,20 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
   };
   // M7: CI auto-sync and scheduled reports, while the dashboard runs
   void syncLongterm(projectRoot).catch(() => {});
-  const ci = createCiSync({ root: projectRoot, config: ciConfig(cfg), sync: (c) => syncCi(projectRoot, c).then(async (out) => {
+  const makeCi = (c) => createCiSync({ root: projectRoot, config: ciConfig(c), sync: (x) => syncCi(projectRoot, x).then(async (out) => {
     if (out.imported) await checkAlerts(projectRoot, { notifier }).catch(() => {});
     return out;
   }) });
+  let ci = makeCi(cfg);
   const reports = createReportScheduler({ root: projectRoot, schedule: reportSchedule(cfg) });
-  const tracking = { ci, sendReport: (kind) => sendReport(projectRoot, kind), publish: () => publishSite(projectRoot) };
+  const tracking = {
+    get ci() { return ci; },
+    // sau khi lưu cấu hình CI từ UI: dựng lại timer theo config mới, không cần khởi động lại dashboard
+    reloadCi: () => {
+      ci.close();
+      ci = makeCi(readConfig(projectRoot));
+    },
+    sendReport: (kind) => sendReport(projectRoot, kind), publish: () => publishSite(projectRoot) };
   const selfHeal = createSelfHeal({ projectRoot });
   selfHeal.ingestCrashes();
   watchCrashes(projectRoot);
@@ -234,6 +278,7 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
         // nothing will call close(): stop every timer and watcher started above, or the process lingers
         watcher.close();
         scheduler.close();
+        userSchedules.close();
         ci.close();
         reports.close();
         testWatcher.disable();
@@ -255,6 +300,7 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
     async close() {
       watcher.close();
       scheduler.close();
+      userSchedules.close();
       ci.close();
       reports.close();
       testWatcher.disable();

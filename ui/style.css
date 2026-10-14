@@ -1119,9 +1119,57 @@ td > :where(button, a.button) + :where(button, a.button), p > :where(button, a.b
 
 /* ---- ô lọc: nhãn và dropdown không bị co đè lên nhau */
 .filters > label, .page-tools > label, .cmp-head > label { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
-.filters > label > select, .page-tools > label > select { flex: none; }
+.filters > label > select, .page-tools > label > select, .cmp-head > label > select { flex: none; min-width: 140px; max-width: 420px; } /* min-width % của label co theo nội dung tự tham chiếu: select bằng đúng label, đè lên nhãn kế bên */
 .impact-form { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .impact-form label { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
 /* menu: các mục chưa có màu (trước đây icon rơi về màu chữ mặc định) */
 .n-manual { --hue: #0284c7; } .n-verify { --hue: #16a34a; } .n-build { --hue: #4f46e5; } .n-quality { --hue: #0f766e; }
 .n-qc-templates { --hue: #c026d3; } .n-system { --hue: #52525b; } .n-feedback { --hue: #f97316; }
+
+/* Hộp chọn thư mục (Projects → Thêm project) */
+.folder-dialog { width: min(560px, 94vw); }
+.folder-list { list-style: none; margin: 0; padding: 4px !important; max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); gap: 0 !important; }
+.folder-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: 0; background: none; padding: 6px 8px; border-radius: 6px; overflow-wrap: anywhere; }
+.folder-item:hover, .folder-item:focus-visible { background: var(--surface-2, rgba(127, 127, 127, 0.12)); }
+
+/* Lịch chạy tạo trên UI + nút phụ */
+.row-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+.link-btn { border: 0; background: none; padding: 2px 6px; color: var(--series-1); cursor: pointer; font-size: 0.85em; }
+.link-btn:hover { text-decoration: underline; }
+.sched-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.sched { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); }
+.sched.off { opacity: 0.65; }
+.sched-main { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 3px; overflow-wrap: anywhere; }
+.sched-tools { display: flex; align-items: flex-start; gap: 6px; flex-wrap: wrap; }
+.sched-times { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.sched-times .chip { display: inline-flex; align-items: center; gap: 4px; }
+.sched-times .icon-btn { padding: 0; width: 18px; height: 18px; }
+.sched-add-time { display: inline-flex; gap: 8px; align-items: center; }
+.sched-pick { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; width: 100%; }
+.sched-pick-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sched-pick-head input[type="search"] { flex: 1 1 200px; }
+.sched-tests { list-style: none; margin: 0; padding: 4px; max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.sched-tests label { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; padding: 4px 6px; border-radius: 6px; cursor: pointer; }
+.sched-tests label:hover { background: var(--surface-2); }
+.sched-tests label code { grid-column: 2; overflow-wrap: anywhere; }
+
+/* Danh sách item của mọi <select>: trình duyệt hỗ trợ base-select (Chromium 135+) thì vẽ popup theo theme
+   (padding, hover, item đang chọn có dấu ✓, cuộn gọn); trình duyệt khác giữ popup gốc như cũ. */
+@supports (appearance: base-select) {
+  select:not(.tri-status), select:not(.tri-status)::picker(select) { appearance: base-select; }
+  select:not(.tri-status) { display: inline-flex; align-items: center; }
+  select:not(.tri-status)::picker-icon { display: none; } /* đã có chevron riêng bằng background-image */
+  select::picker(select) { margin-top: 4px; padding: 4px; max-height: min(360px, 60vh); overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text-primary); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22); scrollbar-width: thin; }
+  select option { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 6px; font-weight: 400; white-space: normal; overflow-wrap: anywhere; cursor: pointer; }
+  select option:hover, select option:focus-visible { background: var(--surface-2); outline: none; }
+  select option:checked { background: color-mix(in srgb, var(--series-1) 14%, transparent); font-weight: 600; }
+  select option::checkmark { order: 1; margin-left: auto; color: var(--series-1); }
+  select option:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+.run-form textarea { width: 100%; font: inherit; font-family: var(--mono, ui-monospace, monospace); font-size: 0.9em; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text-primary); resize: vertical; }
+.sched-times .chip { padding: 4px 6px 4px 10px; font-size: 0.95em; font-weight: 600; font-variant-numeric: tabular-nums; }
+.sched-tests code { background: none; padding: 0; }
+.sched-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sched-title .chip { text-transform: none; }
+.sched-times .chip { background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; color: var(--text-primary); }
+.sched-tests label code { background: none !important; border: 0 !important; padding: 0 !important; }

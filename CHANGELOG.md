@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.14.0 — 2026-10-14
+
+- **Lịch chạy test tự động** (Tự động & lưu trữ → Lịch chạy): tạo lịch theo giờ trong ngày và thứ trong tuần, chọn project, chạy toàn bộ suite hoặc chọn từng test, cùng các option như hộp Chạy test (workers, retries, trình duyệt, tag, grep, shard, trace/video…). Có nút *Chạy ngay*, *Sửa*, *Xoá*. Lịch lưu ở `~/.e2e-dashboard/schedules.json`; dashboard nào đang mở cũng chạy hộ mọi project, mỗi lượt chỉ một dashboard chạy. Không có dashboard nào mở thì lịch không chạy.
+- **Đồng bộ từ CI có form cấu hình**: nút *Thêm đồng bộ từ CI* / *Sửa cấu hình* ghi workflow, artifact, branch và chu kỳ vào `.e2e-dashboard/config.json` (giữ nguyên các khoá khác), áp dụng ngay không cần khởi động lại.
+- **Projects → Thêm project**: chọn thư mục project bằng hộp duyệt thư mục hoặc gõ đường dẫn. Thư mục đã có trong danh sách thì báo lại, không tạo bản ghi mới.
+- **Tải về có popup**: mọi nút xuất dữ liệu (CSV, Export HTML của run, Tải .md của digest) hiện popup với tên file sửa được và dung lượng, bấm *Tải về* mới lưu.
+- **Dropdown đẹp hơn**: danh sách item của select vẽ theo theme (padding, hover, dấu ✓ ở mục đang chọn) ở trình duyệt hỗ trợ base-select; trình duyệt cũ giữ popup gốc.
+
+- **Sửa lỗi**: ô lọc *Tag* / *Target* ở trang Tests không còn bị select đè lên nhãn ở khung hẹp.
+
 ## v0.13.0 — 2026-10-14
 
 - **Issue Linear → testcase → e2e** (menu mới *Theo dõi → Issue Linear*): lấy issue được giao cho các email đã chọn và có status trong danh sách (nhập ở *Cài đặt hệ thống → Tích hợp*), thêm issue bằng mã hoặc link, nút *Lấy lại danh sách*. *Phân tích* để AI đọc tiêu đề, mô tả và comment rồi đề xuất testcase; sửa, lưu, mở lại bản đã lưu. *Gen e2e* để AI viết `tests/linear/<ID>.e2e.ts` theo quy ước của project, không ghi đè file có sẵn.

@@ -1,3 +1,4 @@
+import { downloadDialog } from '../download.js';
 import { getJson } from '../api.js';
 import { pageHead, copyToClipboard } from '../analysis.js';
 import { renderMarkdown } from '../markdown.js';
@@ -17,11 +18,6 @@ export async function renderDigest(main) {
     renderDigest(main);
   });
   main.querySelector('[data-copy]').addEventListener('click', (e) => copyToClipboard(d.markdown, e.currentTarget));
-  main.querySelector('[data-download]').addEventListener('click', () => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([d.markdown], { type: 'text/markdown' }));
-    a.download = `e2e-digest-${d.to.slice(0, 10)}.md`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  });
+  main.querySelector('[data-download]').addEventListener('click', () =>
+    downloadDialog({ blob: new Blob([d.markdown], { type: 'text/markdown' }), filename: `e2e-digest-${d.to.slice(0, 10)}.md` }));
 }

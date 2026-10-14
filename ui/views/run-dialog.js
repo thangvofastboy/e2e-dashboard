@@ -9,25 +9,14 @@ const fld = (label, control, hint) => `<label class="fld"><span class="fld-l">${
 const sw = (name, label, hint, checked = false) => `<label class="fld fld-sw"><span class="pill switch"><input type="checkbox" name="${name}"${checked ? ' checked' : ''}><span class="track"></span><span>${label}</span></span><small class="fld-hint">${hint}</small></label>`;
 const csv = (v) => String(v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
 
-// Modal to start an e2e run (spec §4.5): tests are file:line, plus targets/agents and run flags.
-export function openRunDialog({ tests, targets = [], agents = [], allTargets = targets, allAgents = agents, rerunOf = null, title = 'Chạy test', repeatEach = null, preset = {} }) {
-  document.getElementById('run-dialog')?.remove();
-  const box = (name, values, checked) => values
-    .map((v) => `<label class="pill"><input type="checkbox" name="${name}" value="${escapeHtml(v)}" ${checked.includes(v) ? 'checked' : ''}>${escapeHtml(v)}</label>`)
-    .join('');
-  const dlg = document.createElement('dialog');
-  dlg.id = 'run-dialog';
-  dlg.innerHTML = `<form method="dialog" class="run-form">
-    <header><h2>${icon('play', { size: 16 })}${escapeHtml(title)}</h2><button type="button" class="icon-btn" data-close aria-label="Đóng">${icon('close')}</button></header>
-    <p class="muted">${tests.length ? `${tests.length} test` : 'Toàn bộ suite'}</p>
-    ${tests.length ? `<details><summary>Danh sách test</summary><ul class="mono-list">${tests.map((t) => `<li><code>${escapeHtml(t)}</code></li>`).join('')}</ul></details>` : ''}
-    ${allTargets.length ? `<fieldset><legend>Target</legend>${box('target', allTargets, targets)}</fieldset>` : ''}
-    ${allAgents.length > 1 ? `<fieldset><legend>Agent</legend>${box('agent', allAgents, agents)}</fieldset>` : ''}
-    <div class="run-grid">
+// Các option chạy dùng chung cho hộp Chạy test và form Lịch chạy (cùng tên ô, cùng luật đọc).
+// `updateSnapshots`: tắt ở Lịch chạy (ghi đè ảnh mẫu khi không ai xem).
+export function runOptionsHtml({ repeatEach = null, preset = {}, updateSnapshots = true, browserDefault = false, browserHint = 'Trình duyệt chạy lần này. Mặc định: giá trị đặt ở Tự động & lưu trữ (Chromium).', workersHint = 'Số test chạy song song. Để trống = tự động theo số lõi CPU.' } = {}) {
+  return `<div class="run-grid">
       ${fld('Retries', '<input type="number" name="retries" min="0" max="10" placeholder="theo config">', 'Số lần chạy lại test bị fail. Mặc định: theo e2e.config.')}
       ${fld('Repeat each', `<input type="number" name="repeatEach" min="1" max="50" placeholder="1"${Number.isInteger(repeatEach) ? ` value="${repeatEach}"` : ''}>`, 'Chạy mỗi test N lần liên tiếp để dò flaky. Mặc định: 1.')}
-      ${fld('Trình duyệt', `<select name="browser" aria-label="Trình duyệt">${['chromium', 'firefox', 'webkit'].map((b) => `<option value="${b}">${b === 'webkit' ? 'WebKit' : b.charAt(0).toUpperCase() + b.slice(1)}</option>`).join('')}</select>`, 'Trình duyệt chạy lần này. Mặc định: giá trị đặt ở Tự động & lưu trữ (Chromium).')}
-      ${fld('Workers', '<input type="number" name="workers" min="1" max="1024" placeholder="tự động">', 'Số test chạy song song. Để trống = tự động theo số lõi CPU.')}
+      ${fld('Trình duyệt', `<select name="browser" aria-label="Trình duyệt">${browserDefault ? '<option value="">theo Settings của project</option>' : ''}${['chromium', 'firefox', 'webkit'].map((b) => `<option value="${b}">${b === 'webkit' ? 'WebKit' : b.charAt(0).toUpperCase() + b.slice(1)}</option>`).join('')}</select>`, browserHint)}
+      ${fld('Workers', '<input type="number" name="workers" min="1" max="1024" placeholder="tự động">', workersHint)}
     </div>
     ${sw('noCache', '--no-cache', 'Bỏ qua replay cache: mọi step agent gọi model thật (chậm, tốn token). Mặc định: tắt.')}
     <details class="run-adv"${preset.updateSnapshots ? ' open' : ''}><summary>Nâng cao</summary>
@@ -44,10 +33,47 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
       <div class="run-grid">
         ${sw('strictCache', '--strict-cache', 'Cache nghiêm ngặt của e2e (dùng cho CI): không chấp nhận cache thiếu hoặc lệch. Mặc định: tắt.')}
         ${sw('lastFailed', '--last-failed', 'Chỉ chạy lại các test fail ở lần chạy trước. Mặc định: tắt.')}
-        ${sw('updateSnapshots', '-u (cập nhật snapshot)', 'Ghi đè ảnh mẫu bằng ảnh hiện tại, xem git diff trước khi commit. Mặc định: tắt.', preset.updateSnapshots)}
+        ${updateSnapshots ? sw('updateSnapshots', '-u (cập nhật snapshot)', 'Ghi đè ảnh mẫu bằng ảnh hiện tại, xem git diff trước khi commit. Mặc định: tắt.', preset.updateSnapshots) : ''}
         ${sw('aiTrace', '--ai-trace', 'Ghi từng lần gọi model của mỗi step vào ai-trace.json (tab Model). Mặc định: tắt.')}
       </div>
-    </details>
+    </details>`;
+}
+
+// Đọc option từ FormData; ô trống = theo config của project nên không gửi.
+export function runOptionsFrom(fd) {
+  return {
+    ...(fd.get('retries') !== '' ? { retries: Number(fd.get('retries')) } : {}),
+    ...(fd.get('repeatEach') !== '' ? { repeatEach: Number(fd.get('repeatEach')) } : {}),
+    noCache: fd.get('noCache') === 'on',
+    browser: fd.get('browser') || 'chromium',
+    ...(fd.get('workers') !== '' ? { workers: Number(fd.get('workers')) } : {}),
+    ...(csv(fd.get('tag')).length ? { tag: csv(fd.get('tag')) } : {}),
+    ...(fd.get('tagMode') ? { tagMode: fd.get('tagMode') } : {}),
+    ...(csv(fd.get('excludeTag')).length ? { excludeTag: csv(fd.get('excludeTag')) } : {}),
+    ...(fd.get('grep').trim() ? { grep: fd.get('grep').trim() } : {}),
+    ...(fd.get('shard').trim() ? { shard: fd.get('shard').trim() } : {}),
+    ...(fd.get('maxFailures') !== '' ? { maxFailures: Number(fd.get('maxFailures')) } : {}),
+    ...(fd.get('trace') ? { trace: fd.get('trace') } : {}),
+    ...(fd.get('video') ? { video: fd.get('video') } : {}),
+    ...Object.fromEntries(['strictCache', 'lastFailed', 'updateSnapshots', 'aiTrace'].filter((k) => fd.get(k) === 'on').map((k) => [k, true])),
+  };
+}
+
+// Modal to start an e2e run (spec §4.5): tests are file:line, plus targets/agents and run flags.
+export function openRunDialog({ tests, targets = [], agents = [], allTargets = targets, allAgents = agents, rerunOf = null, title = 'Chạy test', repeatEach = null, preset = {} }) {
+  document.getElementById('run-dialog')?.remove();
+  const box = (name, values, checked) => values
+    .map((v) => `<label class="pill"><input type="checkbox" name="${name}" value="${escapeHtml(v)}" ${checked.includes(v) ? 'checked' : ''}>${escapeHtml(v)}</label>`)
+    .join('');
+  const dlg = document.createElement('dialog');
+  dlg.id = 'run-dialog';
+  dlg.innerHTML = `<form method="dialog" class="run-form">
+    <header><h2>${icon('play', { size: 16 })}${escapeHtml(title)}</h2><button type="button" class="icon-btn" data-close aria-label="Đóng">${icon('close')}</button></header>
+    <p class="muted">${tests.length ? `${tests.length} test` : 'Toàn bộ suite'}</p>
+    ${tests.length ? `<details><summary>Danh sách test</summary><ul class="mono-list">${tests.map((t) => `<li><code>${escapeHtml(t)}</code></li>`).join('')}</ul></details>` : ''}
+    ${allTargets.length ? `<fieldset><legend>Target</legend>${box('target', allTargets, targets)}</fieldset>` : ''}
+    ${allAgents.length > 1 ? `<fieldset><legend>Agent</legend>${box('agent', allAgents, agents)}</fieldset>` : ''}
+    ${runOptionsHtml({ repeatEach, preset })}
     <p class="small tone-warn" data-browser-note hidden></p>
     <label class="pill switch" data-q-wrap hidden><input type="checkbox" name="excludeQuarantined" checked><span class="track"></span><span>Bỏ qua <span data-q-count></span> test đang cách ly</span></label>
     <p class="err" hidden></p>
@@ -65,23 +91,10 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
       tests,
       targets: fd.getAll('target'),
       agents: allAgents.length > 1 ? fd.getAll('agent') : agents,
-      // blank = the project's own config (e.g. its retries), so only what the user typed is sent
-      ...(fd.get('retries') !== '' ? { retries: Number(fd.get('retries')) } : {}),
-      ...(fd.get('repeatEach') !== '' ? { repeatEach: Number(fd.get('repeatEach')) } : {}),
-      noCache: fd.get('noCache') === 'on',
-      browser: fd.get('browser') || 'chromium',
+      ...runOptionsFrom(fd),
       // trống = tự động cho lần này (null); chưa tải được Settings thì không gửi để server dùng mặc định
-      ...(fd.get('workers') !== '' ? { workers: Number(fd.get('workers')) } : settingsLoaded ? { workers: null } : {}),
+      ...(fd.get('workers') !== '' ? {} : settingsLoaded ? { workers: null } : {}),
       ...(fd.get('excludeQuarantined') === 'on' && !dlg.querySelector('[data-q-wrap]').hidden ? { excludeQuarantined: true } : {}),
-      ...(csv(fd.get('tag')).length ? { tag: csv(fd.get('tag')) } : {}),
-      ...(fd.get('tagMode') ? { tagMode: fd.get('tagMode') } : {}),
-      ...(csv(fd.get('excludeTag')).length ? { excludeTag: csv(fd.get('excludeTag')) } : {}),
-      ...(fd.get('grep').trim() ? { grep: fd.get('grep').trim() } : {}),
-      ...(fd.get('shard').trim() ? { shard: fd.get('shard').trim() } : {}),
-      ...(fd.get('maxFailures') !== '' ? { maxFailures: Number(fd.get('maxFailures')) } : {}),
-      ...(fd.get('trace') ? { trace: fd.get('trace') } : {}),
-      ...(fd.get('video') ? { video: fd.get('video') } : {}),
-      ...Object.fromEntries(['strictCache', 'lastFailed', 'updateSnapshots', 'aiTrace'].filter((k) => fd.get(k) === 'on').map((k) => [k, true])),
       ...(rerunOf ? { rerunOf } : {}),
     };
     if (!body.targets.length) delete body.targets;
