@@ -167,6 +167,16 @@ const runCount = (url, def = 30) => {
 
 // The e2e replay cache entry a step used (`.e2e/cache/<entry>.json`, trace-1), read-only and only
 // from inside the project.
+// Route của app như trang Coverage thấy: thư mục app/pages/router, "coverage.routes", rồi route quét từ "coverage.source"
+async function coverageRoutes(projectRoot, cfg, ignoreDomains = []) {
+  // "coverage.source": đường dẫn repo app (tương đối với project hoặc tuyệt đối); bỏ trống thì không quét source
+  const srcDir = typeof cfg.coverage?.source === 'string' && cfg.coverage.source ? resolve(projectRoot, cfg.coverage.source) : null;
+  const scan = srcDir ? await scanSource(srcDir, { ignore: ignoreDomains }) : { routes: new Map(), domains: [], files: 0 };
+  const routes = await appRoutes(projectRoot, Array.isArray(cfg.coverage?.routes) ? cfg.coverage.routes : []);
+  for (const [r, src] of scan.routes) if (!routes.has(r)) routes.set(r, `source:${src}`);
+  return { routes, scan, srcDir };
+}
+
 export async function readCacheEntry(projectRoot, entry, cfg = readConfig(projectRoot)) {
   if (!/^[0-9a-f]{64}$/.test(entry ?? '')) return null;
   const dir = cacheDir(projectRoot, cfg);
@@ -443,11 +453,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         const manual = await readIgnored(projectRoot); // bấm "Bỏ qua" trên trang Coverage
         const ignoreRoutes = [...(Array.isArray(cfg.coverage?.ignore) ? cfg.coverage.ignore : []), ...manual.routes];
         const ignoreDomains = [...(Array.isArray(cfg.coverage?.domainIgnore) ? cfg.coverage.domainIgnore : []), ...manual.domains];
-        // "coverage.source": đường dẫn repo app (tương đối với project hoặc tuyệt đối); bỏ trống thì không quét source
-        const srcDir = typeof cfg.coverage?.source === 'string' && cfg.coverage.source ? resolve(projectRoot, cfg.coverage.source) : null;
-        const scan = srcDir ? await scanSource(srcDir, { ignore: ignoreDomains }) : { routes: new Map(), domains: [], files: 0 };
-        const routes = await appRoutes(projectRoot, Array.isArray(cfg.coverage?.routes) ? cfg.coverage.routes : []);
-        for (const [r, src] of scan.routes) if (!routes.has(r)) routes.set(r, `source:${src}`);
+        const { routes, scan, srcDir } = await coverageRoutes(projectRoot, cfg, ignoreDomains);
         const gaps = coverageGaps(routes, routeMap(await loadHistory(projectRoot, runCount(url))), { ignore: ignoreRoutes });
         return send(res, 200, { ...gaps, domains: scan.domains.filter((d) => !manual.domains.includes(d.host)), sourceFiles: scan.files, source: srcDir ? cfg.coverage.source : null, ignored: manual });
       }
@@ -699,7 +705,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         let key = null;
         if (action === 'route-test') {
           if (typeof body.route !== 'string' || !/^\/[\w\-./:]{0,300}$/.test(body.route)) return send(res, 400, { error: 'invalid route' });
-          const routes = await appRoutes(projectRoot);
+          const { routes } = await coverageRoutes(projectRoot, readConfig(projectRoot)); // cùng danh sách trang Coverage hiển thị
           if (!routes.has(body.route)) return send(res, 404, { error: 'route not found' });
           prompt = buildPrompt('route-test', { route: body.route, source: routes.get(body.route), language: readConfig(projectRoot).ai?.language });
         } else if (action === 'ask') {

@@ -236,3 +236,28 @@ test('gate: an infrastructure failure is not a new failure but still blocks, wit
   assert.deepEqual(g.checks.map((c) => [c.name, c.pass]), [['new-failures', true], ['infrastructure', false]]);
   assert.equal(g.pass, false);
 });
+
+test('route-test accepts every route the Coverage page lists: config routes and routes scanned from coverage.source', async () => {
+  const root = await project([run({ results: [result({ nav: ['/'] })] })]);
+  mkdirSync(join(root, 'web/src'), { recursive: true });
+  writeFileSync(join(root, 'web/src/router.tsx'), "const r = [{ path: '/user/profile' }];");
+  writeFileSync(join(root, '.e2e-dashboard/config.json'), JSON.stringify({ coverage: { routes: ['/settings'], source: 'web' } }));
+  const prompts = [];
+  const ai = { run: async ({ prompt, onEvent }) => { prompts.push(prompt); onEvent({ type: 'done', result: 'ok' }); } };
+  const server = http.createServer(createApp({ projectRoot: root, token: 't', uiDir: fileURLToPath(new URL('../ui', import.meta.url)), live: createLive({ throttleMs: 1 }), ai }));
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = (p, b) => fetch(`${base}${p}`, { method: 'POST', headers: { 'x-e2e-dashboard-token': 't', 'content-type': 'application/json' }, body: JSON.stringify(b) });
+  try {
+    const cov = await (await fetch(`${base}/api/coverage`, { headers: { 'x-e2e-dashboard-token': 't' } })).json();
+    assert.deepEqual(cov.untested.map((r) => r.route).sort(), ['/settings', '/user/profile']);
+    for (const route of ['/user/profile', '/settings']) {
+      assert.equal((await post('/api/ai/route-test', { route })).status, 200, route);
+      assert.match(prompts.at(-1), new RegExp(`Route: ${route}`));
+    }
+    assert.match(prompts.at(-2), /src\/router\.tsx/, 'scanned route carries its source file');
+    assert.equal((await post('/api/ai/route-test', { route: '/nope' })).status, 404);
+  } finally {
+    server.close();
+  }
+});
