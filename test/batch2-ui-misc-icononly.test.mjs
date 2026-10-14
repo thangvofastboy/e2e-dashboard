@@ -57,3 +57,33 @@ test('chip / badge / tag dạng <button> là nhãn trạng thái: giữ nguyên 
   assert.equal(iconOnlyHtml(chip), chip);
   assert.equal(iconOnlyHtml('<a class="button tag" href="#"><svg class="icon ic-x"></svg>@smoke</a>'), '<a class="button tag" href="#"><svg class="icon ic-x"></svg>@smoke</a>');
 });
+
+test('số đếm giữa câu hoặc trong ngoặc vẫn hiện cạnh icon, tên đầy đủ vẫn có cho trình đọc màn hình', () => {
+  const ic = '<svg class="icon ic-play"></svg>';
+  const a = iconOnlyHtml(`<button>${ic}Chạy 3 test</button>`);
+  assert.match(a, /<span class="btn-label">Chạy 3 test<\/span>/);
+  assert.match(a, /<span class="btn-count" aria-hidden="true">3<\/span>/);
+  const b = iconOnlyHtml(`<button>${ic}Chạy lại (12)</button>`);
+  assert.match(b, /<span class="btn-label">Chạy lại \(12\)<\/span>/);
+  assert.match(b, /<span class="btn-count" aria-hidden="true">12<\/span>/);
+});
+
+test('iconOnly DOM: nội dung nút bị thay rồi trả lại (Copy → Đã copy) không cộng dồn tooltip', async () => {
+  const { iconOnly } = await import('../ui/icon-only.js');
+  // DOM tối thiểu cho một nút
+  const b = { innerHTML: '<svg class="icon ic-copy"></svg>Copy code', dataset: {}, className: '', getAttribute: () => null,
+    querySelectorAll() { return [...this.innerHTML.matchAll(/<span class="btn-(?:label|count)"[^>]*>([^<]*)<\/span>/g)].map((m) => ({ textContent: m[1] })); } };
+  const root = { querySelectorAll: () => [b] };
+  iconOnly(root);
+  const first = b.dataset.tip;
+  const old = b.innerHTML;
+  for (let i = 0; i < 3; i++) {
+    b.innerHTML = '<svg class="icon ic-check"></svg>Đã copy';
+    iconOnly(root);
+    b.innerHTML = old;
+    iconOnly(root);
+  }
+  assert.equal(first, 'Copy code');
+  assert.doesNotMatch(b.dataset.tip, /Đã copy · Đã copy/);
+  assert.equal(b.dataset.tip, 'Copy code');
+});

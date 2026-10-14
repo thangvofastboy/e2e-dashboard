@@ -167,10 +167,22 @@ export async function renderLive(main) {
         }
         draw();
       })
-      .catch(() => setTimeout(() => rep.runId === runId && (rep.runId = null), 5000)); // báo cáo có thể chưa ghi xong: thử lại sau
+      .catch(() => setTimeout(() => {
+        if (rep.runId !== runId) return;
+        rep.runId = null;
+        draw(); // không còn snapshot nào tới thì không ai vẽ lại: tự gọi để thử lấy báo cáo lần nữa
+      }, 5000)); // báo cáo có thể chưa ghi xong: thử lại sau
   }
   // tài nguyên máy / app: hỏi 2 giây một lần khi trang Live đang mở; endpoint không có (404) thì thôi hẳn
+  // chỉ ghi vào ô tài nguyên riêng ([data-res]), không vẽ lại cả trang: CPU % đổi mỗi lần hỏi, vẽ lại sẽ mất focus / tooltip của nút
   let resHtml = '';
+  const setRes = () => {
+    const el = main.querySelector(':scope > [data-res]');
+    if (el && el._html !== resHtml) {
+      el.innerHTML = resHtml;
+      el._html = resHtml;
+    }
+  };
   const pollRes = () => {
     if (document.hidden) return;
     getJson('/api/resources')
@@ -179,7 +191,7 @@ export async function renderLive(main) {
         resHtml = '';
         if (String(e.message).startsWith('404')) clearInterval(resTick);
       })
-      .finally(draw);
+      .finally(setRes);
   };
   const resTick = isExport() ? null : setInterval(pollRes, 2000);
 
@@ -249,13 +261,14 @@ export async function renderLive(main) {
     if (!alive) return;
     if (!snap || snap.status === 'idle') {
       // chưa có run vẫn hiện tài nguyên máy; chỉ vẽ lại khi nội dung đổi (poll 2 giây không làm mất focus nút)
-      const idle = `<h1>Live</h1>${resHtml}${snap?.disconnected ? LOST_BANNER : ''}<div class="empty-state"><h2>Chưa có run nào đang chạy</h2>
+      const idle = `<h1>Live</h1><div data-res></div>${snap?.disconnected ? LOST_BANNER : ''}<div class="empty-state"><h2>Chưa có run nào đang chạy</h2>
         <p>Chạy <code>npx e2e run</code> hoặc bấm nút dưới — tiến độ sẽ hiện ở đây.</p>
         <p><button type="button" class="primary" data-run-all>${icon('play', { size: 14 })}Chạy toàn bộ suite</button></p>
         ${info.reporter.installed ? '' : '<p class="hint">Cần reporter để xem live: chạy <code>/e2e-dashboard setup</code>.</p>'}</div>`;
       if (main.dataset.liveIdle === idle && main.querySelector(':scope > .empty-state')) return; // <main> dùng chung giữa các trang: chỉ bỏ qua khi đang hiện đúng màn này
       main.dataset.liveIdle = idle;
       main.innerHTML = idle;
+      setRes();
       main.querySelector('[data-run-all]')?.addEventListener('click', () => openRunDialog({ tests: [], title: 'Chạy toàn bộ suite' }));
       return;
     }
@@ -288,7 +301,7 @@ export async function renderLive(main) {
     // Trang chia phần: phần nào HTML không đổi thì giữ nguyên DOM (hover, focus, vị trí cuộn, chọn chữ trong log);
     // gantt cập nhật từng block theo key. Trước đây mỗi snapshot (≤ 4 lần/giây) dựng lại cả trang.
     if (!main.querySelector(':scope > [data-part="head"]')) {
-      main.innerHTML = '<div data-part="head"></div><section class="panel ai-summary" data-part="ai"></section><section class="panel gantt" data-part="gantt"></section><section class="panel live-failed" data-part="failed"></section><section class="panel fill-me" data-part="steps"></section><section data-part="out"></section>';
+      main.innerHTML = '<div data-part="head"></div><div data-part="res" data-res></div><section class="panel ai-summary" data-part="ai"></section><section class="panel gantt" data-part="gantt"></section><section class="panel live-failed" data-part="failed"></section><section class="panel fill-me" data-part="steps"></section><section data-part="out"></section>';
     }
     const parts = {
       head: `<h1>Live ${beat}${statusBadge(snap.status === 'finished' ? snap.runStatus ?? 'finished' : snap.status)}</h1>
@@ -296,7 +309,6 @@ export async function renderLive(main) {
         ${snap.status === 'running' && !snap.disconnected ? `<p><button type="button" class="btn-stop" data-stop${stopping ? ' disabled' : ''}>${icon('square', { size: 14 })}Dừng run</button> <span class="muted small" data-stop-note>${escapeHtml(stopNote)}</span></p>` : ''}
         <div class="progress${snap.status === 'running' ? ' running' : ''}"><div class="bar" style="width:${pct}%"></div></div>
         <p class="muted">${escapeHtml(snap.done)}/${escapeHtml(snap.total)} test${eta}${tally(snap.tests, snap.lanes)}</p>
-        ${resHtml}
         ${snap.status !== 'running' ? `<p class="row-actions"><a class="button" href="${runsHref(snap.runId)}">${icon('list', { size: 14 })}Xem ở Runs</a> <button type="button" data-run-all>${icon('play', { size: 14 })}Chạy lại toàn bộ suite</button></p>` : ''}
         ${snap.error ? `<div class="err">${escapeHtml(snap.error.message ?? '')}</div>` : ''}
         ${snap.stopped ? `<div class="banner tone-warn">${icon('alert', { size: 14 })}Run dừng sớm: đã chạm <code>--max-failures</code> (${escapeHtml(snap.stopped.failures)}/${escapeHtml(snap.stopped.limit)} test fail), các test còn lại không chạy.</div>` : ''}
@@ -305,6 +317,7 @@ export async function renderLive(main) {
       ai: aiSum.runId === snap.runId && aiSum.md
         ? `<h2>${icon('sparkles', { size: 15 })} Tóm tắt AI</h2><div class="md">${renderMarkdown(aiSum.md)}</div>`
         : aiSum.runId === snap.runId && aiSum.state === 'pending' ? `<p class="muted small">${icon('sparkles', { size: 13 })} AI đang tóm tắt run…</p>` : '',
+      res: resHtml,
       failed: failedHtml(snap.tests, { runId: snap.runId, finished: snap.status !== 'running', results: rep.runId === snap.runId ? rep.results : {} }),
       steps,
       out: out ? `<h2>Output</h2><pre class="log">${out}</pre>` : '',

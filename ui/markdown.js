@@ -22,6 +22,31 @@ function inline(text) {
   return s.replace(/\u0000(\d+)\u0000/g, (_m, i) => held[i]);
 }
 
+// một dòng bảng → các ô: tách ở | trừ khi nằm trong `code` hoặc được escape (\|); bỏ | mở / đóng ở hai đầu
+function splitRow(line) {
+  const cells = [];
+  let cur = '';
+  let code = false;
+  const t = line.trim();
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (ch === '\\' && t[i + 1] === '|') {
+      cur += '|'; // như GFM: \| là ký tự | kể cả trong `code`
+      i++;
+    } else if (ch === '`') {
+      code = !code;
+      cur += ch;
+    } else if (ch === '|' && !code) {
+      cells.push(cur);
+      cur = '';
+    } else cur += ch;
+  }
+  cells.push(cur);
+  if (t.startsWith('|')) cells.shift();
+  if (cells.length > 1 && cells.at(-1).trim() === '') cells.pop();
+  return cells;
+}
+
 export function renderMarkdown(src) {
   const out = [];
   const lines = String(src ?? '').replace(/\r\n/g, '\n').split('\n');
@@ -51,7 +76,7 @@ export function renderMarkdown(src) {
     if (/^\s*\|/.test(line) && /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(lines[i + 1] ?? '')) {
       flushPara();
       flushList();
-      const cells = (l) => l.trim().replace(/^\||\|$/g, '').split(/(?<!\\)\|/).map((c) => inline(c.trim().replace(/\\\|/g, '|')));
+      const cells = (l) => splitRow(l).map((c) => inline(c.trim()));
       const head = cells(line);
       const body = [];
       for (i += 2; i < lines.length && /^\s*\|/.test(lines[i]); i++) body.push(cells(lines[i]));

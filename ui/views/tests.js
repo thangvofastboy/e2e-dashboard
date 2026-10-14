@@ -80,6 +80,12 @@ export async function renderTests(main, route = {}) {
   filter = { file: route.params?.file ?? filter.file, tag: route.params?.tag ?? filter.tag, target: route.params?.target ?? filter.target, failed: route.params ? route.params.failed === '1' : filter.failed };
   const load = () => Promise.all([getJson('/api/tests'), isExport() ? { list: [] } : getJson('/api/quarantine').catch(() => ({ list: [] }))]);
   let [all, q] = await load();
+  // test đã bị xoá / đổi tên (kể cả từ lần mở trang trước) không còn được tính trong "Chạy N test"
+  const prune = () => {
+    const keys = new Set(all.map((r) => r.key));
+    for (const k of picked) if (!keys.has(k)) picked.delete(k);
+  };
+  prune();
   lockedKeys = new Set(q.list.map((x) => x.key));
   const draw = () => {
     // "Chỉ test fail": test fail ở run gần nhất có nó
@@ -114,6 +120,7 @@ export async function renderTests(main, route = {}) {
       e.currentTarget.setAttribute('aria-busy', 'true');
       try {
         [all, q] = await load();
+        prune();
         lockedKeys = new Set(q.list.map((x) => x.key));
       } catch (x) {
         toast(x.message, 'bad');

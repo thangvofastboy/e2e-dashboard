@@ -520,6 +520,9 @@ initI18n(); // before shell(): the VI/EN button label reads the stored language
 new MutationObserver((ms) => {
   if (ms.every((m) => m.target.closest?.('#chart-tip, #run-pill'))) return;
   enhance(document.body);
+  // nút sinh ra sau lần vẽ trang (Live, kết quả AI, nút Copy trả lại nội dung): cũng chỉ hiện icon; nút đã bọc thì không đổi DOM nữa
+  const main = document.getElementById('main');
+  if (main && !isExport()) iconOnly(main);
 }).observe(document.body, { childList: true, subtree: true });
 // Lỗi JS của giao diện → server ghi lại cho tự sửa lỗi (trang Cài đặt hệ thống). Mỗi lỗi gửi một lần / lần tải trang, tối đa 5.
 const sentErrors = new Set();

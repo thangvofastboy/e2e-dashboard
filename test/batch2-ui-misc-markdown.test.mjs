@@ -37,3 +37,11 @@ test('guide: đủ 10 phần, render không lỗi, không chứa dòng làm hỏ
   assert.doesNotMatch(GUIDE_MD, /^\s*export\s+default\b/m);
   assert.doesNotMatch(GUIDE_MD, /^\s*import\s*\{[^}]*\}\s*from\s*['"]\.{1,2}\//m);
 });
+
+test('bảng: | trong code và \\| ở cuối ô không tách ô', () => {
+  const html = renderMarkdown('| Lệnh | Ghi chú |\n|---|---|\n| `a | b` | cuối \\| |');
+  const cells = [...html.matchAll(/<td>(.*?)<\/td>/g)].map((m) => m[1]);
+  assert.equal(cells.length, 2, html);
+  assert.match(cells[0], /<code>a \| b<\/code>/);
+  assert.equal(cells[1], 'cuối |');
+});

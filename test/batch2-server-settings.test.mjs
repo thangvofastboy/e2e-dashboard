@@ -83,3 +83,30 @@ test('/api/settings nhận headed / sources / prompt, sai thì 400; /api/run l�
     server.close();
   }
 });
+
+test('một thư mục nguồn biến mất: đọc bỏ riêng dòng đó, lưu setting khác không xoá danh sách trên đĩa', async () => {
+  const { mkdtempSync: mk, mkdirSync: md, rmSync: rm, readFileSync: rf } = await import('node:fs');
+  const { join: j } = await import('node:path');
+  const { tmpdir: td } = await import('node:os');
+  const { readSettings: read, writeSettings: write } = await import('../server/settings.mjs');
+  const root = mk(j(td(), 'e2ed-src-keep-'));
+  md(j(root, 'a'));
+  md(j(root, 'b'));
+  await write(root, { sources: [{ path: 'a', description: 'backend' }, { path: 'b', description: 'frontend' }] });
+  rm(j(root, 'b'), { recursive: true });
+  assert.deepEqual((await read(root)).sources, [{ path: 'a', description: 'backend' }], 'chỉ bỏ dòng hỏng');
+  await write(root, { workers: 2 });
+  md(j(root, 'b'));
+  assert.equal((await read(root)).sources.length, 2, 'thư mục quay lại thì danh sách còn nguyên');
+  const raw = JSON.parse(rf(j(root, '.e2e-dashboard', 'state', 'settings.json'), 'utf8'));
+  assert.equal(raw.sources.length, 2);
+});
+
+test('thư mục nguồn không được là / hay thư mục home (AI đọc được cả máy)', async () => {
+  const { mkdtempSync: mk } = await import('node:fs');
+  const { join: j } = await import('node:path');
+  const { tmpdir: td, homedir } = await import('node:os');
+  const { writeSettings: write } = await import('../server/settings.mjs');
+  const root = mk(j(td(), 'e2ed-src-root-'));
+  for (const path of ['/', homedir()]) await assert.rejects(write(root, { sources: [{ path, description: 'x' }] }), /không hợp lệ|quá rộng/, path);
+});

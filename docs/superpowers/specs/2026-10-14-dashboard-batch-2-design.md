@@ -133,8 +133,10 @@ thêm field Prompt để AI local hiểu hệ thống, rule, workflow.
   phải là thư mục tồn tại, không symlink ra ngoài; mô tả ≤ 500 ký tự) và `prompt` (≤ 8000 ký tự).
 - `ui/views/system.js` tab "Dự án": danh sách dòng (đường dẫn + mô tả), nút thêm / xoá, ô Prompt nhiều dòng, nút Lưu.
 - "Gửi cho AI ghi nhớ" = **mọi lần gọi AI** đều kèm khối "Bối cảnh dự án (người dùng viết)": danh sách thư mục + mô tả + Prompt.
-  Chèn ở `FRAME` trong `buildPrompt` (`server/ai.mjs:51`) và header `qc-template`, nằm ngoài khối dữ liệu không tin cậy
-  vì do người dùng viết.
+  **Đã đổi theo người dùng (14/10):** gửi thẳng xuống Claude CLI bằng `--append-system-prompt` (không chèn vào `FRAME`),
+  ngoài khối dữ liệu không tin cậy vì do người dùng viết. Khối này nằm trong khoá cache AI: sửa Prompt / thư mục thì câu trả lời cũ không dùng lại.
+- Thư mục `/` và thư mục home bị từ chối (AI kèm dữ liệu run không tin cậy sẽ đọc được `~/.ssh`, `.env` của cả máy).
+  Thư mục tạm vắng mặt chỉ bị bỏ khi đọc, không bị xoá khỏi file khi lưu setting khác.
 - AI được đọc các thư mục này: thêm `--add-dir <path>` cho từng thư mục khi gọi Claude CLI (công cụ vẫn chỉ đọc: Read/Grep/Glob).
 
 **Giả định:** không tạo "bộ nhớ" riêng cho AI; bối cảnh gửi lại mỗi lần gọi là cách chắc chắn AI luôn biết.

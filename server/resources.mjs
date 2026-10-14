@@ -20,10 +20,18 @@ export function cpuPercent(a, b) {
   return total > 0 ? round1((busy / total) * 100) : 0;
 }
 
+// mẫu CPU của lần gọi trước: Live hỏi 2 giây/lần, chỉ lần đầu (hoặc mẫu cũ quá gần) mới phải chờ sampleMs
+let lastCpus = null;
 export async function machineResources(root, { sampleMs = 200 } = {}) {
-  const first = cpus();
-  await new Promise((r) => setTimeout(r, sampleMs));
+  const prev = lastCpus;
+  let first;
+  if (prev && Date.now() - prev.at >= Math.min(sampleMs, 100)) first = prev.cpus;
+  else {
+    first = cpus();
+    await new Promise((r) => setTimeout(r, sampleMs));
+  }
   const second = cpus();
+  lastCpus = { cpus: second, at: Date.now() };
   const disk = await statfs(root).catch(() => null);
   return {
     cores: second.length,

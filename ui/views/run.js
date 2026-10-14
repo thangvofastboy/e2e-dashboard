@@ -381,7 +381,14 @@ export async function renderRun(main, route) {
       const btn = main.querySelector('[data-rerun]');
       if (btn) {
         btn.disabled = !ui.selected.size;
-        btn.lastChild.textContent = translate(`Chạy lại (${ui.selected.size})`);
+        const text = translate(`Chạy lại (${ui.selected.size})`);
+        const label = btn.querySelector('.btn-label'); // nút chỉ icon: tên ẩn trong .btn-label, số hiện ở .btn-count
+        if (label) {
+          label.textContent = text;
+          const count = btn.querySelector('.btn-count');
+          if (count) count.textContent = String(ui.selected.size);
+          btn.dataset.tip = text;
+        } else btn.lastChild.textContent = text;
       }
     }));
   main.querySelector('[data-select-failed]')?.addEventListener('click', () => {

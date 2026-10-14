@@ -58,8 +58,13 @@ await agent.assert('Trang hiện tổng tiền và nút Đặt hàng');
 
 **Từ dashboard**
 
-- Trang **Live** → *Chạy toàn bộ suite*; trang **Tests** → tick test (hoặc *Chọn tất cả fail*) → **Chạy**. Hộp thoại chạy có trình duyệt, số worker, tag, retries…
-- Số worker mặc định, watch và lịch chạy đặt ở *Tự động & lưu trữ*.
+- Trang **Live** → *Chạy toàn bộ suite*; trang **Tests** → tick test, cả file hoặc cả thư mục (hoặc *Chọn tất cả fail*) → **Chạy**. Hộp thoại chạy có trình duyệt, số worker, **có giao diện (headed)**, tag, retries…
+- Số worker, trình duyệt và headed mặc định, watch và lịch chạy đặt ở *Tự động & lưu trữ › Chạy & lịch*. Headed cần máy có màn hình.
+
+**Nhờ Claude chạy**
+
+- Khi dashboard đang mở, nói với Claude Code kiểu *"chạy test checkout"* hoặc *"dừng run"*: Claude dùng tool MCP \`e2e_run_start\` / \`e2e_run_stop\` của plugin, run đi qua dashboard nên có nút Dừng, tài nguyên và tiến độ ở **Live** như khi bấm tay.
+- Claude tự chạy \`npx e2e run\` trong terminal cũng được: có reporter thì vẫn xem live, nhưng nút Dừng của dashboard không dừng được tiến trình đó.
 
 **Từ terminal**
 
@@ -76,11 +81,12 @@ Run chạy từ terminal vẫn được lưu: có reporter thì xem live, không
 
 ## 7. Đọc kết quả, triage, gửi Linear
 
-1. **Runs** → bấm run → bấm test fail: timeline agent, video theo step, screenshot lúc fail, log app, trace.
-2. **✨ Phân tích lỗi**: AI phân loại lỗi app / test / flaky / môi trường và gợi ý sửa.
-3. **Tìm commit gây lỗi** sinh lệnh \`git bisect run\`; **Sửa bằng Claude Code** copy lệnh để dán vào Claude Code.
-4. **Triage lỗi**: đặt trạng thái, người phụ trách, ghi chú cho từng lỗi.
-5. **Gửi Linear**: tạo issue có fingerprint để chống trùng (cần API key hoặc MCP Linear, xem phần 2).
+1. **Live**: test fail hiện ngay trong danh sách dưới Gantt; run xong có sẵn nút Phân tích lỗi, Gửi Linear, Chạy lại… Thanh trên cùng cho biết CPU, RAM, disk của máy và tài nguyên run đang dùng.
+2. **Runs** → bấm run → bấm test fail: timeline agent, video theo step, screenshot lúc fail, log app, trace.
+3. **✨ Phân tích lỗi**: AI phân loại lỗi app / test / flaky / môi trường và gợi ý sửa.
+4. **Tìm commit gây lỗi** sinh lệnh \`git bisect run\`; **Sửa bằng Claude Code** copy lệnh để dán vào Claude Code.
+5. **Triage lỗi**: đặt trạng thái, người phụ trách, ghi chú cho từng lỗi.
+6. **Gửi Linear**: chọn *Loại* (Bug cần *Mã issue liên quan*, Task thì tuỳ chọn), sửa và xem trước rồi gửi; issue có fingerprint để chống trùng (cần API key hoặc MCP Linear, xem phần 2).
 
 ## 8. Tính năng AI
 

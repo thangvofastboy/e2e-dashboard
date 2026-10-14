@@ -266,8 +266,9 @@ export function tools() {
   return toolCache;
 }
 
-export async function setupStatus(root, { reporter }) {
-  const summary = await envSummary(root);
+// summary: envSummary đã tính sẵn (vd. /api/system) để khỏi chạy git thêm lần nữa
+export async function setupStatus(root, { reporter, summary: given } = {}) {
+  const summary = given ?? (await envSummary(root));
   const missing = summary.keys.filter((k) => k.state !== 'set').length;
   const env = summary.files.find((f) => f.name === '.env');
   const t = tools();

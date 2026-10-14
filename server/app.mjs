@@ -34,7 +34,7 @@ import { readQuarantine, addQuarantine, removeQuarantine, quarantineFlags } from
 import { buildDigest, flakyShare } from './digest.mjs';
 import { importFromGithub } from './share.mjs';
 import { createGithub, prCommentMarkdown } from './github.mjs';
-import { buildPrompt, cacheKey, commitsBetween, qualityEvidence, validModel, AI_EFFORTS } from './ai.mjs';
+import { buildPrompt, cacheKey, commitsBetween, qualityEvidence, validModel, AI_EFFORTS, projectBlock } from './ai.mjs';
 import { estimateEta } from './live.mjs';
 import { bundleUi } from '../ui/bundle.mjs';
 import { buildExportHtml } from './export.mjs';
@@ -168,11 +168,26 @@ const runCount = (url, def = 30) => {
 
 // The e2e replay cache entry a step used (`.e2e/cache/<entry>.json`, trace-1), read-only and only
 // from inside the project.
+// Quét source (coverage.source) đọc mọi file của repo app: repo frontend vài nghìn file mất ~350 ms mỗi lần.
+// Giữ kết quả 30 giây theo thư mục + danh sách domain bỏ qua (đổi danh sách là khoá mới); lỗi thì không giữ.
+const SCAN_TTL_MS = 30_000;
+const scanCache = new Map();
+function cachedScan(srcDir, ignore) {
+  const key = `${srcDir}\0${ignore.join('\n')}`;
+  const hit = scanCache.get(key);
+  if (hit && Date.now() - hit.at < SCAN_TTL_MS) return hit.promise;
+  const promise = scanSource(srcDir, { ignore });
+  promise.catch(() => scanCache.delete(key));
+  if (scanCache.size > 20) scanCache.clear();
+  scanCache.set(key, { at: Date.now(), promise });
+  return promise;
+}
+
 // Route của app như trang Coverage thấy: thư mục app/pages/router, "coverage.routes", rồi route quét từ "coverage.source"
 async function coverageRoutes(projectRoot, cfg, ignoreDomains = []) {
   // "coverage.source": đường dẫn repo app (tương đối với project hoặc tuyệt đối); bỏ trống thì không quét source
   const srcDir = typeof cfg.coverage?.source === 'string' && cfg.coverage.source ? resolve(projectRoot, cfg.coverage.source) : null;
-  const scan = srcDir ? await scanSource(srcDir, { ignore: ignoreDomains }) : { routes: new Map(), domains: [], files: 0 };
+  const scan = srcDir ? await cachedScan(srcDir, ignoreDomains) : { routes: new Map(), domains: [], files: 0 };
   const routes = await appRoutes(projectRoot, Array.isArray(cfg.coverage?.routes) ? cfg.coverage.routes : []);
   for (const [r, src] of scan.routes) if (!routes.has(r)) routes.set(r, `source:${src}`);
   return { routes, scan, srcDir };
@@ -349,10 +364,11 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return res.end(a.gz);
       }
       if (p === '/api/system') {
+        const summary = await envSummary(projectRoot); // dùng chung cho env và setup (mỗi lần tính chạy git 2 lần)
         return send(res, 200, {
           version: VERSION, node: process.version, platform: `${platform()} ${release()}`, arch: arch(), hostname: hostname(), projectRoot, dataDir: join(projectRoot, DATA_DIR),
           sqlite: (await readSettings(projectRoot)).sqlite, sqliteSupport: sqliteSupport(),
-          env: await envSummary(projectRoot), user: await userSummary(env), setup: await setupStatus(projectRoot, { reporter: reporterStatus(projectRoot) }),
+          env: summary, user: await userSummary(env), setup: await setupStatus(projectRoot, { reporter: reporterStatus(projectRoot), summary }),
         });
       }
       if (p === '/api/system/envfile') return send(res, 200, await readEnvFile(projectRoot, url.searchParams.get('name') ?? ''));
@@ -711,7 +727,8 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         let prompt;
         let resume;
         let key = null;
-        const variant = aiVariant(body);
+        // bối cảnh dự án (Cài đặt › Dự án) đổi thì câu trả lời cũ không còn đúng: đưa vào khoá cache; trống thì giữ khoá cũ
+        const variant = [aiVariant(body), projectBlock(await readSettings(projectRoot))].filter(Boolean).join('\0');
         // trả câu trả lời đã lưu (nút "Chạy lại" gửi refresh để bỏ qua)
         const replayCached = async () => {
           const cached = body.refresh ? null : await getAi(projectRoot, run.meta.runId, key);

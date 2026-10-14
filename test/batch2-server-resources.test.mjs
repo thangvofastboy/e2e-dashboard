@@ -78,3 +78,12 @@ test('resources: tên field khớp với formatResources (Live) và machineHtml 
   const html = machineHtml({ hostname: 'h', platform: 'linux', arch: 'x64' }, { machine }, null);
   assert.doesNotMatch(html.split('Trình duyệt')[0], /không đo được/);
 });
+
+test('machineResources: lần gọi sau dùng mẫu CPU của lần trước, không chờ thêm', async () => {
+  await machineResources(process.cwd(), { sampleMs: 150 });
+  await new Promise((r) => setTimeout(r, 120)); // Live hỏi lại sau một khoảng
+  const t0 = Date.now();
+  const m = await machineResources(process.cwd(), { sampleMs: 150 });
+  assert.ok(Date.now() - t0 < 100, `mất ${Date.now() - t0} ms`);
+  assert.ok(m.cpuPct >= 0 && m.cpuPct <= 100);
+});

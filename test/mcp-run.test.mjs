@@ -81,3 +81,11 @@ test('e2e_run_stop gọi /api/run/stop', async () => {
     d.close();
   }
 });
+
+test('server.json còn sót sau khi dashboard tắt: báo rõ cần mở lại dashboard', async () => {
+  const d = await dashboard({ start: () => ({ ok: true }), stop: () => false, state: () => ({ running: false, pid: null }) });
+  d.close();
+  await new Promise((r) => setTimeout(r, 50));
+  const r = await call(d.root, 'e2e_run_start', {});
+  assert.match(r.result.content[0].text, /Không kết nối được dashboard.*mở lại \/e2e-dashboard/);
+});

@@ -59,12 +59,18 @@ export const TOOLS = [
 export async function dashboardCall(root, method, p, body) {
   const info = readServerInfo(root);
   if (!info) throw new Error('Dashboard chưa chạy cho project này: mở /e2e-dashboard trước.');
-  const res = await fetch(`http://127.0.0.1:${info.port}${p}`, {
-    method,
-    headers: { 'x-e2e-dashboard-token': info.token, ...(body ? { 'content-type': 'application/json' } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(15_000),
-  });
+  let res;
+  try {
+    res = await fetch(`http://127.0.0.1:${info.port}${p}`, {
+      method,
+      headers: { 'x-e2e-dashboard-token': info.token, ...(body ? { 'content-type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    // server.json còn sót sau khi dashboard tắt (máy khởi động lại, tiến trình bị kill)
+    throw new Error(`Không kết nối được dashboard ở cổng ${info.port}: mở lại /e2e-dashboard rồi thử lại.`);
+  }
   const data = await res.json().catch(() => ({}));
   return { status: res.status, data };
 }

@@ -18,7 +18,10 @@ function wrapButtonLabel(inner) {
     if (depth || !tok.trim()) return tok;
     texts.push(tok.trim());
     const m = /^(\s*)(.*?)(?:\s+(\d+))?(\s*)$/s.exec(tok);
-    return `${m[1]}<span class="btn-label">${m[2]}</span>${m[3] ? ` <span class="btn-count">${m[3]}</span>` : ''}${m[4]}`;
+    if (m[3]) return `${m[1]}<span class="btn-label">${m[2]}</span> <span class="btn-count">${m[3]}</span>${m[4]}`;
+    // số giữa câu / trong ngoặc ("Chạy 3 test", "Chạy lại (3)"): tên giữ nguyên cho trình đọc màn hình, số hiện cạnh icon
+    const n = /(?:^|[\s(])(\d+)(?=$|[\s)])/.exec(m[2])?.[1];
+    return `${m[1]}<span class="btn-label">${m[2]}</span>${n ? ` <span class="btn-count" aria-hidden="true">${n}</span>` : ''}${m[4]}`;
   }).join('');
   return texts.length ? { html, label: texts.join(' ') } : null;
 }
@@ -46,10 +49,12 @@ export function iconOnly(root) {
   for (const b of root.querySelectorAll('button, a.button')) {
     if (LABEL_CLASS.test(b.className)) continue;
     const w = wrapButtonLabel(b.innerHTML);
-    if (!w) continue;
-    b.innerHTML = w.html;
-    const label = [...b.querySelectorAll('.btn-label, .btn-count')].map((x) => x.textContent.trim()).join(' ');
-    b.dataset.tip = tipFor(label, b.dataset.tip || b.getAttribute('title'));
+    if (w) b.innerHTML = w.html;
+    else if (!b.innerHTML.includes('btn-label')) continue;
+    // tooltip luôn dựng từ tooltip gốc: code thay nội dung nút rồi trả lại (Copy → Đã copy) không làm nó cộng dồn
+    b.dataset.tipBase ??= b.dataset.tip || b.getAttribute('title') || '';
+    const label = [...b.querySelectorAll('.btn-label, .btn-count:not([aria-hidden])')].map((x) => x.textContent.trim()).join(' ');
+    b.dataset.tip = tipFor(label, b.dataset.tipBase);
   }
 }
 
