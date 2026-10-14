@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.12.0 — 2026-10-14
+
+- **Bảo mật**: thư mục `.e2e-dashboard`, `server.json`, `report.json` / `meta.json` hay `.env.example` là symlink (repo clone cài sẵn) không còn bị đọc hay ghi xuyên qua; file export lấy tên theo run id đã kiểm tra; token có ký tự lạ trả 401 thay vì lỗi 500; tiêu đề test trong prompt "Copy cho Claude" nằm trong khối dữ liệu, không thành chỉ dẫn; thông báo desktop không bị tiêu đề bắt đầu bằng `-` làm hỏng.
+- **Không còn sập vì dữ liệu hỏng**: dòng lạ từ Claude CLI, `ai-trace.json` hỏng, phản hồi Linear / Linear MCP rỗng, file trạng thái hỏng (cảnh báo, đồng bộ CI, cách ly, test thủ công, mẫu QC), body request không phải object, tin nhắn MCP lạ, sendmail thoát sớm, file bị xoá giữa lúc quét dung lượng, `meta.json` hỏng khi chia sẻ run.
+- **Sửa lỗi**: tự log bug không tạo issue trùng khi hai lượt archive chạy cùng lúc; *Phân tích lại* khi self-heal đang sửa bị từ chối (không mất bản sửa); phát hiện test trùng tính cả test trong serial group; link trong Markdown có `*` không bị hỏng; so ảnh pixel xong muộn không vẽ đè kiểu xem đã chọn; trang không tự tải lại khi đã chuyển trang khác; form góp ý / test thủ công không gửi hai lần; ô lọc người phụ trách ở Triage gõ được liền mạch.
+- **Hiệu năng**: trang Cài đặt hệ thống tải song song; xu hướng dài hạn không vỡ stack khi lịch sử rất lớn.
+
 ## v0.11.0 — 2026-10-13
 
 - **Gửi Linear qua MCP của Claude CLI**: chưa có Linear API key thì dashboard tự tìm trùng, tạo issue và comment qua MCP Linear (cần đăng nhập một lần: chạy `claude`, gõ `/mcp`). Có API key thì luôn dùng key. Cài đặt hệ thống → Tích hợp cho biết đang dùng cách nào. Tự log bug cũng dùng được cách này.
