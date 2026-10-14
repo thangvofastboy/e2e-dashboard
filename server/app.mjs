@@ -1051,12 +1051,12 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return send(res, 200, { lines: await setup(projectRoot) });
       }
       if (p === '/api/settings') {
-        const { workers, sqlite, browser } = await readBody(req);
+        const { workers, sqlite, browser, linear } = await readBody(req);
         if (sqlite === true) {
           const sup = sqliteSupport();
           if (!sup.ok) return send(res, 400, { error: sup.reason });
         }
-        const saved = await writeSettings(projectRoot, { workers, sqlite, browser });
+        const saved = await writeSettings(projectRoot, { workers, sqlite, browser, linear });
         if (sqlite === true) void syncIndex(projectRoot).catch(() => {});
         if (sqlite === false) {
           closeIndex(projectRoot);

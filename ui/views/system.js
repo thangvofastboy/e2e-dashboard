@@ -71,6 +71,17 @@ function linearModeHtml(l) {
   return `<p class="tone-${mode ? 'good' : 'warn'}">${icon(mode ? 'check' : 'alert', { size: 15 })} <strong>Gửi issue lên Linear:</strong> ${text}</p>`;
 }
 
+// Email người được giao issue và status cần lấy (tab Tích hợp): lưu ở .e2e-dashboard/settings.json của project
+function linearIssuesFormHtml(cfg) {
+  return `<section class="panel"><h2>${icon('ticket', { size: 15 })} Issue Linear</h2>
+    <p class="muted small">Email của những người được giao issue (mỗi dòng một email) và các status cần lấy. Dùng ở menu Issue Linear.</p>
+    <form data-linear-issues>
+      <label class="small">Email<textarea name="emails" rows="4" aria-label="Email người được giao">${escapeHtml(cfg.emails.join('\n'))}</textarea></label>
+      <label class="small">Status (mỗi dòng một status)<textarea name="statuses" rows="3" aria-label="Status cần lấy">${escapeHtml(cfg.statuses.join('\n'))}</textarea></label>
+      <button type="submit">${icon('check', { size: 14 })}Lưu</button>
+    </form></section>`;
+}
+
 function userHtml(u, linear = null) {
   const hooks = u.webhooks.map((w, i) => `<li><code>${escapeHtml(w.host)}</code> <span class="muted small">${escapeHtml(w.events.join(', '))}</span> <button type="button" class="small-btn" data-hook-del="${i}">${icon('close', { size: 13 })}Xoá</button></li>`).join('');
   return `<section class="panel"><h2>${icon('bolt', { size: 18 })} Key & tích hợp của dashboard</h2>
@@ -236,12 +247,13 @@ function infoHtml(d) {
 
 export async function renderSystem(main) {
   // song song: /api/linear có thể chạy `claude mcp list` (vài giây), không bắt các request khác chờ nối đuôi
-  let [d, heal, resetInfo, junkInfo, linearInfo] = await Promise.all([
+  let [d, heal, resetInfo, junkInfo, linearInfo, prefs] = await Promise.all([
     getJson('/api/system'),
     getJson('/api/selfheal').catch(() => ({ errors: [] })),
     getJson('/api/reset/preview').catch(() => null),
     getJson('/api/junk').catch(() => null),
     getJson('/api/linear').catch(() => null),
+    getJson('/api/settings').catch(() => null),
   ]);
   let editing = null; // file env đang mở
   const urlTab = () => new URLSearchParams(location.hash.split('?')[1] ?? '').get('tab');
@@ -251,7 +263,7 @@ export async function renderSystem(main) {
     return todo ? `<span class="sys-badge" title="Cần xem">${todo}</span>` : '';
   };
   const draw = () => {
-    const panes = { appearance: appearanceHtml(), project: setupHtml(d.setup) + envHtml(d.env), integrations: userHtml(d.user, linearInfo), ai: healHtml(heal, d.user.selfHeal, d.user.ai), about: infoHtml(d), reset: junkHtml(junkInfo) + resetHtml(resetInfo) };
+    const panes = { appearance: appearanceHtml(), project: setupHtml(d.setup) + envHtml(d.env), integrations: userHtml(d.user, linearInfo) + linearIssuesFormHtml(prefs?.linear ?? { emails: [], statuses: [] }), ai: healHtml(heal, d.user.selfHeal, d.user.ai), about: infoHtml(d), reset: junkHtml(junkInfo) + resetHtml(resetInfo) };
     main.innerHTML = `${pageHead('Cài đặt hệ thống', 'settings', 'Giao diện, biến môi trường của project, key của dashboard và tình trạng setup.')}
       <div class="sys">
         <div class="sys-nav" role="tablist" aria-orientation="vertical" aria-label="Nhóm cài đặt">${SYS_TABS.map(([k, label, ic, sub]) => `<button type="button" role="tab" id="sys-tab-${k}" data-sys-tab="${k}" aria-selected="${k === tab}" aria-controls="sys-pane-${k}" tabindex="${k === tab ? 0 : -1}"><span class="sys-nav-ic">${icon(ic, { size: 20 })}</span><span class="sys-nav-t"><strong>${label}</strong><span class="small">${sub}</span></span>${badge(k)}</button>`).join('')}</div>
@@ -452,6 +464,10 @@ export async function renderSystem(main) {
       } else if (f.matches('[data-linear-team]')) {
         await postJson('/api/system/user', { linearTeam: f.team.value.trim() });
         toast('Đã lưu Linear team');
+      } else if (f.matches('[data-linear-issues]')) {
+        const lines = (s) => String(s ?? '').split('\n');
+        await postJson('/api/settings', { linear: { emails: lines(f.emails.value), statuses: lines(f.statuses.value) } });
+        toast('Đã lưu danh sách Linear');
       } else if (f.matches('[data-ai-model]')) {
         await postJson('/api/system/user', { aiModel: f.model.value.trim() });
         toast(`Model: ${f.model.value.trim() || 'mặc định'}`);
