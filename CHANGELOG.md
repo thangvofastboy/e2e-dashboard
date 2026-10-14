@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.15.1 — 2026-10-14
+
+- **Lịch chạy không còn mất dữ liệu / ngừng chạy**: `schedules.json` hỏng (sửa tay dở dang) thì lần lưu sau báo lỗi thay vì ghi đè mất mọi lịch; một lịch thiếu ngày / giờ không còn làm mọi lịch khác ngừng chạy.
+- **Lịch chạy chạy đúng chỗ**: lịch của project đã gỡ khỏi Projects không chạy nữa và form *Sửa* báo rõ thay vì lặng lẽ đổi sang project khác; exit code không bị ghi nhầm sang lịch khác khi project đang bận; sửa lịch rồi lưu không còn làm mất *headed*; ô lọc test của Lịch chạy gõ không dấu vẫn khớp.
+- **Đồng bộ từ CI**: `config.json` không phải object được báo lỗi rõ thay vì lưu hỏng; hai lần lưu cùng lúc không làm mất thay đổi của nhau.
+- **Thêm project**: hộp chọn thư mục hiện cả thư mục là symlink (vd. `~/code`).
+- **Gọn code**: danh sách tuỳ chọn chạy và danh sách model AI chỉ khai một chỗ (trước đây hai bản chép có thể lệch nhau).
+
 ## v0.15.0 — 2026-10-14
 
 - **Chạy có / không giao diện (headed)**: công tắc ở *Tự động & lưu trữ → Chạy & lịch* (mặc định tắt) và trong hộp thoại Run; áp cho chạy tay, chạy lại, chạy qua MCP và Lịch chạy (lịch bật riêng được, không thì theo Settings).
