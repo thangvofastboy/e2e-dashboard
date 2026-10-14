@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.15.2 — 2026-10-14
+
+- **Linear qua MCP nhận ngay**: vừa bật plugin Linear, đăng nhập `/mcp` hay đổi tài khoản Claude thì dashboard không còn báo "chưa có Linear" suốt 5 phút: kết quả "chưa kết nối" chỉ giữ 30 giây. Thêm nút **Kiểm tra lại** ở *Cài đặt hệ thống → Tích hợp* để dò lại ngay.
+
 ## v0.15.1 — 2026-10-14
 
 - **Lịch chạy không còn mất dữ liệu / ngừng chạy**: `schedules.json` hỏng (sửa tay dở dang) thì lần lưu sau báo lỗi thay vì ghi đè mất mọi lịch; một lịch thiếu ngày / giờ không còn làm mọi lịch khác ngừng chạy.
