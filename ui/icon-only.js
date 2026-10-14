@@ -23,13 +23,15 @@ function wrapButtonLabel(inner) {
   return texts.length ? { html, label: texts.join(' ') } : null;
 }
 
+// chip / badge / tag dựng bằng <button> (để có tooltip) là nhãn trạng thái, không phải nút: giữ chữ
+const LABEL_CLASS = /\b(chip|badge|tag)\b/;
 const attrOf = (attrs, name) => new RegExp(`\\s${name}="([^"]*)"`).exec(attrs)?.[1] ?? '';
 const tipFor = (label, extra) => [label, extra].filter((x, i, a) => x && a.indexOf(x) === i).join(' · ');
 
 // Bản thuần trên chuỗi HTML (dùng cho test và cho iconOnly bên dưới)
 export function iconOnlyHtml(html) {
   const one = (open, attrs, inner, close) => {
-    const w = wrapButtonLabel(inner);
+    const w = LABEL_CLASS.test(attrOf(attrs, 'class')) ? null : wrapButtonLabel(inner);
     if (!w) return `${open}${attrs}>${inner}${close}`;
     const tip = tipFor(w.label.replace(/"/g, '&quot;'), attrOf(attrs, 'data-tip') || attrOf(attrs, 'title'));
     return `${open}${attrs.replace(/\sdata-tip="[^"]*"/, '')} data-tip="${tip}">${w.html}${close}`;
@@ -42,6 +44,7 @@ export function iconOnlyHtml(html) {
 // Bản DOM: chạy sau mỗi lần vẽ trang; chạy lại không đổi gì (đã có .btn-label thì bỏ qua)
 export function iconOnly(root) {
   for (const b of root.querySelectorAll('button, a.button')) {
+    if (LABEL_CLASS.test(b.className)) continue;
     const w = wrapButtonLabel(b.innerHTML);
     if (!w) continue;
     b.innerHTML = w.html;

@@ -51,3 +51,9 @@ test('nút chỉ có icon (icon-btn) giữ nguyên', () => {
   const html = `<button class="icon-btn" aria-label="Đóng">${ic}</button>`;
   assert.equal(iconOnlyHtml(html), html);
 });
+
+test('chip / badge / tag dạng <button> là nhãn trạng thái: giữ nguyên chữ', () => {
+  const chip = '<button type="button" class="chip tone-bad" data-tip="x"><svg class="icon ic-x"></svg>Có vấn đề</button>';
+  assert.equal(iconOnlyHtml(chip), chip);
+  assert.equal(iconOnlyHtml('<a class="button tag" href="#"><svg class="icon ic-x"></svg>@smoke</a>'), '<a class="button tag" href="#"><svg class="icon ic-x"></svg>@smoke</a>');
+});

@@ -823,7 +823,7 @@ details.cfg[open] > summary { margin-bottom: 4px; }
 /* Chú giải ⓘ và nút phóng to toàn màn hình */
 .help-tip, .fs-btn { min-height: 26px; padding: 3px 5px; color: var(--muted); vertical-align: middle; }
 .help-tip:hover, .help-tip:focus-visible, .fs-btn:hover, .fs-btn:focus-visible { color: var(--info); }
-h1 .help-tip, h1 .fs-btn { margin-left: 2px; }
+h1 .icon-btn { margin-left: 6px; } /* ⓘ, ☆, phóng to cạnh tiêu đề: tách ra cho dễ bấm */
 figcaption .help-tip { margin-left: auto; }
 :is(.charts > figure, #main > section.panel, #main > .fill, .two-col > .panel, .ov-top > .health-score, .run-summary) { position: relative; }
 :is(.charts > figure, #main > section.panel, #main > .fill, .two-col > .panel, .ov-top > .health-score, .run-summary) > .fs-btn { position: absolute; top: -11px; right: -11px; z-index: 2; opacity: 0; min-height: 0; padding: 4px; border: 1px solid var(--border); border-radius: 50%; background: var(--surface); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); transition: opacity 0.15s; } /* ngồi trên mép góc: không che chip, link ở góc phải panel */
@@ -1168,7 +1168,7 @@ td > :where(button, a.button) + :where(button, a.button), p > :where(button, a.b
 .seg-btns [role="tab"][aria-selected="true"] { background: var(--info-bg); color: var(--info-ink); border-color: transparent; font-weight: 600; }
 .seg-btns [role="tab"] .cnt { margin: 0 0 0 4px; color: inherit; }
 /* Cài đặt › Hướng dẫn: mục lục bên trái, nội dung Markdown bên phải */
-.guide { display: grid; grid-template-columns: minmax(160px, 220px) 1fr; gap: 20px; align-items: start; }
+.guide { display: grid; grid-template-columns: minmax(160px, 220px) minmax(0, 1fr); gap: 20px; align-items: start; }
 .guide-toc { position: sticky; top: 8px; display: flex; flex-direction: column; gap: 2px; }
 .guide-toc button { text-align: start; justify-content: flex-start; }
 .guide .md h2 { scroll-margin-top: 12px; }
@@ -1179,3 +1179,7 @@ td > :where(button, a.button) + :where(button, a.button), p > :where(button, a.b
 .src-row { display: grid; grid-template-columns: 1fr 2fr auto; gap: 8px; align-items: start; }
 .src-row textarea, .proj-prompt { width: 100%; box-sizing: border-box; }
 @media (max-width: 900px) { .src-row { grid-template-columns: 1fr; } }
+
+/* chip biến {{…}} ở Mẫu QC: cách nhau rộng hơn */
+.tpl-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.guide .md { min-width: 0; overflow-wrap: anywhere; } .guide .md pre { overflow-x: auto; } /* code dài cuộn trong khung, không đẩy trang rộng ra */
