@@ -34,7 +34,7 @@ import { readQuarantine, addQuarantine, removeQuarantine, quarantineFlags } from
 import { buildDigest, flakyShare } from './digest.mjs';
 import { importFromGithub } from './share.mjs';
 import { createGithub, prCommentMarkdown } from './github.mjs';
-import { buildPrompt, cacheKey, commitsBetween } from './ai.mjs';
+import { buildPrompt, cacheKey, commitsBetween, qualityEvidence, validModel, AI_EFFORTS } from './ai.mjs';
 import { estimateEta } from './live.mjs';
 import { bundleUi } from '../ui/bundle.mjs';
 import { buildExportHtml } from './export.mjs';
@@ -51,6 +51,7 @@ import { resolveLinear, detectMcpLinear } from './linear-mcp.mjs';
 import { createLinearIssuesApi } from './linear-issues.mjs';
 import { findDuplicates, splitCandidates, actionPrompt, latestWithResults } from './dupes.mjs';
 import { analyzeQuality } from './quality.mjs';
+import { machineResources, runnerResources, dashboardResources } from './resources.mjs';
 import { readTemplates, findTemplate, saveTemplate, resultVars, runVars, renderPrompt, aiParts, keepFingerprint, PLACEHOLDERS } from './qc-templates.mjs';
 import { markKnown, readNotes, setNote, readAudit, verifyQueue, waiverActive, titleOf as resultTitle, readManual, saveManual, manualSummary, bugReport, buildMatrix, bugRows, bugsCsv } from './qc.mjs';
 import { addEvent, removeEvent, timeline, lastCommits, EVENT_KINDS } from './events.mjs';
@@ -248,7 +249,9 @@ async function askContext(projectRoot) {
 const IDLE_RUNNER = { start: () => ({ ok: false, error: 'unavailable' }), stop: () => false, state: () => ({ running: false, pid: null }) };
 
 // lịch sử từng test: từ chỉ mục SQLite khi có, không thì parse report như cũ
-const SUITE_AI = new Set(['ask', 'followup', 'route-test', 'ticket-test', 'select-tests', 'locator-batch', 'duplicate-tests', 'release-notes']);
+// model / effort chọn cho riêng một lần gọi AI: hợp lệ thì vào khoá cache, sai thì bỏ (ai.run cũng bỏ)
+const aiVariant = (b) => [validModel(b?.model) ? b.model : '', AI_EFFORTS.includes(b?.effort) ? b.effort : ''].join('|').replace(/^\|$/, '');
+const SUITE_AI = new Set(['quality-review', 'ask', 'followup', 'route-test', 'ticket-test', 'select-tests', 'locator-batch', 'duplicate-tests', 'release-notes']);
 const SUITE_EVIDENCE = new Set(['ticket-test', 'select-tests', 'locator-batch', 'duplicate-tests', 'release-notes']);
 const DRAFT_DIR = /^(?!.*(?:^|\/)\.)(?!.*\.\.)[\w./ -]{1,150}$/;
 const historyTable = async (root, n) => (await indexedTestHistory(root, n).catch(() => null)) ?? testHistory(root, n);
@@ -359,6 +362,11 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return send(res, 200, { state: summaryState(runId), saved: await getAi(projectRoot, runId, cacheKey('run-summary', runId)) });
       }
       if (p === '/api/selfheal') return send(res, 200, { config: selfHeal?.config() ?? null, errors: (await selfHeal?.list()) ?? [] });
+      if (p === '/api/resources') {
+        const pid = runner.state().pid;
+        const [machine, run] = await Promise.all([machineResources(projectRoot), runnerResources(pid)]);
+        return send(res, 200, { machine, app: { dashboard: dashboardResources(), runner: run } });
+      }
       if (p === '/api/settings') return send(res, 200, { ...(await readSettings(projectRoot)), autoWorkers: autoWorkers(), browsers: { installed: installedBrowsers(env), configReadsBrowser: configSupport(findConfigPath(projectRoot)) } });
       if (p === '/api/info') return send(res, 200, { version: VERSION, pid: process.pid, project: basename(projectRoot), reporter: reporterStatus(projectRoot), lastArchive: lastArchive(), thresholds: readConfig(projectRoot).thresholds ?? null, runner: runner.state() });
       if (p === '/api/runs') return send(res, 200, await listRuns(projectRoot));
@@ -692,18 +700,38 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return res.end();
       }
       if (p.startsWith('/api/ai/')) {
-        const action = /^\/api\/ai\/(analyze-failure|analyze-run|suggest-locator|why-flaky|explore-to-test|route-test|ask|followup|run-summary|why-slow|explain-group|ticket-test|select-tests|locator-batch|duplicate-tests|release-notes|explain-visual|repro-steps|severity|dedupe-failures)$/.exec(p)?.[1];
+        const action = /^\/api\/ai\/(analyze-failure|analyze-run|suggest-locator|why-flaky|explore-to-test|route-test|ask|followup|run-summary|why-slow|explain-group|ticket-test|select-tests|locator-batch|duplicate-tests|release-notes|explain-visual|repro-steps|severity|dedupe-failures|quality-review)$/.exec(p)?.[1];
         if (!action) return send(res, 404, { error: 'unknown action' });
         const body = await readBody(req);
         // a question about the whole suite, or a follow-up in an existing session, needs no run
-        const run = SUITE_AI.has(action) ? { meta: { runId: null }, report: null, dir: projectRoot } : await getRun(projectRoot, body.runId);
+        let run = SUITE_AI.has(action) ? { meta: { runId: null }, report: null, dir: projectRoot } : await getRun(projectRoot, body.runId);
         if (!run) return send(res, 404, { error: 'run not found' });
         const ac = new AbortController();
         res.on('close', () => !res.writableEnded && ac.abort()); // tab closed → never start or keep claude
         let prompt;
         let resume;
         let key = null;
-        if (action === 'route-test') {
+        const variant = aiVariant(body);
+        // trả câu trả lời đã lưu (nút "Chạy lại" gửi refresh để bỏ qua)
+        const replayCached = async () => {
+          const cached = body.refresh ? null : await getAi(projectRoot, run.meta.runId, key);
+          if (!cached) return false;
+          const write = startSse(res);
+          write({ type: 'cached', ...cached });
+          write({ type: 'done', cached: true });
+          res.end();
+          return true;
+        };
+        if (action === 'quality-review') {
+          // điểm công thức của run mới nhất + lý do trừ điểm + file test; cache theo run mới nhất, số run, model, effort
+          const n = Math.min(runCount(url), 30);
+          const q = analyzeQuality(await loadHistory(projectRoot, n));
+          if (!q.rows.length) return send(res, 400, { error: 'Chưa có run nào có kết quả để đánh giá' });
+          run = { meta: { runId: q.runId }, report: null, dir: projectRoot };
+          key = cacheKey(action, q.runId, `runs:${n}`, variant);
+          if (await replayCached()) return;
+          prompt = buildPrompt(action, { evidence: qualityEvidence(q), language: readConfig(projectRoot).ai?.language });
+        } else if (action === 'route-test') {
           if (typeof body.route !== 'string' || !/^\/[\w\-./:]{0,300}$/.test(body.route)) return send(res, 400, { error: 'invalid route' });
           const { routes } = await coverageRoutes(projectRoot, readConfig(projectRoot)); // cùng danh sách trang Coverage hiển thị
           if (!routes.has(body.route)) return send(res, 404, { error: 'route not found' });
@@ -786,14 +814,8 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
             evidence = flakyEvidence(history, testKey(result));
             newest = history[0]?.meta.runId ?? '';
           }
-          key = cacheKey(action, run.meta.runId, action === 'suggest-locator' ? `${body.resultId}:${body.stepIndex}` : action === 'why-flaky' ? `${body.resultId}:${newest}` : action === 'explain-group' ? `group:${newest}` : action === 'explain-visual' ? `${body.resultId}:visual:${newest}` : perResult ? body.resultId : '');
-          const cached = body.refresh ? null : await getAi(projectRoot, run.meta.runId, key);
-          if (cached) {
-            const write = startSse(res);
-            write({ type: 'cached', ...cached });
-            write({ type: 'done', cached: true });
-            return res.end();
-          }
+          key = cacheKey(action, run.meta.runId, action === 'suggest-locator' ? `${body.resultId}:${body.stepIndex}` : action === 'why-flaky' ? `${body.resultId}:${newest}` : action === 'explain-group' ? `group:${newest}` : action === 'explain-visual' ? `${body.resultId}:visual:${newest}` : perResult ? body.resultId : '', variant);
+          if (await replayCached()) return;
           if (action === 'explore-to-test' && !run.report.run.explore) return send(res, 400, { error: 'not an explore run' });
           const commits = action === 'suggest-locator' || action === 'why-flaky' || action === 'explore-to-test' ? [] : await commitsFor(projectRoot, run, action, body.resultId);
           prompt = buildPrompt(action, { report: run.report, meta: run.meta, resultId: body.resultId, runDir: relative(projectRoot, run.dir), commits, language: readConfig(projectRoot).ai?.language, stepIndex: body.stepIndex, draft, evidence });
@@ -805,6 +827,8 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         await ai.run({
           prompt,
           resume,
+          model: body.model,
+          effort: body.effort,
           signal: ac.signal,
           onEvent: (e) => {
             if (e.type === 'text') text += `${e.text}\n`;
@@ -1064,12 +1088,12 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return send(res, 200, { lines: await setup(projectRoot) });
       }
       if (p === '/api/settings') {
-        const { workers, sqlite, browser, linear } = await readBody(req);
+        const { workers, sqlite, browser, linear, headed, sources, prompt } = await readBody(req);
         if (sqlite === true) {
           const sup = sqliteSupport();
           if (!sup.ok) return send(res, 400, { error: sup.reason });
         }
-        const saved = await writeSettings(projectRoot, { workers, sqlite, browser, linear });
+        const saved = await writeSettings(projectRoot, { workers, sqlite, browser, linear, headed, sources, prompt });
         if (sqlite === true) void syncIndex(projectRoot).catch(() => {});
         if (sqlite === false) {
           closeIndex(projectRoot);
@@ -1149,7 +1173,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         if (body.rerunOf !== undefined && !RUN_ID.test(String(body.rerunOf))) return send(res, 400, { error: 'invalid rerunOf' });
         let out;
         try {
-          const RUN_KEYS = ['tests', 'targets', 'agents', 'retries', 'repeatEach', 'noCache', 'rerunOf', 'workers', 'browser', 'tag', 'tagMode', 'excludeTag', 'grep', 'shard', 'maxFailures', 'strictCache', 'trace', 'video', 'lastFailed', 'updateSnapshots', 'aiTrace'];
+          const RUN_KEYS = ['tests', 'targets', 'agents', 'retries', 'repeatEach', 'noCache', 'rerunOf', 'workers', 'browser', 'tag', 'tagMode', 'excludeTag', 'grep', 'shard', 'maxFailures', 'strictCache', 'trace', 'video', 'lastFailed', 'updateSnapshots', 'aiTrace', 'headed'];
           const opts = Object.fromEntries(RUN_KEYS.filter((k) => body[k] !== undefined).map((k) => [k, body[k]]));
           // workers: không gửi = mặc định ở Settings; null = để e2e tự chọn theo máy cho lần chạy này
           if (body.workers === undefined) {
@@ -1159,6 +1183,8 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
           // trình duyệt: không gửi = mặc định ở Settings (chromium)
           if (body.browser === undefined) opts.browser = (await readSettings(projectRoot)).browser;
           else if (!validBrowser(body.browser)) return send(res, 400, { error: 'Trình duyệt phải là chromium, firefox hoặc webkit' });
+          // headed: không gửi = mặc định ở Settings (tắt)
+          if (body.headed === undefined && (await readSettings(projectRoot)).headed) opts.headed = true;
           if (body.excludeQuarantined === true) opts.grepInvert = quarantineFlags(await readQuarantine(projectRoot)).args.filter((x) => x !== '--grep-invert');
           out = runner.start(opts);
         } catch (e) {
