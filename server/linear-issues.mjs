@@ -2,6 +2,9 @@
 // .e2e-dashboard/linear-issues.json. Phần thuần (chuẩn hoá, merge) tách riêng để test không cần mạng.
 import { parseIssueRef } from './linear.mjs';
 import { readState, writeState, serial } from './jsonstate.mjs';
+import { buildAnalyzePrompt, parseTestcases, normalizeTestcase, buildGenPrompt, parseGenerated } from './linear-tests.mjs';
+import { writeNewTest, testFiles } from './aiextra.mjs';
+import { readSettings } from './settings.mjs';
 
 const FILE = 'linear-issues.json';
 
@@ -84,4 +87,77 @@ export function addManualIssue({ root, client, id }) {
     await save(root, { items: [...items, item], fetchedAt });
     return item;
   });
+}
+
+const ITEM = /^\/api\/linear\/issues\/([A-Z][A-Z0-9]{1,9}-\d{1,7})\/(analyze|testcases|gen)$/;
+
+// Route của tính năng Issue Linear. Trả null khi đường dẫn không thuộc tính năng này.
+// Lỗi có status (400 / 404 / 409 / 502) đi ra đúng mã; lỗi khác để app.mjs xử lý như 500.
+export function createLinearIssuesApi({ projectRoot, linearBackend, runAi, settings = readSettings }) {
+  const client = async () => {
+    const lin = await linearBackend();
+    if (!lin.client) throw Object.assign(new Error('Chưa có Linear: nhập LINEAR_API_KEY ở Cài đặt hệ thống → Tích hợp, hoặc đăng nhập MCP Linear cho Claude CLI.'), { status: 400 });
+    return lin.client;
+  };
+  const current = async (id) => {
+    const item = (await readIssues(projectRoot)).items.find((i) => i.identifier === id);
+    if (!item) throw Object.assign(new Error(`Issue ${id} chưa có trong danh sách`), { status: 404 });
+    return item;
+  };
+  const patch = (identifier, change) =>
+    serial(`${projectRoot}:${FILE}`, async () => {
+      const { items, fetchedAt } = await readIssues(projectRoot);
+      await save(projectRoot, { items: items.map((i) => (i.identifier === identifier ? { ...i, ...change } : i)), fetchedAt });
+    });
+
+  const route = async (req, p, method, readBody) => {
+    if (p === '/api/linear/issues' && method === 'GET') return { status: 200, body: await readIssues(projectRoot) };
+    if (p === '/api/linear/issues/refresh' && method === 'POST') {
+      const body = await refreshIssues({ root: projectRoot, client: await client(), settings: await settings(projectRoot) });
+      return { status: 200, body };
+    }
+    if (p === '/api/linear/issues/add' && method === 'POST') {
+      const body = await readBody(req);
+      return { status: 200, body: await addManualIssue({ root: projectRoot, client: await client(), id: body.id }) };
+    }
+    const m = ITEM.exec(p);
+    if (!m) return null;
+    const [, id, action] = m;
+
+    if (action === 'analyze' && method === 'POST') {
+      const linear = await client();
+      await current(id);
+      const issue = await linear.getWithComments(id);
+      if (!issue) throw Object.assign(new Error(`Không thấy issue ${id} trên Linear`), { status: 404 });
+      // chỉ trả đề xuất: người dùng sửa rồi mới lưu
+      return { status: 200, body: { testcases: parseTestcases(await runAi(buildAnalyzePrompt({ issue }))) } };
+    }
+    if (action === 'testcases' && method === 'POST') {
+      await current(id);
+      const body = await readBody(req);
+      if (!Array.isArray(body.testcases) || !body.testcases.length || body.testcases.length > 50) throw Object.assign(new Error('Cần từ 1 đến 50 testcase'), { status: 400 });
+      const testcases = body.testcases.map((t, i) => normalizeTestcase(t, i));
+      await patch(id, { testcases, analyzedAt: new Date().toISOString() });
+      return { status: 200, body: { testcases } };
+    }
+    if (action === 'gen' && method === 'POST') {
+      const item = await current(id);
+      if (!item.testcases?.length) throw Object.assign(new Error('Lưu testcase trước khi Gen'), { status: 400 });
+      const prompt = buildGenPrompt({ issue: item, testcases: item.testcases, testFiles: await testFiles(projectRoot) });
+      const { path, code } = parseGenerated(await runAi(prompt), id);
+      const saved = await writeNewTest(projectRoot, path, code);
+      await patch(id, { generatedPath: saved.saved });
+      return { status: 200, body: saved };
+    }
+    return null;
+  };
+  // lỗi có status (400/404/409/502) thành response, để mã trả về khớp với đường dẫn; lỗi lạ vẫn ném tiếp
+  return async (...args) => {
+    try {
+      return await route(...args);
+    } catch (e) {
+      if (e.status) return { status: e.status, body: { error: e.message } };
+      throw e;
+    }
+  };
 }

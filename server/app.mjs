@@ -48,6 +48,7 @@ import { listCache, clearCache, cacheDir } from './replaycache.mjs';
 import { validateFeedback, buildIssue, rateOk, createIssue, SECRET } from './feedback.mjs';
 import { commentIfNewBug, signatureOf } from './knownbug.mjs';
 import { resolveLinear, detectMcpLinear } from './linear-mcp.mjs';
+import { createLinearIssuesApi } from './linear-issues.mjs';
 import { findDuplicates, splitCandidates, actionPrompt, latestWithResults } from './dupes.mjs';
 import { analyzeQuality } from './quality.mjs';
 import { readTemplates, findTemplate, saveTemplate, resultVars, runVars, renderPrompt, aiParts, keepFingerprint, PLACEHOLDERS } from './qc-templates.mjs';
@@ -245,6 +246,18 @@ const historyTable = async (root, n) => (await indexedTestHistory(root, n).catch
 export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER, ai = NO_AI, qcAi = null, env = process.env, linearFetch, mcpDetect = detectMcpLinear, github = createGithub({ projectRoot }), ghImport = importFromGithub, automation = null, tracking = null, selfHeal = null }) {
   // Linear: API key nếu có, không thì MCP Linear của Claude CLI. `settings` giống các phiên AI khác (model, effort).
   const linearBackend = () => resolveLinear({ projectRoot, cfg: readConfig(projectRoot), env, fetchImpl: linearFetch, detect: mcpDetect, settings: () => aiPrefs(env, readConfig(projectRoot)) });
+  // Issue Linear: AI trả về văn bản; lỗi AI có status 502 để route trả đúng mã
+  const runAiText = async (prompt) => {
+    let final = null;
+    let error = null;
+    await ai.run({ prompt, onEvent: (e) => {
+      if (e.type === 'done' && !e.isError) final = e.result;
+      if (e.type === 'error') error = e.message;
+    } });
+    if (!final) throw Object.assign(new Error(error ?? 'AI không trả lời'), { status: 502 });
+    return final;
+  };
+  const linearIssuesApi = createLinearIssuesApi({ projectRoot, linearBackend, runAi: runAiText });
   const NO_LINEAR = 'Chưa có Linear: nhập LINEAR_API_KEY ở Cài đặt hệ thống → Tích hợp, hoặc đăng nhập MCP Linear cho Claude CLI (chạy `claude`, gõ /mcp).';
   let avgByKey = new Map();
   const refreshAverages = () =>
@@ -301,6 +314,10 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
 
     const p = url.pathname;
     const ui = { 'content-security-policy': UI_CSP, 'cache-control': 'no-store' };
+    if (p.startsWith('/api/linear/issues')) {
+      const out = await linearIssuesApi(req, p, req.method, readBody);
+      if (out) return send(res, out.status, out.body);
+    }
     if (req.method === 'GET') {
       if (p === '/') return send(res, 200, await readFile(join(uiDir, 'index.html'), 'utf8'), { ...ui, 'content-type': 'text/html; charset=utf-8' });
       if (p === '/app.js' || p === '/style.css') {
