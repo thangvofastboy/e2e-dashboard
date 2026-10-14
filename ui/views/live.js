@@ -1,8 +1,13 @@
 import { getJson, liveStream, postJson, isExport } from '../api.js';
 import { confirmDialog } from '../confirm.js';
 import { renderMarkdown } from '../markdown.js';
-import { isFailed } from '../model.js';
+import { isFailed, flattenResults } from '../model.js';
 import { openRunDialog } from './run-dialog.js';
+import { openAiPanel } from './ai-panel.js';
+import { openLinearDialog } from './linear.js';
+import { openBisectDialog } from './actions.js';
+import { copyToClipboard } from '../analysis.js';
+import { toast } from '../toast.js';
 import { icon } from '../icons.js';
 import { fmtDuration, statusBadge, escapeHtml } from '../format.js';
 
@@ -85,6 +90,52 @@ export function axisTicks(spanMs) {
   return out;
 }
 
+// Danh sách test fail dưới gantt: chỉ fail thật (bỏ interrupted = bị dừng giữa chừng, không phải lỗi test)
+const FAILED = ['failed', 'timed-out', 'error'];
+export const failedRows = (tests = []) => (tests ?? []).filter((t) => FAILED.includes(t.status));
+
+// key live = testId|target|agent|repeat (server/live.mjs keyOf) → result trong báo cáo; trùng thì lấy cái đầu
+export function matchResultId(t, report) {
+  if (!report?.run?.results) return null;
+  return flattenResults(report).find((r) => r.testId === t.testId && r.target === t.target && r.agent === (t.agent ?? 'default') && r.repeat === (t.repeat ?? 0)) ?? null;
+}
+
+export const runsHref = (runId) => (runId ? `#/run/${encodeURIComponent(runId)}` : '#/runs');
+
+// ctx: { runId, finished, results: { [liveKey]: { id, file, line } } } — results chỉ có khi đã lấy báo cáo
+export function failedHtml(tests, { runId = null, finished = false, results = {} } = {}) {
+  const rows = failedRows(tests);
+  if (!rows.length) return '';
+  const items = rows.map((t) => {
+    const r = results[t.key];
+    const where = r?.line ? `${r.file}:${r.line}` : t.line ? `${t.file}:${t.line}` : t.file ?? '';
+    const first = stripAnsi(t.error?.message ?? '').split('\n').find((l) => l.trim()) ?? '';
+    const k = escapeHtml(t.key);
+    const id = r ? escapeHtml(r.id) : '';
+    const more = r && runId
+      ? `<button type="button" class="small-btn btn-ai" data-live-ai="analyze-failure" data-result="${id}" data-title="${escapeHtml(t.title)}">${icon('sparkles', { size: 13 })}Phân tích lỗi</button><button type="button" class="small-btn btn-ai" data-live-ai="repro-steps" data-result="${id}" data-title="${escapeHtml(t.title)}">${icon('list', { size: 13 })}Bước tái hiện</button><button type="button" class="small-btn" data-live-linear="${id}">${icon('ticket', { size: 13 })}Gửi Linear</button><button type="button" class="small-btn" data-live-bisect="${id}">${icon('commit', { size: 13 })}Tìm commit gây lỗi</button><button type="button" class="small-btn" data-live-fix="${id}" title="Copy lệnh để Claude Code đọc lỗi, sửa và chạy lại test">${icon('bolt', { size: 13 })}Sửa bằng Claude Code</button>`
+      : finished && !runId ? '<span class="muted small">chưa có báo cáo để phân tích</span>' : '';
+    return `<li class="failed-row"><div><strong>${escapeHtml(t.title)}</strong> ${statusBadge(t.status)} <span class="muted small"><code>${escapeHtml(where)}</code> · ${escapeHtml(t.target)}</span></div>
+      ${first ? `<div class="err">${t.error?.code ? `<code>${escapeHtml(t.error.code)}</code> ` : ''}${escapeHtml(first.slice(0, 300))}</div>` : ''}
+      <div class="row-actions"><button type="button" class="small-btn" data-view-steps="${k}">${icon('list', { size: 13 })}Xem bước</button><button type="button" class="small-btn" data-rerun-one="${k}">${icon('play', { size: 13 })}Chạy lại</button>${more}</div></li>`;
+  });
+  return `<h2>Test fail <strong>${rows.length}</strong></h2><ul class="failed-list">${items.join('')}</ul>`;
+}
+
+// thanh tài nguyên trong head (GET /api/resources); thiếu dữ liệu thì trả '' để không hiện gì
+export function formatResources(res) {
+  const m = res?.machine;
+  if (!m) return '';
+  const gb = (mb) => (mb / 1024).toFixed(1);
+  const parts = [];
+  if (m.cpuPct != null) parts.push(`CPU máy ${Math.round(m.cpuPct)}%`);
+  if (m.memTotalMb) parts.push(`RAM ${gb(m.memTotalMb - (m.memFreeMb ?? 0))}/${gb(m.memTotalMb)} GB`);
+  if (m.diskFreeGb != null) parts.push(`Disk trống ${Math.round(m.diskFreeGb)} GB`);
+  const r = res.app?.runner;
+  if (r) parts.push(`App: ${Math.round(r.rssMb)} MB · ${Math.round(r.cpuPct)}% CPU · ${r.procs} tiến trình`);
+  return parts.length ? `<p class="muted small live-res">${parts.map(escapeHtml).join(' · ')}</p>` : '';
+}
+
 const LEGEND = [['passed', 'Pass'], ['failed', 'Fail'], ['flaky', 'Flaky'], ['skipped', 'Skip'], ['running', 'Đang chạy'], ['interrupted', 'Dừng giữa chừng']];
 
 export async function renderLive(main) {
@@ -100,6 +151,37 @@ export async function renderLive(main) {
   let alive = true; // fetch step trả về sau khi đã rời trang Live: không vẽ đè lên trang khác
   // tóm tắt AI do server tự tạo khi run có test fail xong (aiextra.mjs): hỏi lại vài giây một lần tới khi có
   let aiSum = { runId: null, md: null, state: null, tries: 0, timer: null };
+  // báo cáo của run vừa xong: lấy một lần để có resultId cho các nút như ở Runs
+  let rep = { runId: null, results: {} };
+  function watchReport() {
+    if (!snap || snap.status !== 'finished' || !snap.runId || rep.runId === snap.runId || isExport()) return;
+    const runId = snap.runId;
+    rep = { runId, results: {} };
+    getJson(`/api/runs/${encodeURIComponent(runId)}`)
+      .then((data) => {
+        if (rep.runId !== runId) return;
+        for (const t of failedRows(snap.tests)) {
+          const r = matchResultId(t, data.report);
+          if (r) rep.results[t.key] = { id: r.id, file: r.file, line: r.line };
+        }
+        draw();
+      })
+      .catch(() => setTimeout(() => rep.runId === runId && (rep.runId = null), 5000)); // báo cáo có thể chưa ghi xong: thử lại sau
+  }
+  // tài nguyên máy / app: hỏi 2 giây một lần khi trang Live đang mở; endpoint không có (404) thì thôi hẳn
+  let resHtml = '';
+  const pollRes = () => {
+    if (document.hidden) return;
+    getJson('/api/resources')
+      .then((r) => (resHtml = formatResources(r)))
+      .catch((e) => {
+        resHtml = '';
+        if (String(e.message).startsWith('404')) clearInterval(resTick);
+      })
+      .finally(draw);
+  };
+  const resTick = isExport() ? null : setInterval(pollRes, 2000);
+
   function watchSummary() {
     if (!snap || snap.status !== 'finished' || snap.runStatus === 'passed' || !snap.runId || isExport()) return;
     if (aiSum.runId !== snap.runId) {
@@ -201,7 +283,7 @@ export async function renderLive(main) {
     // Trang chia phần: phần nào HTML không đổi thì giữ nguyên DOM (hover, focus, vị trí cuộn, chọn chữ trong log);
     // gantt cập nhật từng block theo key. Trước đây mỗi snapshot (≤ 4 lần/giây) dựng lại cả trang.
     if (!main.querySelector(':scope > [data-part="head"]')) {
-      main.innerHTML = '<div data-part="head"></div><section class="panel ai-summary" data-part="ai"></section><section class="panel gantt" data-part="gantt"></section><section class="panel fill-me" data-part="steps"></section><section data-part="out"></section>';
+      main.innerHTML = '<div data-part="head"></div><section class="panel ai-summary" data-part="ai"></section><section class="panel gantt" data-part="gantt"></section><section class="panel live-failed" data-part="failed"></section><section class="panel fill-me" data-part="steps"></section><section data-part="out"></section>';
     }
     const parts = {
       head: `<h1>Live ${beat}${statusBadge(snap.status === 'finished' ? snap.runStatus ?? 'finished' : snap.status)}</h1>
@@ -209,7 +291,8 @@ export async function renderLive(main) {
         ${snap.status === 'running' && !snap.disconnected ? `<p><button type="button" class="btn-stop" data-stop${stopping ? ' disabled' : ''}>${icon('square', { size: 14 })}Dừng run</button> <span class="muted small" data-stop-note>${escapeHtml(stopNote)}</span></p>` : ''}
         <div class="progress${snap.status === 'running' ? ' running' : ''}"><div class="bar" style="width:${pct}%"></div></div>
         <p class="muted">${escapeHtml(snap.done)}/${escapeHtml(snap.total)} test${eta}${tally(snap.tests, snap.lanes)}</p>
-        ${snap.status !== 'running' ? `<p class="row-actions"><a class="button" href="#/runs">${icon('list', { size: 14 })}Xem ở Runs</a> <button type="button" data-run-all>${icon('play', { size: 14 })}Chạy lại toàn bộ suite</button></p>` : ''}
+        ${resHtml}
+        ${snap.status !== 'running' ? `<p class="row-actions"><a class="button" href="${runsHref(snap.runId)}">${icon('list', { size: 14 })}Xem ở Runs</a> <button type="button" data-run-all>${icon('play', { size: 14 })}Chạy lại toàn bộ suite</button></p>` : ''}
         ${snap.error ? `<div class="err">${escapeHtml(snap.error.message ?? '')}</div>` : ''}
         ${snap.stopped ? `<div class="banner tone-warn">${icon('alert', { size: 14 })}Run dừng sớm: đã chạm <code>--max-failures</code> (${escapeHtml(snap.stopped.failures)}/${escapeHtml(snap.stopped.limit)} test fail), các test còn lại không chạy.</div>` : ''}
         ${(snap.notices ?? []).map((n) => `<div class="banner tone-info">${icon('info', { size: 14 })}${n.target ? `<strong>${escapeHtml(n.target)}</strong>: ` : ''}${escapeHtml(n.message)}</div>`).join('')}
@@ -217,6 +300,7 @@ export async function renderLive(main) {
       ai: aiSum.runId === snap.runId && aiSum.md
         ? `<h2>${icon('sparkles', { size: 15 })} Tóm tắt AI</h2><div class="md">${renderMarkdown(aiSum.md)}</div>`
         : aiSum.runId === snap.runId && aiSum.state === 'pending' ? `<p class="muted small">${icon('sparkles', { size: 13 })} AI đang tóm tắt run…</p>` : '',
+      failed: failedHtml(snap.tests, { runId: snap.runId, finished: snap.status !== 'running', results: rep.runId === snap.runId ? rep.results : {} }),
       steps,
       out: out ? `<h2>Output</h2><pre class="log">${out}</pre>` : '',
     };
@@ -233,6 +317,7 @@ export async function renderLive(main) {
     syncGantt(main.querySelector(':scope > [data-part="gantt"]'), byLane, gantt(spanMs), legend);
     main.querySelector('.beat')?.classList.toggle('idle', !pulse);
     watchSummary();
+    watchReport();
   }
 
   // gantt theo key: block mới thêm vào, block cũ đổi vị trí / trạng thái tại chỗ, block không còn thì bỏ
@@ -285,6 +370,35 @@ export async function renderLive(main) {
       draw();
       return;
     }
+    // nút của danh sách test fail
+    const b = e.target.closest('[data-view-steps], [data-rerun-one], [data-live-ai], [data-live-linear], [data-live-bisect], [data-live-fix]');
+    if (b && snap) {
+      const runId = snap.runId;
+      const d = b.dataset;
+      if (d.viewSteps) {
+        selectedKey = d.viewSteps; // như bấm block trong gantt
+        draw();
+        main.querySelector(':scope > [data-part="steps"]')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return;
+      }
+      if (d.rerunOne) {
+        const t = snap.tests.find((x) => x.key === d.rerunOne);
+        if (!t) return;
+        const r = rep.runId === runId ? rep.results[t.key] : null;
+        // chưa có báo cáo thì không biết dòng: chạy lại cả file của test đó
+        const spec = r?.line ? `${r.file}:${r.line}` : t.file;
+        return openRunDialog({ tests: [spec], targets: [t.target], agents: [t.agent], rerunOf: runId, title: `Chạy lại ${t.title}` });
+      }
+      if (d.liveAi) return openAiPanel({ action: d.liveAi, runId, resultId: d.result, title: `${d.liveAi === 'repro-steps' ? 'Bước tái hiện' : 'Phân tích lỗi'} · ${d.title ?? ''}` });
+      if (d.liveLinear) return openLinearDialog({ runId, resultId: d.liveLinear });
+      if (d.liveBisect) return openBisectDialog({ runId, resultId: d.liveBisect });
+      if (d.liveFix) {
+        const cmd = `/e2e-dashboard:e2e-dashboard fix ${runId} ${d.liveFix}`;
+        const ok = await copyToClipboard(cmd);
+        toast(ok ? 'Đã copy lệnh: dán vào Claude Code để Claude sửa và chạy lại test' : cmd, ok ? 'good' : 'info', 6000);
+        return;
+      }
+    }
     const block = e.target.closest('.block');
     if (block) {
       selectedKey = block.dataset.key;
@@ -321,8 +435,10 @@ export async function renderLive(main) {
   });
   const tick = setInterval(grow, 1000); // grow running blocks
   draw();
+  if (resTick) pollRes();
   return () => {
     alive = false;
+    clearInterval(resTick);
     clearTimeout(aiSum.timer);
     stop();
     clearInterval(tick);
