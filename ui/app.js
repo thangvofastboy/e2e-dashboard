@@ -46,6 +46,7 @@ import { getJson, postJson, isExport, liveStream } from './api.js';
 import { attachTooltips } from './charts.js';
 import { escapeHtml } from './format.js';
 import { applyPrefs, setTheme } from './prefs.js';
+import { iconOnly, storedIconOnly } from './icon-only.js';
 import { parseRoute } from './router.js';
 import { icon, ICON_SPRITE } from './icons.js';
 
@@ -93,6 +94,7 @@ function toggleTheme() {
 
 function shell() {
   applyPrefs();
+  document.documentElement.classList.toggle('icon-only', storedIconOnly()); // nút chỉ hiện icon (Cài đặt › Giao diện)
   document.body.insertAdjacentHTML('afterbegin', ICON_SPRITE);
   // title: khi menu thu gọn chỉ còn icon, rê chuột vẫn thấy tên trang
   const link = ([v, href, label, ic]) => `<a href="${href}" data-nav="${v}" class="n-${v}" title="${label}"><span class="ni">${icon(ic)}</span><span class="nl">${label}</span>${v === 'live' ? '<span class="live-dot" aria-label="đang chạy"></span>' : ''}</a>`;
@@ -469,6 +471,7 @@ const fsBtn = (page) => `<button type="button" class="icon-btn fs-btn${page ? ' 
 const MAXABLE = '.charts > figure, #main > section.panel, #main > .fill, .two-col > .panel, .ov-top > .health-score, .run-summary';
 function pageExtras(main) {
   if (!main || isExport()) return;
+  iconOnly(main); // chữ của nút có icon → .btn-label (ẩn khi bật "Nút chỉ hiện icon"), hover hiện data-tip
   const h1 = main.querySelector('h1');
   // trang chưa có mô tả hiển thị: dùng chú giải của trang làm mô tả ngay dưới tiêu đề
   if (h1 && PAGE_HELP[main.dataset.view] && !main.querySelector('.page-head p, .page-desc')) h1.insertAdjacentHTML('afterend', `<p class="page-desc">${escapeHtml(PAGE_HELP[main.dataset.view])}</p>`);

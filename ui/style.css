@@ -1125,3 +1125,24 @@ td > :where(button, a.button) + :where(button, a.button), p > :where(button, a.b
 /* menu: các mục chưa có màu (trước đây icon rơi về màu chữ mặc định) */
 .n-manual { --hue: #0284c7; } .n-verify { --hue: #16a34a; } .n-build { --hue: #4f46e5; } .n-quality { --hue: #0f766e; }
 .n-qc-templates { --hue: #c026d3; } .n-system { --hue: #52525b; } .n-feedback { --hue: #f97316; }
+
+/* ---- nút chỉ hiện icon (Cài đặt › Giao diện): chữ ẩn kiểu sr-only, trình đọc màn hình vẫn đọc; hover / focus hiện data-tip (#chart-tip) */
+.icon-only .btn-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.btn-count { font-weight: 600; font-variant-numeric: tabular-nums; }
+.icon-only .btn-count { margin-inline-start: -2px; }
+/* thanh tab dạng seg-btns (Coverage) */
+.seg-btns.tabbar { margin: 4px 0 14px; }
+.seg-btns [role="tab"][aria-selected="true"] { background: var(--info-bg); color: var(--info-ink); border-color: transparent; font-weight: 600; }
+.seg-btns [role="tab"] .cnt { margin: 0 0 0 4px; color: inherit; }
+/* Cài đặt › Hướng dẫn: mục lục bên trái, nội dung Markdown bên phải */
+.guide { display: grid; grid-template-columns: minmax(160px, 220px) 1fr; gap: 20px; align-items: start; }
+.guide-toc { position: sticky; top: 8px; display: flex; flex-direction: column; gap: 2px; }
+.guide-toc button { text-align: start; justify-content: flex-start; }
+.guide .md h2 { scroll-margin-top: 12px; }
+.md-table td, .md-table th { vertical-align: top; }
+@media (max-width: 900px) { .guide { grid-template-columns: 1fr; } .guide-toc { position: static; } }
+/* Cài đặt › Dự án: danh sách thư mục nguồn */
+.src-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.src-row { display: grid; grid-template-columns: 1fr 2fr auto; gap: 8px; align-items: start; }
+.src-row textarea, .proj-prompt { width: 100%; box-sizing: border-box; }
+@media (max-width: 900px) { .src-row { grid-template-columns: 1fr; } }
