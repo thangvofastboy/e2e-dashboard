@@ -5,7 +5,8 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { normalizeLinear, readSettings, writeSettings } from '../server/settings.mjs';
-import { normalizeIssueId, mergeRefresh } from '../server/linear-issues.mjs';
+import { normalizeIssueId, mergeRefresh, readIssues, refreshIssues, addManualIssue } from '../server/linear-issues.mjs';
+import { writeState } from '../server/jsonstate.mjs';
 import { createLinear } from '../server/linear.mjs';
 
 const page = (nodes, next = null) => ({ data: { issues: { nodes, pageInfo: { hasNextPage: !!next, endCursor: next } } } });
@@ -91,4 +92,33 @@ test('listAssigned: body GraphQL có errors thì ném lỗi Linear, không trả
   const fetchImpl = async () => json({ errors: [{ message: 'bad filter' }] });
   const client = createLinear({ apiKey: 'lin_api_testkey_123456', team: null, fetchImpl });
   await assert.rejects(client.listAssigned({ emails: ['a@x.com'], statuses: ['Todo'] }), /Linear: bad filter/);
+});
+
+test('refreshIssues: Linear lỗi thì giữ nguyên danh sách đã lưu và ném lỗi', async () => {
+  const root = tmp();
+  await writeState(root, 'linear-issues.json', { items: [{ identifier: 'ENG-9', source: 'manual', testcases: null, generatedPath: null }], fetchedAt: 'T0' });
+  const client = { listAssigned: async () => { throw new Error('Linear: HTTP 503'); } };
+  await assert.rejects(refreshIssues({ root, client, settings: { emails: ['a@x.com'], statuses: ['Todo'] } }), /503/);
+  const saved = await readIssues(root);
+  assert.deepEqual(saved.items.map((i) => i.identifier), ['ENG-9']);
+  assert.equal(saved.fetchedAt, 'T0');
+});
+
+test('refreshIssues: ghi kết quả merge và thời điểm lấy', async () => {
+  const root = tmp();
+  const client = { listAssigned: async () => [{ identifier: 'ENG-1', title: 'a', url: 'u', state: 'Todo', assignee: 'a@x.com' }] };
+  const out = await refreshIssues({ root, client, settings: { emails: ['a@x.com'], statuses: ['Todo'] }, now: 'T1' });
+  assert.equal(out.fetchedAt, 'T1');
+  assert.equal((await readIssues(root)).items[0].source, 'auto');
+});
+
+test('addManualIssue: thêm tay một issue, không trùng; mã không có trên Linear thì 404', async () => {
+  const root = tmp();
+  const client = { get: async (id) => (id === 'ENG-7' ? { identifier: 'ENG-7', title: 'x', url: 'u', state: { name: 'Todo' }, assignee: null } : null) };
+  await addManualIssue({ root, client, id: 'eng-7' });
+  await addManualIssue({ root, client, id: 'ENG-7' });
+  const { items } = await readIssues(root);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].source, 'manual');
+  await assert.rejects(addManualIssue({ root, client, id: 'ENG-404' }), (e) => e.status === 404);
 });
