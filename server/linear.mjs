@@ -196,6 +196,24 @@ export function createLinear({ apiKey, team, fetchImpl = globalThis.fetch, timeo
         throw e;
       }
     },
+    // issue được giao cho các email, lọc theo tên status; đi qua mọi trang (tối đa 10 trang = 500 issue)
+    async listAssigned({ emails, statuses }) {
+      const out = [];
+      let after = null;
+      for (let page = 0; page < 10; page++) {
+        const data = await gql(
+          `query($emails: [String!], $states: [String!], $after: String) { issues(first: 50, after: $after, filter: { assignee: { email: { in: $emails } }, state: { name: { in: $states } } }) { pageInfo { hasNextPage endCursor } nodes { identifier title url state { name } assignee { email } } } }`,
+          { emails, states: statuses, after },
+        );
+        for (const n of data.issues?.nodes ?? []) {
+          if (!n?.assignee?.email || !n?.state?.name) continue; // assignee / state null: bỏ, không crash
+          out.push({ identifier: n.identifier, title: n.title, url: n.url, state: n.state.name, assignee: n.assignee.email });
+        }
+        if (!data.issues?.pageInfo?.hasNextPage) break;
+        after = data.issues.pageInfo.endCursor;
+      }
+      return out;
+    },
     async create(draft) {
       const data = await gql(`mutation($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { ${ISSUE} } } }`, { input: { teamId: await teamId(), title: draft.title, description: draft.description } });
       if (!data.issueCreate?.success) throw new Error('Linear: tạo issue thất bại.');

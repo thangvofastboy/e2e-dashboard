@@ -6,6 +6,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { normalizeLinear, readSettings, writeSettings } from '../server/settings.mjs';
 import { normalizeIssueId, mergeRefresh } from '../server/linear-issues.mjs';
+import { createLinear } from '../server/linear.mjs';
+
+const page = (nodes, next = null) => ({ data: { issues: { nodes, pageInfo: { hasNextPage: !!next, endCursor: next } } } });
+const json = (body) => ({ ok: true, status: 200, json: async () => body });
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'e2ed-li-'));
 
@@ -55,4 +59,36 @@ test('writeSettings lưu khoá linear; readSettings trả mặc định rỗng k
   assert.deepEqual((await readSettings(root)).linear, { emails: [], statuses: [] });
   await writeSettings(root, { linear: { emails: ['a@x.com'], statuses: ['Todo'] } });
   assert.deepEqual((await readSettings(root)).linear, { emails: ['a@x.com'], statuses: ['Todo'] });
+});
+
+test('listAssigned: gửi filter email và status đúng dạng, đi qua mọi trang', async () => {
+  const calls = [];
+  const responses = [
+    page([{ identifier: 'ENG-1', title: 'a', url: 'https://linear.app/x/1', state: { name: 'Todo' }, assignee: { email: 'a@x.com' } }], 'c1'),
+    page([{ identifier: 'ENG-2', title: 'b', url: 'https://linear.app/x/2', state: { name: 'Todo' }, assignee: { email: 'a@x.com' } }]),
+  ];
+  const fetchImpl = async (_u, init) => { calls.push(JSON.parse(init.body)); return json(responses.shift()); };
+  const client = createLinear({ apiKey: 'lin_api_testkey_123456', team: null, fetchImpl });
+  const out = await client.listAssigned({ emails: ['a@x.com'], statuses: ['Todo'] });
+  assert.deepEqual(out.map((i) => i.identifier), ['ENG-1', 'ENG-2']);
+  assert.deepEqual(calls[0].variables.emails, ['a@x.com']);
+  assert.deepEqual(calls[0].variables.states, ['Todo']);
+  assert.equal(calls[1].variables.after, 'c1');
+});
+
+test('listAssigned: bỏ issue có assignee hoặc state là null, không crash', async () => {
+  const fetchImpl = async () => json(page([
+    { identifier: 'ENG-1', title: 'ok', url: 'https://linear.app/x/1', state: { name: 'Todo' }, assignee: { email: 'a@x.com' } },
+    { identifier: 'ENG-2', title: 'không người giao', url: 'https://linear.app/x/2', state: { name: 'Todo' }, assignee: null },
+    { identifier: 'ENG-3', title: 'không status', url: 'https://linear.app/x/3', state: null, assignee: { email: 'a@x.com' } },
+  ]));
+  const client = createLinear({ apiKey: 'lin_api_testkey_123456', team: null, fetchImpl });
+  const out = await client.listAssigned({ emails: ['a@x.com'], statuses: ['Todo'] });
+  assert.deepEqual(out.map((i) => i.identifier), ['ENG-1']);
+});
+
+test('listAssigned: body GraphQL có errors thì ném lỗi Linear, không trả danh sách rỗng', async () => {
+  const fetchImpl = async () => json({ errors: [{ message: 'bad filter' }] });
+  const client = createLinear({ apiKey: 'lin_api_testkey_123456', team: null, fetchImpl });
+  await assert.rejects(client.listAssigned({ emails: ['a@x.com'], statuses: ['Todo'] }), /Linear: bad filter/);
 });

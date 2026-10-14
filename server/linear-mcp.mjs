@@ -112,6 +112,13 @@ ${data.length ? `<${fence}>\n${data.map(noFence).join('\n')}\n</${fence}>\n\n` :
       const out = await ask(`Lấy issue ${identifier}. Trả về {"issues":[…]} theo dạng ${SHAPE} với đúng một phần tử; không có issue này thì mảng rỗng.`);
       return issueOf(out.issues?.[0]);
     },
+    // MCP không phân trang đều được: Claude được yêu cầu lấy tối đa 100 issue khớp email và status
+    async listAssigned({ emails, statuses }) {
+      const out = await ask(`Liệt kê tối đa 100 issue được giao cho các email trong khối dữ liệu và có status thuộc danh sách status trong khối dữ liệu. Trả về {"issues":[…]} theo dạng ${SHAPE}; chỉ lấy identifier, title, url, state.name và assignee.email.`, { data: [`EMAIL: ${emails.join(', ')}`, `STATUS: ${statuses.join(', ')}`] });
+      return (Array.isArray(out.issues) ? out.issues : [])
+        .map((x) => ({ identifier: String(x?.identifier ?? ''), title: clip(x?.title, 300), url: String(x?.url ?? ''), state: clip(x?.state?.name, 60), assignee: String(x?.assignee?.email ?? '').toLowerCase() }))
+        .filter((i) => ID.test(i.identifier) && i.state && i.assignee);
+    },
     async create(draft) {
       const out = await ask(`Tạo MỘT issue mới${team ? ` trong team ${team}` : ''} với đúng tiêu đề và mô tả (Markdown) trong khối dữ liệu, chép nguyên văn từng ký tự, không thêm bớt. Trả về {"issues":[issue vừa tạo]} theo dạng ${SHAPE}.`, { data: [`TIÊU ĐỀ: ${clip(draft.title, 300)}`, 'MÔ TẢ:', clip(draft.description, 20_000)] });
       const issue = issueOf(out.issues?.[0]);
