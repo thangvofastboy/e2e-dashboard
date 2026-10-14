@@ -80,10 +80,11 @@ test('resources: tên field khớp với formatResources (Live) và machineHtml 
 });
 
 test('machineResources: lần gọi sau dùng mẫu CPU của lần trước, không chờ thêm', async () => {
-  await machineResources(process.cwd(), { sampleMs: 150 });
+  // sampleMs lớn, ngưỡng rộng: máy đang tải nặng (lúc release) không làm test chập chờn, mà lỗi thật (chờ mẫu mới) vẫn ≥ 2 giây
+  await machineResources(process.cwd(), { sampleMs: 2000 });
   await new Promise((r) => setTimeout(r, 120)); // Live hỏi lại sau một khoảng
   const t0 = Date.now();
-  const m = await machineResources(process.cwd(), { sampleMs: 150 });
-  assert.ok(Date.now() - t0 < 100, `mất ${Date.now() - t0} ms`);
+  const m = await machineResources(process.cwd(), { sampleMs: 2000 });
+  assert.ok(Date.now() - t0 < 1000, `mất ${Date.now() - t0} ms`);
   assert.ok(m.cpuPct >= 0 && m.cpuPct <= 100);
 });
