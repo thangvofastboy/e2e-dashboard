@@ -38,17 +38,22 @@ export async function writeCiConfig(root, input) {
   if (g.branch && c.branch !== g.branch) throw new Error('Tên branch không hợp lệ');
   if (c.intervalMinutes !== g.intervalMinutes) throw new Error('Chu kỳ phải từ 5 đến 1440 phút');
   const path = join(root, DATA_DIR, 'config.json');
-  let cfg = {};
-  try {
-    cfg = JSON.parse(await readFile(path, 'utf8'));
-  } catch (e) {
-    if (e.code !== 'ENOENT') throw new Error('config.json hiện tại không đọc được: sửa tay trước');
-  }
-  cfg.ci = { ...(cfg.ci ?? {}), github: g };
-  const tmp = `${path}.tmp-${randomBytes(6).toString('hex')}`;
-  await writeFile(tmp, `${JSON.stringify(cfg, null, 2)}\n`);
-  await rename(tmp, path);
-  return c;
+  // đọc-sửa-ghi cả file: hai lần lưu cùng lúc không được làm mất thay đổi của nhau
+  return serial(`${path}:ci`, async () => {
+    let cfg = {};
+    try {
+      cfg = JSON.parse(await readFile(path, 'utf8'));
+    } catch (e) {
+      if (e.code !== 'ENOENT') throw new Error('config.json hiện tại không đọc được: sửa tay trước');
+    }
+    // null / mảng / chuỗi: ghi ci vào đó sẽ lỗi hoặc mất lặng lẽ
+    if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) throw new Error('config.json không phải object: sửa tay trước');
+    cfg.ci = { ...(cfg.ci ?? {}), github: g };
+    const tmp = `${path}.tmp-${randomBytes(6).toString('hex')}`;
+    await writeFile(tmp, `${JSON.stringify(cfg, null, 2)}\n`);
+    await rename(tmp, path);
+    return c;
+  });
 }
 
 export async function readCiState(root) {

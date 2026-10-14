@@ -94,3 +94,46 @@ test('form tuỳ chọn chạy (dùng chung hộp Chạy test và Lịch chạy)
   assert.equal(runOptionsFrom(fd({ headed: 'on' })).headed, true);
   assert.equal('headed' in runOptionsFrom(fd({})), false);
 });
+
+test('schedules.json hỏng (sửa tay dở dang): lưu lịch mới báo lỗi, không ghi đè mất các lịch cũ', async () => {
+  const env = { E2E_DASHBOARD_HOME: tmp('e2ed-home-') };
+  const root = tmp();
+  await registerProject(root, env);
+  const path = join(env.E2E_DASHBOARD_HOME, 'schedules.json');
+  writeFileSync(path, '[{"id":"a","name":"Đêm"');
+  await assert.rejects(saveSchedule(base(root), env), /schedules\.json/);
+  assert.equal(readFileSync(path, 'utf8'), '[{"id":"a","name":"Đêm"', 'file giữ nguyên để người dùng sửa');
+});
+
+test('một lịch thiếu days / times không làm dừng các lịch khác', async () => {
+  const env = { E2E_DASHBOARD_HOME: tmp('e2ed-home-') };
+  const root = tmp();
+  await registerProject(root, env);
+  const good = await saveSchedule(base(root), env);
+  const path = join(env.E2E_DASHBOARD_HOME, 'schedules.json');
+  const list = JSON.parse(readFileSync(path, 'utf8'));
+  writeFileSync(path, JSON.stringify([{ id: 'broken', enabled: true, root }, ...list]));
+  assert.deepEqual((await readSchedules(env)).map((s) => s.id), [good.id], 'dòng hỏng bị bỏ khi đọc');
+});
+
+test('lịch của project đã gỡ khỏi Projects không được chạy nữa; project của dashboard này luôn được', async () => {
+  const { scheduleRootAllowed } = await import('../server/schedules.mjs');
+  const env = { E2E_DASHBOARD_HOME: tmp('e2ed-home-') };
+  const kept = tmp();
+  const removed = tmp();
+  const own = tmp();
+  await registerProject(kept, env);
+  assert.equal(await scheduleRootAllowed({ root: kept }, own, env), true);
+  assert.equal(await scheduleRootAllowed({ root: removed }, own, env), false);
+  assert.equal(await scheduleRootAllowed({ root: own }, own, env), true);
+});
+
+test('writeCiConfig: config.json là JSON nhưng không phải object thì báo lỗi, không ghi gì', async () => {
+  const root = tmp();
+  mkdirSync(join(root, '.e2e-dashboard'), { recursive: true });
+  for (const bad of ['null', '[1,2]', '"x"']) {
+    writeFileSync(join(root, '.e2e-dashboard', 'config.json'), bad);
+    await assert.rejects(writeCiConfig(root, { workflow: 'e2e.yml', intervalMinutes: 30 }), /không phải object/);
+    assert.equal(readFileSync(join(root, '.e2e-dashboard', 'config.json'), 'utf8'), bad);
+  }
+});

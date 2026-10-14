@@ -5,25 +5,41 @@ import { readFile, writeFile, mkdir, rename, readdir, unlink } from 'node:fs/pro
 import { join, resolve } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { homeDir, readRegistry } from './projects.mjs';
-import { buildRunArgs } from './runner.mjs';
+import { buildRunArgs, RUN_OPTION_KEYS } from './runner.mjs';
 import { serial } from './jsonstate.mjs';
 
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const MAX = 100;
 // như /api/run, trừ rerunOf (chỉ có nghĩa khi chạy lại một run) và updateSnapshots (ghi đè ảnh mẫu khi không ai xem)
-export const SCHEDULE_OPTION_KEYS = ['tests', 'targets', 'agents', 'retries', 'repeatEach', 'noCache', 'workers', 'browser', 'tag', 'tagMode', 'excludeTag', 'grep', 'shard', 'maxFailures', 'strictCache', 'trace', 'video', 'lastFailed', 'aiTrace', 'excludeQuarantined', 'headed'];
+// cùng option như hộp Chạy test; không có rerunOf, và không ghi đè snapshot khi không ai xem (-u)
+const SCHEDULE_OPTION_KEYS = [...RUN_OPTION_KEYS.filter((k) => k !== 'rerunOf' && k !== 'updateSnapshots'), 'excludeQuarantined'];
 
 const file = (env) => join(homeDir(env), 'schedules.json');
 const claimDir = (env) => join(homeDir(env), 'schedule-claims');
 
-export async function readSchedules(env = process.env) {
+// dòng hỏng (sửa tay) bị bỏ: thiếu days / times sẽ làm tick ném lỗi và mọi lịch khác ngừng chạy
+const validEntry = (s) => s && typeof s.id === 'string' && typeof s.root === 'string' && Array.isArray(s.days) && Array.isArray(s.times);
+
+// strict: file có mà không đọc được (JSON hỏng) thì ném lỗi thay vì coi như rỗng, để lần lưu sau không ghi đè mất
+async function loadSchedules(env, { strict = false } = {}) {
+  let text;
   try {
-    const list = JSON.parse(await readFile(file(env), 'utf8'));
-    return Array.isArray(list) ? list.filter((s) => s && typeof s.id === 'string') : [];
+    text = await readFile(file(env), 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT' || !strict) return [];
+    throw e;
+  }
+  let list;
+  try {
+    list = JSON.parse(text);
   } catch {
+    if (strict) throw new Error('~/.e2e-dashboard/schedules.json hỏng (JSON không hợp lệ): sửa hoặc xoá file rồi lưu lại');
     return [];
   }
+  return Array.isArray(list) ? list.filter(validEntry) : [];
 }
+
+export const readSchedules = (env = process.env) => loadSchedules(env);
 
 async function writeSchedules(list, env) {
   await mkdir(homeDir(env), { recursive: true });
@@ -33,7 +49,7 @@ async function writeSchedules(list, env) {
 }
 
 const update = (env, fn) => serial(`schedules:${file(env)}`, async () => {
-  const list = await readSchedules(env);
+  const list = await loadSchedules(env, { strict: true });
   const out = await fn(list);
   await writeSchedules(list, env);
   return out;
@@ -119,6 +135,14 @@ export async function claimSlot(id, at, env = process.env) {
 async function pruneClaims(env, now) {
   const names = await readdir(claimDir(env)).catch(() => []);
   for (const n of names) if (now - Number(n.split('-').pop()) > 2 * 86_400_000) await unlink(join(claimDir(env), n)).catch(() => {});
+}
+
+// Project đã gỡ khỏi Projects: lịch của nó không chạy nữa (không spawn e2e trong thư mục người dùng đã bỏ).
+// Project của chính dashboard đang chạy luôn được.
+export async function scheduleRootAllowed(s, projectRoot, env = process.env) {
+  const root = resolve(String(s?.root ?? ''));
+  if (root === resolve(projectRoot)) return true;
+  return (await readRegistry(env)).some((p) => resolve(p.root) === root);
 }
 
 // Mỗi 30 giây: mốc nào đã tới từ lần kiểm trước thì giành claim và chạy. Bỏ lỡ mốc khi không có dashboard nào mở.

@@ -31,6 +31,9 @@ const flag = (v, what) => {
   return v === true;
 };
 
+// Tuỳ chọn chạy nhận từ /api/run (lịch chạy dùng cùng danh sách, trừ rerunOf / updateSnapshots): một nguồn duy nhất
+export const RUN_OPTION_KEYS = ['tests', 'targets', 'agents', 'retries', 'repeatEach', 'noCache', 'rerunOf', 'workers', 'browser', 'tag', 'tagMode', 'excludeTag', 'grep', 'shard', 'maxFailures', 'strictCache', 'trace', 'video', 'lastFailed', 'updateSnapshots', 'aiTrace', 'headed'];
+
 export function buildRunArgs({ tests, targets, agents, retries, repeatEach, noCache, grepInvert, workers, tag, tagMode, excludeTag, grep, shard, maxFailures, strictCache, trace, video, lastFailed, updateSnapshots, aiTrace, headed } = {}) {
   const args = ['e2e', 'run', ...list(tests, TEST, 'tests')];
   const t = list(targets, NAME, 'targets');

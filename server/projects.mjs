@@ -61,7 +61,11 @@ export async function addProject(root, env = process.env) {
 export async function listDirs(dir) {
   const abs = resolve(dir);
   const entries = await readdir(abs, { withFileTypes: true });
-  const dirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith('.')).map((e) => e.name).sort((a, b) => a.localeCompare(b));
+  // symlink tới thư mục (vd. ~/code) cũng là thư mục với người dùng: kiểm bằng stat
+  const isDir = async (e) => e.isDirectory() || (e.isSymbolicLink() && (await stat(join(abs, e.name)).then((st) => st.isDirectory(), () => false)));
+  const visible = entries.filter((e) => !e.name.startsWith('.'));
+  const flags = await Promise.all(visible.map(isDir));
+  const dirs = visible.filter((_, i) => flags[i]).map((e) => e.name).sort((a, b) => a.localeCompare(b));
   return { path: abs, parent: dirname(abs) === abs ? null : dirname(abs), dirs };
 }
 

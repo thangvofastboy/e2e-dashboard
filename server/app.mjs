@@ -1,3 +1,4 @@
+import { RUN_OPTION_KEYS } from './runner.mjs';
 import { readFile, readdir, stat, lstat, rm, mkdir, writeFile } from 'node:fs/promises';
 import { installedBrowsers, configSupport, validBrowser } from './browsers.mjs';
 import { findConfig as findConfigPath } from '../bin/project.mjs';
@@ -1247,7 +1248,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         if (body.rerunOf !== undefined && !RUN_ID.test(String(body.rerunOf))) return send(res, 400, { error: 'invalid rerunOf' });
         let out;
         try {
-          const RUN_KEYS = ['tests', 'targets', 'agents', 'retries', 'repeatEach', 'noCache', 'rerunOf', 'workers', 'browser', 'tag', 'tagMode', 'excludeTag', 'grep', 'shard', 'maxFailures', 'strictCache', 'trace', 'video', 'lastFailed', 'updateSnapshots', 'aiTrace', 'headed'];
+          const RUN_KEYS = RUN_OPTION_KEYS;
           const opts = Object.fromEntries(RUN_KEYS.filter((k) => body[k] !== undefined).map((k) => [k, body[k]]));
           // workers: không gửi = mặc định ở Settings; null = để e2e tự chọn theo máy cho lần chạy này
           if (body.workers === undefined) {

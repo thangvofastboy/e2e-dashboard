@@ -204,3 +204,14 @@ test('live.json follows the live state, throttled while running', async () => {
   await w.close();
   assert.equal(existsSync(join(root, '.e2e-dashboard/runtime/live.json')), false);
 });
+
+test('listDirs: thư mục là symlink (vd. ~/code) cũng hiện; symlink tới file thì không', async () => {
+  const { symlinkSync: ln } = await import('node:fs');
+  const a = tmp();
+  const target = tmp();
+  mkdirSync(join(a, 'real'));
+  writeFileSync(join(a, 'f.txt'), 'x');
+  ln(target, join(a, 'code'));
+  ln(join(a, 'f.txt'), join(a, 'file-link'));
+  assert.deepEqual((await listDirs(a)).dirs, ['code', 'real']);
+});

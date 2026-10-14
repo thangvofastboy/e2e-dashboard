@@ -18,7 +18,7 @@ import { webhookConfig, sendWebhooks, mentionMap, mentionsFor } from './webhook.
 import { readCodeowners, ownersOf } from './owners.mjs';
 import { readQuarantine, quarantineFlags } from './quarantine.mjs';
 import { registerProject } from './projects.mjs';
-import { createScheduleRunner, recordRun } from './schedules.mjs';
+import { createScheduleRunner, recordRun, scheduleRootAllowed } from './schedules.mjs';
 import { createRunner } from './runner.mjs';
 import { createAi, AI_NO_TOOLS_ARGS } from './ai.mjs';
 import { annotateRun, loadHistory, getRun } from './store.mjs';
@@ -195,7 +195,7 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
   // Lịch tạo trên UI (~/.e2e-dashboard/schedules.json): project này chạy qua runner chính (thấy ở Live),
   // project khác qua một runner riêng cho thư mục đó; reporter + finishDashboardRun lưu run vào project đó.
   const otherRunners = new Map();
-  const runnerFor = (root, scheduleId) => {
+  const runnerFor = (root) => {
     if (!otherRunners.has(root)) {
       const out = readConfig(root).output;
       let before = null;
@@ -209,18 +209,21 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
         },
       }));
     }
-    const r = otherRunners.get(root);
-    r.scheduleId = scheduleId;
-    return r;
+    return otherRunners.get(root);
   };
   const startScheduled = async (s) => {
     const { excludeQuarantined, ...opts } = s.options ?? {};
     const root = resolve(s.root);
     try {
+      if (!(await scheduleRootAllowed(s, projectRoot))) return { ok: false, error: 'Project của lịch này đã bị gỡ khỏi Projects: thêm lại project hoặc xoá lịch.' };
       const defaults = await readSettings(root);
       const q = excludeQuarantined === false ? [] : quarantineFlags(await readQuarantine(root)).args.filter((x) => x !== '--grep-invert');
       const full = { ...(defaults.workers ? { workers: defaults.workers } : {}), browser: defaults.browser, ...(defaults.headed ? { headed: true } : {}), ...opts, grepInvert: q }; // headed: lịch bật riêng, không thì theo Settings
-      return root === resolve(projectRoot) ? runner.start(full) : runnerFor(root, s.id).start(full);
+      if (root === resolve(projectRoot)) return runner.start(full);
+      const other = runnerFor(root);
+      const r = other.start(full);
+      if (r.ok) other.scheduleId = s.id; // gán sau khi chạy được: lịch khác gặp "busy" không chiếm exit code của run đang chạy
+      return r;
     } catch (e) {
       return { ok: false, error: e.message };
     }

@@ -1,3 +1,4 @@
+import { AI_MODELS } from '../ai-models.js';
 import { getJson } from '../api.js';
 import { pageHead, emptyBox } from '../analysis.js';
 import { toast } from '../toast.js';
@@ -17,15 +18,14 @@ function groupHtml(g, i) {
     ${g.cuts ? `<p class="small">Điểm cắt gợi ý: ${g.cuts.map((c) => `sau bước ${c.step} (${escapeHtml(c.label)})`).join(' · ')}</p>` : ''}</article>`;
 }
 
-// ponytail: chép từ datalist ai-models ở ui/views/system.js (không export); đổi một chỗ thì đổi cả hai
-const AI_MODELS = ['fable', 'opus', 'sonnet', 'haiku', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'];
+// effort lấy từ /api/system (user.ai.efforts, cùng nguồn với server); danh sách này chỉ dùng khi không có
 const AI_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 
 // hộp nhỏ chọn model / effort cho "AI đánh giá lại"; mặc định theo Cài đặt hệ thống › AI
 export function reviewFormHtml(ai = {}) {
   const opt = (v, label, cur) => `<option value="${escapeHtml(v)}"${v === cur ? ' selected' : ''}>${escapeHtml(label)}</option>`;
   return `<form class="form-row" data-review-form><label>Model <select name="model">${opt('', 'mặc định', ai.model ?? '')}${AI_MODELS.map((m) => opt(m, m, ai.model)).join('')}</select></label>
-    <label>Effort <select name="effort">${opt('', 'mặc định', ai.effort ?? '')}${AI_EFFORTS.map((e) => opt(e, e, ai.effort)).join('')}</select></label>
+    <label>Effort <select name="effort">${opt('', 'mặc định', ai.effort ?? '')}${(Array.isArray(ai.efforts) && ai.efforts.length ? ai.efforts : AI_EFFORTS).map((e) => opt(e, e, ai.effort)).join('')}</select></label>
     <button type="submit" class="btn-ai">${icon('sparkles', { size: 14 })}Đánh giá</button><button type="button" data-review-cancel>${icon('close', { size: 14 })}Huỷ</button></form>`;
 }
 

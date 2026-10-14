@@ -1,3 +1,4 @@
+import { AI_MODELS } from '../ai-models.js';
 import { getJson, postJson } from '../api.js';
 import { confirmDialog } from '../confirm.js';
 import { pageHead } from '../analysis.js';
@@ -215,7 +216,7 @@ function healHtml(h, cfg, aiCfg) {
     <p class="muted">Dùng cho mọi tính năng AI của dashboard (phân tích lỗi, tóm tắt run, triage, tự sửa lỗi…) qua <code>claude</code> trên máy này. Để trống = mặc định của Claude Code.</p>
     <form class="form-row" data-ai-model><span class="form-label">Model</span>
       <input name="model" list="ai-models" value="${escapeHtml(aiCfg.model)}" placeholder="mặc định" aria-label="Model AI" autocomplete="off">
-      <datalist id="ai-models"><option value="fable"><option value="opus"><option value="sonnet"><option value="haiku"><option value="claude-opus-5-5"><option value="claude-sonnet-5-5"><option value="claude-haiku-5-5"></datalist>
+      <datalist id="ai-models">${AI_MODELS.map((m) => `<option value="${m}">`).join('')}</datalist>
       <button type="submit">${icon('check', { size: 14 })}Lưu</button><small class="fld-hint">Model Claude dùng cho mọi tính năng AI, ví dụ <code>sonnet</code> hoặc <code>opus</code>. Mặc định: để trống = model mặc định của Claude Code.</small></form>
     <div class="form-row"><span class="form-label">Effort</span>${seg('effort', [['', 'Mặc định'], ...aiCfg.efforts.map((e) => [e, e === 'xhigh' ? 'XHigh' : cap(e)])], aiCfg.effort, 'Effort')}</div>
     <p class="muted small">Effort cao hơn: suy luận kỹ hơn nhưng chậm và tốn token hơn. Gợi ý: <code>medium</code> cho tóm tắt / triage, <code>high</code> trở lên cho tự sửa lỗi.</p>

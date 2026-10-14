@@ -4,12 +4,13 @@ import { toast } from '../toast.js';
 import { escapeHtml, fmtRelative } from '../format.js';
 import { icon } from '../icons.js';
 import { runOptionsHtml, runOptionsFrom } from './run-dialog.js';
+import { filterTests } from '../test-picker.js';
 
 // Thứ trong tuần theo Date.getDay(): 0 = Chủ nhật. Hiện từ thứ Hai.
 const WEEKDAYS = [[1, 'Thứ 2'], [2, 'Thứ 3'], [3, 'Thứ 4'], [4, 'Thứ 5'], [5, 'Thứ 6'], [6, 'Thứ 7'], [0, 'Chủ nhật']];
 const ALL_DAYS = WEEKDAYS.map(([d]) => d);
 
-export function scheduleDaysText(days) {
+function scheduleDaysText(days) {
   const set = new Set(days);
   if (set.size === 7) return 'Mỗi ngày';
   if (set.size === 5 && [1, 2, 3, 4, 5].every((d) => set.has(d))) return 'Thứ Hai – Thứ Sáu';
@@ -17,7 +18,7 @@ export function scheduleDaysText(days) {
 }
 
 // Tóm tắt option khác mặc định, để đọc lịch không cần mở form (mỗi phần một mục để dịch được).
-export function scheduleOptionsParts(o = {}) {
+function scheduleOptionsParts(o = {}) {
   const parts = [o.tests?.length ? `${o.tests.length} test` : 'Toàn bộ suite'];
   if (o.workers) parts.push(`${o.workers} worker`);
   if (o.browser) parts.push(o.browser);
@@ -102,12 +103,19 @@ function openScheduleDialog(data, sched, refresh) {
   const el = form.elements;
   el.name.value = s.name;
   el.root.value = s.root;
+  if (s.root && el.root.value !== s.root) {
+    // project đã gỡ khỏi Projects: không để ô chọn lặng lẽ nhảy sang project khác (lưu là chuyển lịch sang đó)
+    el.root.add(new Option(`${s.root} (đã gỡ khỏi Projects)`, s.root));
+    el.root.value = s.root;
+    err.hidden = false;
+    err.textContent = 'Project của lịch này đã bị gỡ khỏi Projects: chọn project khác hoặc thêm lại project rồi lưu.';
+  }
   // điền lại option đã lưu khi sửa
   for (const k of ['retries', 'repeatEach', 'workers', 'maxFailures']) if (o[k] !== undefined) el[k].value = String(o[k]);
   for (const k of ['grep', 'shard', 'tagMode', 'trace', 'video']) if (o[k] !== undefined) el[k].value = o[k];
   el.browser.value = o.browser ?? '';
   for (const k of ['tag', 'excludeTag']) if (o[k]) el[k].value = o[k].join(',');
-  for (const k of ['noCache', 'strictCache', 'lastFailed', 'aiTrace']) if (o[k]) el[k].checked = true;
+  for (const k of ['noCache', 'strictCache', 'lastFailed', 'aiTrace', 'headed']) if (o[k]) el[k].checked = true;
 
   const times = new Set(s.times);
   const drawTimes = () => {
@@ -132,8 +140,8 @@ function openScheduleDialog(data, sched, refresh) {
   const list = dlg.querySelector('[data-tests]');
   const count = dlg.querySelector('[data-pick-count]');
   const visible = () => {
-    const q = dlg.querySelector('[data-filter]').value.trim().toLowerCase();
-    return known.filter((t) => !q || t.title.toLowerCase().includes(q) || t.spec.toLowerCase().includes(q));
+    // cùng cách lọc với ô chọn test khác: không phân biệt dấu ("gio hang" khớp "Giỏ hàng")
+    return filterTests(known, dlg.querySelector('[data-filter]').value);
   };
   const countPicked = () => { count.textContent = `Đã chọn ${picked.size} test`; };
   const drawTests = () => {
@@ -150,7 +158,7 @@ function openScheduleDialog(data, sched, refresh) {
     const bySpec = new Map();
     for (const r of rows) {
       const spec = r.line ? `${r.file}:${r.line}` : r.file;
-      if (spec && !bySpec.has(spec)) bySpec.set(spec, { spec, title: r.title });
+      if (spec && !bySpec.has(spec)) bySpec.set(spec, { spec, file: spec, title: r.title }); // file: để filterTests lọc theo đường dẫn
     }
     known = [...bySpec.values()].sort((a, b) => a.spec.localeCompare(b.spec, undefined, { numeric: true }));
     // test đã lưu nhưng không còn trong lịch sử: đưa vào ô gõ tay để không mất
