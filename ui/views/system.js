@@ -146,7 +146,9 @@ function linearModeHtml(l) {
       : l?.mcp?.needsAuth ? 'Chưa gửi được: MCP Linear cần đăng nhập. Mở terminal, chạy <code>claude</code>, gõ <code>/mcp</code>, chọn Linear và đăng nhập; hoặc nhập API key bên dưới.'
         : l?.mcp?.installed === false ? 'Không tìm thấy lệnh <code>claude</code>. Cài Claude Code CLI hoặc nhập Linear API key bên dưới.'
           : 'Chưa gửi được: chưa có API key và chưa thấy MCP Linear trong Claude CLI (<code>claude mcp list</code>). Thêm MCP Linear hoặc nhập API key bên dưới.';
-  return `<p class="tone-${mode ? 'good' : 'warn'}">${icon(mode ? 'check' : 'alert', { size: 15 })} <strong>Gửi issue lên Linear:</strong> ${text}</p>`;
+  // Kiểm tra lại: vừa đăng nhập MCP / bật plugin Linear / đổi tài khoản Claude thì dò lại ngay (mất tới ~30 giây)
+  return `<p class="tone-${mode ? 'good' : 'warn'}" data-linear-mode>${icon(mode ? 'check' : 'alert', { size: 15 })} <strong>Gửi issue lên Linear:</strong> ${text}
+    <button type="button" class="small-btn" data-linear-recheck title="Dò lại MCP Linear trong Claude CLI (mất tới ~30 giây)">${icon('rerun', { size: 13 })}Kiểm tra lại</button></p>`;
 }
 
 // Email người được giao issue và status cần lấy (tab Tích hợp): lưu ở .e2e-dashboard/settings.json của project
@@ -462,6 +464,20 @@ export async function renderSystem(main) {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.sysTab) return showTab(b.dataset.sysTab);
+    if ('linearRecheck' in b.dataset) {
+      b.disabled = true;
+      b.setAttribute('aria-busy', 'true');
+      try {
+        const l = await getJson('/api/linear?refresh=1');
+        b.closest('[data-linear-mode]')?.replaceWith(Object.assign(document.createElement('div'), { innerHTML: linearModeHtml(l) }).firstElementChild);
+        toast(l.mode ? 'Đã nhận Linear.' : 'Vẫn chưa thấy Linear: xem hướng dẫn ở dòng trên.', l.mode ? 'good' : 'warn');
+      } catch (x) {
+        toast(x.message, 'bad');
+        b.disabled = false;
+        b.removeAttribute('aria-busy');
+      }
+      return;
+    }
     if (b.dataset.guideSec) return void main.querySelectorAll('#sys-pane-guide .md h2')[Number(b.dataset.guideSec)]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     if ('srcAdd' in b.dataset || 'srcDel' in b.dataset) {
       const list = main.querySelector('[data-src-list]');

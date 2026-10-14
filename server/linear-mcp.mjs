@@ -44,7 +44,9 @@ const probe = (exec) => new Promise((resolve) => {
 export function detectMcpLinear({ exec = execFile, now = Date.now(), force = false } = {}) {
   const refresh = () => (inflight ??= probe(exec).then((value) => { cache = { at: Date.now(), value }; return value; }).finally(() => { inflight = null; }));
   if (force || !cache) return refresh();
-  if (now - cache.at >= 300_000) void refresh();
+  // "chưa kết nối" chỉ giữ 30 giây: người dùng vừa đăng nhập MCP / bật plugin Linear (hay đổi tài khoản Claude)
+  // không phải chờ 5 phút; "đã kết nối" giữ 5 phút vì mỗi lần dò mất tới ~30 giây
+  if (now - cache.at >= (cache.value.connected ? 300_000 : 30_000)) void refresh();
   return Promise.resolve(cache.value);
 }
 export const resetMcpDetect = () => { cache = null; inflight = null; };

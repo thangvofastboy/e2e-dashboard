@@ -156,3 +156,22 @@ test('MCP create: type asks Claude to attach the matching label, no type asks no
   assert.match(ai.prompts[0], /label tên "Bug"/);
   assert.doesNotMatch(ai.prompts[1], /label/);
 });
+
+test('detectMcpLinear: kết quả "chưa kết nối" chỉ giữ 30 giây (vừa đăng nhập MCP thì sớm nhận ra), "đã kết nối" giữ 5 phút', async () => {
+  resetMcpDetect();
+  let calls = 0;
+  let out = 'claude.ai Linear: https://x - ! Needs authentication';
+  const exec = (c, a, o, cb) => { calls++; cb(null, out); };
+  const t0 = Date.now();
+  assert.equal((await detectMcpLinear({ exec, now: t0 })).connected, false);
+  out = LIST; // người dùng vừa đăng nhập / bật plugin Linear
+  await detectMcpLinear({ exec, now: t0 + 40_000 }); // trả kết quả cũ, làm mới ở nền
+  await new Promise((r) => setImmediate(r));
+  assert.equal(calls, 2, 'kết quả âm cũ hơn 30 giây thì dò lại');
+  assert.equal((await detectMcpLinear({ exec, now: t0 + 41_000 })).connected, true);
+  await detectMcpLinear({ exec, now: Date.now() + 60_000 });
+  assert.equal(calls, 2, 'kết quả dương còn trong 5 phút thì không dò lại');
+  assert.equal((await detectMcpLinear({ exec, force: true })).connected, true);
+  assert.equal(calls, 3, 'force: dò lại ngay (nút Kiểm tra lại)');
+  resetMcpDetect();
+});

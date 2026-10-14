@@ -275,7 +275,8 @@ const historyTable = async (root, n) => (await indexedTestHistory(root, n).catch
 
 export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER, ai = NO_AI, qcAi = null, env = process.env, linearFetch, mcpDetect = detectMcpLinear, github = createGithub({ projectRoot }), ghImport = importFromGithub, automation = null, tracking = null, selfHeal = null }) {
   // Linear: API key nếu có, không thì MCP Linear của Claude CLI. `settings` giống các phiên AI khác (model, effort).
-  const linearBackend = () => resolveLinear({ projectRoot, cfg: readConfig(projectRoot), env, fetchImpl: linearFetch, detect: mcpDetect, settings: () => aiPrefs(env, readConfig(projectRoot)) });
+  // force: dò lại MCP Linear ngay (nút Kiểm tra lại), không dùng kết quả trong cache
+  const linearBackend = ({ force = false } = {}) => resolveLinear({ projectRoot, cfg: readConfig(projectRoot), env, fetchImpl: linearFetch, detect: force ? () => mcpDetect({ force: true }) : mcpDetect, settings: () => aiPrefs(env, readConfig(projectRoot)) });
   // Issue Linear: AI trả về văn bản; lỗi AI có status 502 để route trả đúng mã
   const runAiText = async (prompt) => {
     let final = null;
@@ -638,7 +639,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return send(res, 200, { candidates: out, scan: out.length ? null : agentScan(history) });
       }
       if (p === '/api/linear') {
-        const lin = await linearBackend();
+        const lin = await linearBackend({ force: url.searchParams.get('refresh') === '1' });
         return send(res, 200, { configured: lin.mode !== null, mode: lin.mode, team: lin.team, mcp: lin.mcp ? { connected: lin.mcp.connected, needsAuth: lin.mcp.needsAuth, installed: lin.mcp.installed, servers: lin.mcp.servers.map((x) => ({ name: x.name, connected: x.connected })) } : null, links: await readIssueLinks(projectRoot) });
       }
       const aiList = /^\/api\/runs\/([^/]+)\/ai$/.exec(p);
