@@ -149,6 +149,8 @@ figcaption .icon { color: var(--series-1); }
 /* tables */
 .table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: clip; /* clip, không hidden: hidden thành khung cuộn riêng làm <th> sticky không dính */ box-shadow: var(--shadow); }
 .table th, .table td { padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+/* cột chữ dài (tên test): xuống dòng thay vì kéo bảng rộng quá màn hình */
+.table td.wrap { white-space: normal; overflow-wrap: anywhere; min-width: 240px; }
 .table th { color: var(--muted); font-weight: 500; font-size: calc(12px * var(--fs)); background: var(--surface-2); }
 .table tbody tr:hover { background: var(--surface-2); }
 .table .num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -752,7 +754,8 @@ td[class*="v-"] .meter-val { color: inherit; font-weight: 700; }
   #main > .empty-state.fill { display: flex; flex-direction: column; justify-content: center; }
   #main > section.fill { display: flex; flex-direction: column; }
   #main > section.fill > .table-wrap { flex: 1 1 0; min-height: 0; max-height: none; }
-  #main > .two-col.fill { grid-template-rows: minmax(0, 1fr); }
+  /* mọi hàng (kể cả hàng thứ 2 khi có > 2 panel) cao tối thiểu 220px: hàng không bị bóp về 0 rồi panel đè nhau; khối tự cuộn */
+  #main > .two-col.fill { grid-auto-rows: minmax(220px, 1fr); }
   #main > .two-col.fill > .panel { overflow: auto; min-height: 0; }
 }
 @media print { #main { height: auto; overflow: visible; display: block; } #main > .fill { overflow: visible; } }
@@ -762,6 +765,9 @@ td[class*="v-"] .meter-val { color: inherit; font-weight: 700; }
   .charts figure.wide { grid-column: span 2; }
   /* Overview: health score + KPI cùng một hàng */
   .settings-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+/* health score + 5 KPI cùng một hàng chỉ khi đủ rộng; hẹp hơn thì nhãn bị cắt, chip bị ép: xếp chồng */
+@media (min-width: 1700px) {
   .ov-top { display: grid; grid-template-columns: minmax(340px, 1fr) 2.4fr; gap: 12px; margin-bottom: 16px; }
   .ov-top > * { margin: 0; }
   .ov-top .kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
@@ -806,9 +812,9 @@ button:where(:not(.primary, .icon-btn, .pill, .block, [aria-pressed="true"])):ho
 .switch input:focus-visible + .track { outline: 2px solid var(--info); outline-offset: 2px; }
 .switch input:disabled + .track, .switch:has(input:disabled) { opacity: 0.55; cursor: not-allowed; }
 .switch:hover .track { filter: brightness(1.08); }
-input[type="text"], input[type="search"], input[type="url"], input[type="email"], input[type="password"], input:not([type]) { min-width: min(260px, 100%); }
+input[type="text"], input[type="search"], input[type="url"], input[type="email"], input[type="password"], input:not([type]) { min-width: min(260px, calc(100vw - 48px)); } /* không dùng %: trong <label> co theo nội dung, % tính vòng làm ô tràn đè phần tử bên cạnh */
 input[type="number"] { min-width: 110px; }
-select { min-width: min(170px, 100%); }
+select { min-width: min(170px, calc(100vw - 48px)); }
 details.cfg { margin-top: 8px; }
 details.cfg > summary { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; color: var(--info-ink); list-style: none; }
 details.cfg > summary::-webkit-details-marker { display: none; }
@@ -820,7 +826,7 @@ details.cfg[open] > summary { margin-bottom: 4px; }
 h1 .help-tip, h1 .fs-btn { margin-left: 2px; }
 figcaption .help-tip { margin-left: auto; }
 :is(.charts > figure, #main > section.panel, #main > .fill, .two-col > .panel, .ov-top > .health-score, .run-summary) { position: relative; }
-:is(.charts > figure, #main > section.panel, #main > .fill, .two-col > .panel, .ov-top > .health-score, .run-summary) > .fs-btn { position: absolute; top: 6px; right: 6px; z-index: 2; opacity: 0; background: var(--surface); transition: opacity 0.15s; }
+:is(.charts > figure, #main > section.panel, #main > .fill, .two-col > .panel, .ov-top > .health-score, .run-summary) > .fs-btn { position: absolute; top: -11px; right: -11px; z-index: 2; opacity: 0; min-height: 0; padding: 4px; border: 1px solid var(--border); border-radius: 50%; background: var(--surface); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); transition: opacity 0.15s; } /* ngồi trên mép góc: không che chip, link ở góc phải panel */
 :is(.charts > figure, #main > section.panel, #main > .fill, .two-col > .panel, .ov-top > .health-score, .run-summary):hover > .fs-btn, .fs-btn:focus-visible, :fullscreen > .fs-btn { opacity: 1; }
 @media (hover: none) { .fs-btn { opacity: 1; } }
 figcaption:has(.help-tip) { padding-right: 30px; }
@@ -1059,7 +1065,7 @@ figure:fullscreen figcaption { font-size: calc(17px * var(--fs)); }
 button:disabled .icon { opacity: 0.5; }
 
 /* ---- mô tả ngắn ở đầu mỗi trang: tính năng này là gì, dùng thế nào */
-.page-desc { margin: 0 0 16px; max-width: 90ch; padding: 10px 14px; border-left: 4px solid var(--series-1); border-radius: 0 10px 10px 0; background: var(--info-bg); color: var(--text-primary); font-size: calc(14px * var(--fs)); line-height: 1.55; }
+.page-desc { margin: 0 0 16px; padding: 10px 14px; border-left: 4px solid var(--series-1); border-radius: 0 10px 10px 0; background: var(--info-bg); color: var(--text-primary); font-size: calc(14px * var(--fs)); line-height: 1.55; }
 
 /* ---- dropdown: một kiểu cho mọi <select> (trừ ô trạng thái dạng pill của Triage) */
 select:not(.tri-status), .run-form select, .sys select { min-height: 40px; padding: 8px 36px 8px 14px; border: 1px solid var(--border); border-radius: 10px; background-color: var(--surface); color: var(--text-primary); font: inherit; font-weight: 500; box-shadow: var(--shadow); transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s; }
@@ -1126,5 +1132,5 @@ td > :where(button, a.button) + :where(button, a.button), p > :where(button, a.b
 .impact-form { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .impact-form label { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
 /* menu: các mục chưa có màu (trước đây icon rơi về màu chữ mặc định) */
-.n-manual { --hue: #0284c7; } .n-verify { --hue: #16a34a; } .n-build { --hue: #4f46e5; } .n-quality { --hue: #0f766e; }
+.n-manual { --hue: #0284c7; } .n-verify { --hue: #16a34a; } .n-build { --hue: #4f46e5; } .n-quality { --hue: #0f766e; } .n-linear-issues { --hue: #5e6ad2; }
 .n-qc-templates { --hue: #c026d3; } .n-system { --hue: #52525b; } .n-feedback { --hue: #f97316; }

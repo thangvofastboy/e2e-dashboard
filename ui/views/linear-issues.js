@@ -72,7 +72,7 @@ export async function renderLinearIssues(main) {
     main.innerHTML = `${pageHead('Issue Linear', 'ticket', 'Issue được giao cho các email đã chọn ở Cài đặt → Tích hợp.')}
       <section class="panel">
         <div class="form-row">
-          <button type="button" data-refresh>${icon('refresh', { size: 14 })}Lấy lại danh sách</button>
+          <button type="button" data-refresh>${icon('rerun', { size: 14 })}Lấy lại danh sách</button>
           <input data-add-id maxlength="200" placeholder="ENG-123 hoặc link Linear" aria-label="Mã issue">
           <button type="button" data-add>${icon('plus', { size: 14 })}Thêm</button>
         </div>

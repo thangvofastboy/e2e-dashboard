@@ -24,7 +24,7 @@ export function historyCells(history, n = 10) {
 const distinct = (xs) => [...new Set(xs)].sort();
 
 export function testRowHtml(t) {
-  return `<tr><td>${isExport() ? '' : `<input type="checkbox" class="sel" data-pick="${escapeHtml(t.key)}" ${picked.has(t.key) ? 'checked' : ''} aria-label="Chọn ${escapeHtml(t.title)}"> `}${isExport() ? escapeHtml(t.title) : `<a href="${testHref(t.key)}">${escapeHtml(t.title)}</a>`} <span class="muted">:${escapeHtml(t.line ?? '?')}</span>${lockedKeys.has(t.key) ? ` <span class="lock-badge">${icon('lock', { size: 11 })}cách ly</span>` : ''}${t.tags.map((g) => ` <span class="tag">${escapeHtml(g)}</span>`).join('')}</td>
+  return `<tr><td class="wrap">${isExport() ? '' : `<input type="checkbox" class="sel" data-pick="${escapeHtml(t.key)}" ${picked.has(t.key) ? 'checked' : ''} aria-label="Chọn ${escapeHtml(t.title)}"> `}${isExport() ? escapeHtml(t.title) : `<a href="${testHref(t.key)}">${escapeHtml(t.title)}</a>`} <span class="muted">:${escapeHtml(t.line ?? '?')}</span>${lockedKeys.has(t.key) ? ` <span class="lock-badge">${icon('lock', { size: 11 })}cách ly</span>` : ''}${t.tags.map((g) => ` <span class="tag">${escapeHtml(g)}</span>`).join('')}</td>
     <td>${escapeHtml(t.target)}${t.agent !== 'default' ? ` · ${escapeHtml(t.agent)}` : ''}</td>
     <td>${historyCells(t.history)}</td><td class="num">${fmtDuration(t.avgDurationMs)}</td></tr>`;
 }

@@ -43,3 +43,15 @@ test('Fastboy favicon mark keeps only the 3 triangle paths, no wordmark letters'
   assert.ok((LOGO_SVG.match(/<path/g) ?? []).length > 3);
   assert.match(MARK_SVG, /viewBox="0 0 79 72"/);
 });
+
+// icon() throw khi tên không có: một tên sai làm hỏng cả trang (trang Issue Linear từng trắng vì icon 'refresh'), nên kiểm mọi tên viết cứng trong ui/
+test('every icon name used in ui/ exists in the sprite', async () => {
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const ui = new URL('../ui', import.meta.url).pathname;
+  const missing = [];
+  for (const f of readdirSync(ui, { recursive: true }).filter((x) => x.endsWith('.js'))) {
+    for (const m of readFileSync(join(ui, f), 'utf8').matchAll(/\bicon\(\s*'([\w-]+)'/g)) if (!ICON_NAMES.includes(m[1])) missing.push(`${f}: ${m[1]}`);
+  }
+  assert.deepEqual(missing, []);
+});
