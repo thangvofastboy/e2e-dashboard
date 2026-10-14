@@ -1,8 +1,8 @@
 # Changelog
 
-## v0.14.0 — 2026-10-14
+## v0.15.0 — 2026-10-14
 
-- **Chạy có / không giao diện (headed)**: công tắc ở *Tự động & lưu trữ → Chạy & lịch* (mặc định tắt) và trong hộp thoại Run; áp cho chạy tay, chạy lại, chạy theo lịch và chạy qua MCP.
+- **Chạy có / không giao diện (headed)**: công tắc ở *Tự động & lưu trữ → Chạy & lịch* (mặc định tắt) và trong hộp thoại Run; áp cho chạy tay, chạy lại, chạy qua MCP và Lịch chạy (lịch bật riêng được, không thì theo Settings).
 - **Claude chạy test qua dashboard**: tool MCP `e2e_run_start` / `e2e_run_stop` (cần dashboard đang mở). Run đi qua dashboard nên có nút Dừng, tài nguyên và tiến độ ở Live như khi bấm tay.
 - **Tests dạng cây thư mục**: gập / mở thư mục kèm số test và số fail, mỗi file một dòng tóm tắt, chọn cả thư mục, nút *Tải lại*; tên test dài tự xuống dòng. Ô chọn test ở QC xác nhận và Mẫu QC có ô lọc (gõ không dấu vẫn khớp) và hiện theo cây.
 - **Live**: danh sách test fail riêng ngay dưới Gantt, run xong có đủ nút như Runs (Phân tích lỗi, Bước tái hiện, Gửi Linear, Tìm commit gây lỗi, Sửa bằng Claude Code, Chạy lại đúng test); thanh CPU / RAM / disk của máy và RAM / CPU / số tiến trình của run đang chạy; *Xem ở Runs* mở thẳng run vừa chạy.
@@ -12,6 +12,16 @@
 - **Giao diện**: nút chỉ còn icon, rê chuột hiện tên (tắt ở *Giao diện*); Coverage chia tab *Route* / *Domain trong source*; tab *Hướng dẫn* từng bước trong Cài đặt hệ thống; bảng cấu hình máy (hostname, OS, CPU, RAM, ổ đĩa, trình duyệt).
 - **Sửa lỗi**: trang Issue Linear trắng vì icon không tồn tại (thêm test quét mọi tên icon); *Viết test cho* route lấy từ `coverage.source` / `coverage.routes` báo 404; ô lọc và dropdown đè lên nhau ở Tests, Runs, Digest, Report, Build, Branches; panel Xu hướng chồng nhau ở màn hẹp; nút phóng to che chip; mô tả trang chưa full width; lưu setting khi một thư mục nguồn tạm vắng mặt từng làm mất cả danh sách.
 - **Hiệu năng**: `/api/resources` ~200 ms → ~1,5 ms; quét `coverage.source` giữ 30 giây (~350 ms → <1 ms trên repo frontend lớn); `/api/system` không chạy git hai lần; Live không vẽ lại cả trang mỗi lần cập nhật tài nguyên; ô chọn test lọc nhanh hơn ~50 lần.
+
+## v0.14.0 — 2026-10-14
+
+- **Lịch chạy test tự động** (Tự động & lưu trữ → Lịch chạy): tạo lịch theo giờ trong ngày và thứ trong tuần, chọn project, chạy toàn bộ suite hoặc chọn từng test, cùng các option như hộp Chạy test (workers, retries, trình duyệt, tag, grep, shard, trace/video…). Có nút *Chạy ngay*, *Sửa*, *Xoá*. Lịch lưu ở `~/.e2e-dashboard/schedules.json`; dashboard nào đang mở cũng chạy hộ mọi project, mỗi lượt chỉ một dashboard chạy. Không có dashboard nào mở thì lịch không chạy.
+- **Đồng bộ từ CI có form cấu hình**: nút *Thêm đồng bộ từ CI* / *Sửa cấu hình* ghi workflow, artifact, branch và chu kỳ vào `.e2e-dashboard/config.json` (giữ nguyên các khoá khác), áp dụng ngay không cần khởi động lại.
+- **Projects → Thêm project**: chọn thư mục project bằng hộp duyệt thư mục hoặc gõ đường dẫn. Thư mục đã có trong danh sách thì báo lại, không tạo bản ghi mới.
+- **Tải về có popup**: mọi nút xuất dữ liệu (CSV, Export HTML của run, Tải .md của digest) hiện popup với tên file sửa được và dung lượng, bấm *Tải về* mới lưu.
+- **Dropdown đẹp hơn**: danh sách item của select vẽ theo theme (padding, hover, dấu ✓ ở mục đang chọn) ở trình duyệt hỗ trợ base-select; trình duyệt cũ giữ popup gốc.
+
+- **Sửa lỗi**: ô lọc *Tag* / *Target* ở trang Tests không còn bị select đè lên nhãn ở khung hẹp.
 
 ## v0.13.0 — 2026-10-14
 

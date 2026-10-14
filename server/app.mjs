@@ -15,7 +15,7 @@ import { listRuns, getRun, findRunDir, setFlag, testHistory, getAi, writeAi, lis
 import { resetPreview, resetAll } from './reset.mjs';
 import { scanJunk, cleanJunk } from './junk.mjs';
 import { flakyTests, compareRuns, groupErrors, costStats, slowSteps, routeMap, branchStats, compareBranches, locatorCandidates, traceToCode, testKey, resultError } from './analytics.mjs';
-import { projectSummaries, forgetProject } from './projects.mjs';
+import { projectSummaries, forgetProject, addProject, listDirs, readRegistry } from './projects.mjs';
 import { acceptDescription, acceptTitle, issueMeta, metaLine, placeImages, issueDraft, claudePrompt, linearConfig, readIssueLinks, saveIssueLink, parseIssueRef, removeIssueLink, fingerprint as issueFingerprint } from './linear.mjs';
 import { healthScore } from '../ui/health.js';
 import { search, anomalies, lintAgentSteps, agentScan, LINT_RULES, modelStats, bisectPlan, flakyEvidence, testDetail, appErrors, setupTiming } from './insights.mjs';
@@ -57,7 +57,8 @@ import { markKnown, readNotes, setNote, readAudit, verifyQueue, waiverActive, ti
 import { addEvent, removeEvent, timeline, lastCommits, EVENT_KINDS } from './events.mjs';
 import { releaseReport } from './release.mjs';
 import { alertRules, readAlerts, describeRule } from './alerts.mjs';
-import { ciConfig, readCiState } from './cisync.mjs';
+import { ciConfig, readCiState, writeCiConfig } from './cisync.mjs';
+import { readSchedules, saveSchedule, deleteSchedule, nextFire } from './schedules.mjs';
 import { buildReport, reportSchedule, readReportState, lastOccurrence, emailConfig } from './reports.mjs';
 import { reportHtml } from './report-html.mjs';
 import { siteDir } from './site.mjs';
@@ -386,7 +387,18 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       if (p === '/api/settings') return send(res, 200, { ...(await readSettings(projectRoot)), autoWorkers: autoWorkers(), browsers: { installed: installedBrowsers(env), configReadsBrowser: configSupport(findConfigPath(projectRoot)) } });
       if (p === '/api/info') return send(res, 200, { version: VERSION, pid: process.pid, project: basename(projectRoot), reporter: reporterStatus(projectRoot), lastArchive: lastArchive(), thresholds: readConfig(projectRoot).thresholds ?? null, runner: runner.state() });
       if (p === '/api/runs') return send(res, 200, await listRuns(projectRoot));
-      if (p === '/api/tests') return send(res, 200, await historyTable(projectRoot, 10));
+      if (p === '/api/tests') {
+        // ?root=: test của project khác trong danh sách Projects (form Lịch chạy); thư mục lạ thì từ chối
+        const root = url.searchParams.get('root');
+        if (!root) return send(res, 200, await historyTable(projectRoot, 10));
+        if (!(await readRegistry(env)).some((x) => resolve(x.root) === resolve(root))) return send(res, 400, { error: 'Project chưa có trong danh sách Projects' });
+        return send(res, 200, await historyTable(resolve(root), 10));
+      }
+      if (p === '/api/schedules') {
+        const schedules = (await readSchedules(env)).map((s) => ({ ...s, next: nextFire(s) }));
+        const projects = (await readRegistry(env)).map((x) => ({ root: resolve(x.root), name: x.name ?? basename(x.root) }));
+        return send(res, 200, { schedules, projects, current: resolve(projectRoot) });
+      }
       if (p === '/api/live/test') return send(res, 200, live.test(url.searchParams.get('key') ?? '') ?? { steps: [] });
       if (p === '/api/live') {
         res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
@@ -440,6 +452,13 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return send(res, 200, compareBranches(await loadHistory(projectRoot, 100), a, b));
       }
       if (p === '/api/projects') return send(res, 200, { projects: await projectSummaries(projectRoot, env) });
+      if (p === '/api/fs/dirs') {
+        try {
+          return send(res, 200, await listDirs(url.searchParams.get('path') || dirname(projectRoot)));
+        } catch (e) {
+          return send(res, 400, { error: e.code === 'ENOENT' ? 'Thư mục không tồn tại' : e.code === 'EACCES' ? 'Không có quyền đọc thư mục' : e.message });
+        }
+      }
       if (p === '/api/digest') {
         const days = Math.max(1, Math.min(90, Number.parseInt(url.searchParams.get('days') ?? '7', 10) || 7));
         return send(res, 200, await buildDigest(projectRoot, { days }));
@@ -1012,6 +1031,35 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
           return send(res, 400, { error: e.message });
         }
       }
+      if (p === '/api/ci/config') {
+        try {
+          const config = await writeCiConfig(projectRoot, await readBody(req));
+          tracking?.reloadCi?.();
+          return send(res, 200, { config });
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+      }
+      if (p === '/api/schedules/save') {
+        try {
+          return send(res, 200, { schedule: await saveSchedule(await readBody(req), env) });
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+      }
+      if (p === '/api/schedules/delete') {
+        const { id } = await readBody(req);
+        if (typeof id !== 'string') return send(res, 400, { error: 'invalid id' });
+        return send(res, 200, { removed: await deleteSchedule(id, env) });
+      }
+      if (p === '/api/schedules/run') {
+        const { id } = await readBody(req);
+        const s = (await readSchedules(env)).find((x) => x.id === id);
+        if (!s) return send(res, 404, { error: 'Không thấy lịch' });
+        if (!automation?.runSchedule) return send(res, 503, { error: 'unavailable' });
+        const r = await automation.runSchedule(s);
+        return r.ok ? send(res, 200, r) : send(res, r.error === 'busy' ? 409 : 400, { error: r.error });
+      }
       if (p === '/api/ci/sync') {
         if (!tracking?.ci || !ciConfig(readConfig(projectRoot))) return send(res, 400, { error: 'Chưa cấu hình "ci": { "github": { "workflow": … } } trong .e2e-dashboard/config.json.' });
         return send(res, 200, await tracking.ci.now());
@@ -1176,6 +1224,15 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         const body = await readBody(req);
         try {
           return send(res, 200, { imported: await ghImport(projectRoot, body.runId, { artifact: body.artifact || null }) });
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+      }
+      if (p === '/api/projects/add') {
+        const { root } = await readBody(req);
+        if (typeof root !== 'string' || !root.trim()) return send(res, 400, { error: 'invalid root' });
+        try {
+          return send(res, 200, await addProject(root.trim(), env));
         } catch (e) {
           return send(res, 400, { error: e.message });
         }

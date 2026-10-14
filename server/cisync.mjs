@@ -2,6 +2,10 @@
 // runs of one workflow (gh, argv only) and import the e2e report artifact of those not imported yet.
 // Opt-in: "ci": { "github": { "workflow": "e2e.yml", "artifact": "e2e-report", "branch": "main", "intervalMinutes": 30 } }.
 import { execFile } from 'node:child_process';
+import { readFile, writeFile, rename } from 'node:fs/promises';
+import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import { DATA_DIR } from '../reporter/e2e-dashboard.reporter.mjs';
 import { importFromGithub } from './share.mjs';
 import { readState, writeState, serial } from './jsonstate.mjs';
 
@@ -18,6 +22,33 @@ export function ciConfig(cfg) {
     intervalMinutes: Number.isFinite(iv) && iv >= 5 && iv <= 24 * 60 ? iv : 30,
     limit: 10,
   };
+}
+
+// Lưu "ci.github" từ form trên UI vào .e2e-dashboard/config.json, giữ nguyên các khoá khác. Ô sai thì báo, không lặng lẽ bỏ.
+export async function writeCiConfig(root, input) {
+  const g = {
+    workflow: String(input?.workflow ?? '').trim(),
+    ...(String(input?.artifact ?? '').trim() ? { artifact: String(input.artifact).trim() } : {}),
+    ...(String(input?.branch ?? '').trim() ? { branch: String(input.branch).trim() } : {}),
+    intervalMinutes: Number(input?.intervalMinutes ?? 30),
+  };
+  const c = ciConfig({ ci: { github: g } });
+  if (!c) throw new Error('Workflow không hợp lệ (vd. e2e.yml)');
+  if (g.artifact && c.artifact !== g.artifact) throw new Error('Tên artifact không hợp lệ');
+  if (g.branch && c.branch !== g.branch) throw new Error('Tên branch không hợp lệ');
+  if (c.intervalMinutes !== g.intervalMinutes) throw new Error('Chu kỳ phải từ 5 đến 1440 phút');
+  const path = join(root, DATA_DIR, 'config.json');
+  let cfg = {};
+  try {
+    cfg = JSON.parse(await readFile(path, 'utf8'));
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw new Error('config.json hiện tại không đọc được: sửa tay trước');
+  }
+  cfg.ci = { ...(cfg.ci ?? {}), github: g };
+  const tmp = `${path}.tmp-${randomBytes(6).toString('hex')}`;
+  await writeFile(tmp, `${JSON.stringify(cfg, null, 2)}\n`);
+  await rename(tmp, path);
+  return c;
 }
 
 export async function readCiState(root) {

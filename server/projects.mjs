@@ -1,9 +1,9 @@
 // Every project that has opened a dashboard, in one per-user registry (~/.e2e-dashboard/projects.json),
 // so one dashboard can show them all. The registry lives in the user's home, never in a repo.
-import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rename, stat, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, resolve, basename } from 'node:path';
+import { join, resolve, basename, dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { readServerInfo } from '../reporter/e2e-dashboard.reporter.mjs';
 import { listRuns } from './store.mjs';
@@ -46,6 +46,23 @@ export function forgetProject(root, env = process.env) {
     await rename(tmp, registryPath(env));
     return true;
   });
+}
+
+// Thêm project từ nút "Thêm project": đã có trong danh sách thì báo lại, không tạo bản ghi mới.
+export async function addProject(root, env = process.env) {
+  const abs = resolve(root);
+  if (!(await stat(abs).catch(() => null))?.isDirectory()) throw new Error(`Không phải thư mục: ${abs}`);
+  if ((await readRegistry(env)).some((p) => resolve(p.root) === abs)) return { added: false, root: abs };
+  await registerProject(abs, env);
+  return { added: true, root: abs };
+}
+
+// Thư mục con (bỏ thư mục ẩn) cho hộp chọn thư mục: trình duyệt không lộ đường dẫn tuyệt đối nên server liệt kê.
+export async function listDirs(dir) {
+  const abs = resolve(dir);
+  const entries = await readdir(abs, { withFileTypes: true });
+  const dirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith('.')).map((e) => e.name).sort((a, b) => a.localeCompare(b));
+  return { path: abs, parent: dirname(abs) === abs ? null : dirname(abs), dirs };
 }
 
 const alive = (pid) => {

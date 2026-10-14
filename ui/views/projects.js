@@ -25,8 +25,18 @@ export function projectCardHtml(p) {
 
 export async function renderProjects(main) {
   const { projects } = await getJson('/api/projects');
-  const head = pageHead('Projects', 'folder', 'Mọi project đã mở dashboard trên máy này (lưu ở <code>~/.e2e-dashboard/projects.json</code>). Project đang chạy server có nút mở thẳng.');
+  const add = `<button type="button" class="primary" data-add-project>${icon('plus', { size: 14 })}Thêm project</button>`;
+  const head = pageHead('Projects', 'folder', 'Mọi project đã mở dashboard trên máy này (lưu ở <code>~/.e2e-dashboard/projects.json</code>). Project đang chạy server có nút mở thẳng.', add);
   main.innerHTML = projects.length ? `${head}<section class="projects">${projects.map(projectCardHtml).join('')}</section>` : `${head}${emptyBox('Chưa có project nào')}`;
+  main.querySelector('[data-add-project]').addEventListener('click', async () => {
+    const root = await pickFolder();
+    if (!root) return;
+    const r = await postJson('/api/projects/add', { root }).catch((x) => toast(x.message, 'bad'));
+    if (!r) return;
+    if (!r.added) return toast(`Project đã có trong danh sách: ${r.root}`, 'warn', 5000);
+    toast(`Đã thêm project: ${r.root}`);
+    renderProjects(main);
+  });
   main.querySelectorAll('[data-copy-cmd]').forEach((b) => b.addEventListener('click', () => copyToClipboard(b.dataset.copyCmd, b)));
   main.querySelectorAll('[data-forget]').forEach((b) =>
     b.addEventListener('click', async () => {
@@ -35,4 +45,50 @@ export async function renderProjects(main) {
       if (!ok) return;
       renderProjects(main);
     }));
+}
+
+// Hộp chọn thư mục: duyệt cây thư mục phía server (trình duyệt không trả đường dẫn tuyệt đối), hoặc gõ thẳng đường dẫn.
+// Trả về đường dẫn đã chọn, hoặc null khi Huỷ.
+function pickFolder() {
+  document.getElementById('folder-dialog')?.remove();
+  return new Promise((resolve) => {
+    const dlg = document.createElement('dialog');
+    dlg.id = 'folder-dialog';
+    dlg.className = 'confirm-dialog folder-dialog';
+    dlg.setAttribute('aria-labelledby', 'folder-title');
+    dlg.innerHTML = `<form method="dialog" class="run-form confirm-form">
+      <header><h2 id="folder-title">${icon('folder', { size: 18 })}<span>Chọn thư mục project</span></h2></header>
+      <label class="fb-field"><span>Đường dẫn</span><input data-path autocomplete="off" spellcheck="false"></label>
+      <ul class="folder-list" data-list role="listbox" aria-label="Thư mục con"></ul>
+      <p class="muted small" data-err hidden></p>
+      <footer><button type="submit" value="cancel">Huỷ</button><button type="submit" value="ok" class="primary">Chọn thư mục này</button></footer></form>`;
+    const input = dlg.querySelector('[data-path]');
+    const list = dlg.querySelector('[data-list]');
+    const err = dlg.querySelector('[data-err]');
+    const go = async (path) => {
+      const r = await getJson(`/api/fs/dirs${path ? `?path=${encodeURIComponent(path)}` : ''}`).catch((x) => ({ error: x.message }));
+      err.hidden = !r.error;
+      err.textContent = r.error ?? '';
+      if (r.error) return;
+      input.value = r.path;
+      const item = (label, target, ic) => `<li><button type="button" class="folder-item" data-go="${escapeHtml(target)}">${icon(ic, { size: 14 })}${escapeHtml(label)}</button></li>`;
+      const sep = r.path.endsWith('/') ? '' : '/';
+      list.innerHTML = (r.parent ? item('.. (thư mục cha)', r.parent, 'folder') : '') + (r.dirs.length ? r.dirs.map((d) => item(d, r.path + sep + d, 'folder')).join('') : '<li class="muted small">Không có thư mục con</li>');
+      list.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => go(b.dataset.go)));
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault(); // Enter trong ô đường dẫn = mở thư mục đó, không chọn luôn
+      go(input.value.trim());
+    });
+    dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close('cancel'); });
+    dlg.addEventListener('close', () => {
+      const path = dlg.returnValue === 'ok' ? input.value.trim() : '';
+      dlg.remove();
+      resolve(path || null);
+    });
+    document.body.append(dlg);
+    dlg.showModal();
+    go('');
+  });
 }

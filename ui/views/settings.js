@@ -5,6 +5,7 @@ import { toast } from '../toast.js';
 import { escapeHtml, fmtRelative, statusBadge } from '../format.js';
 import { runHref } from '../router.js';
 import { icon } from '../icons.js';
+import { schedulesPanelHtml, bindSchedules } from './schedules.js';
 
 export const fmtBytes = (b) => (b < 1024 ? `${b} B` : b < 1024 ** 2 ? `${(b / 1024).toFixed(0)} KB` : b < 1024 ** 3 ? `${(b / 1024 ** 2).toFixed(1)} MB` : `${(b / 1024 ** 3).toFixed(2)} GB`);
 
@@ -42,7 +43,7 @@ const SET_TABS = [
 ];
 
 export async function renderSettings(main) {
-  const [auto, storage, ci, alerts, prefs] = await Promise.all([getJson('/api/automation'), getJson('/api/storage'), getJson('/api/ci').catch(() => null), getJson('/api/alerts').catch(() => null), getJson('/api/settings').catch(() => null)]);
+  const [auto, storage, ci, alerts, prefs, scheds] = await Promise.all([getJson('/api/automation'), getJson('/api/storage'), getJson('/api/ci').catch(() => null), getJson('/api/alerts').catch(() => null), getJson('/api/settings').catch(() => null), getJson('/api/schedules').catch(() => null)]);
   const s = auto.schedule;
   const kinds = [['video', 'Video'], ['image', 'Ảnh'], ['report', 'report.json'], ['trace', 'Trace'], ['other', 'Khác']];
   const biggest = [...storage.runs].sort((a, b) => b.bytes - a.bytes).slice(0, 8);
@@ -61,8 +62,10 @@ export async function renderSettings(main) {
         <label class="pill switch"><input type="checkbox" data-watch ${auto.watch.enabled ? 'checked' : ''}><span class="track"></span><span>Bật watch</span></label>
         ${auto.watch.last ? `<p class="muted small">Lần gần nhất: ${escapeHtml(auto.watch.last.files.join(', '))} · ${auto.watch.last.ok ? 'đã chạy' : `không chạy được (${escapeHtml(auto.watch.last.error ?? '')})`}</p>` : ''}</section>
       <section class="panel"><h2>${icon('clock', { size: 15 })} Lịch chạy</h2>
-        ${s?.times?.length ? `<p>Hằng ngày lúc <strong>${s.times.map(escapeHtml).join(', ')}</strong> · lần tới ${escapeHtml(new Date(s.next).toLocaleString('vi-VN'))}</p>` : '<p class="muted">Chưa đặt lịch.</p>'}
-        <details class="cfg"><summary class="small">${icon('file', { size: 13 })}Cách cấu hình</summary><p class="muted small">Đặt trong <code>.e2e-dashboard/config.json</code>: <code>"schedule": { "daily": ["02:00"], "tests": [] }</code>. Chỉ chạy khi dashboard đang mở; kết quả gửi qua thông báo desktop và webhook.</p></details></section>
+        <p class="muted small">Chọn giờ, thứ, project, test và option như hộp Chạy test. Chỉ chạy khi có ít nhất một dashboard đang mở; dashboard nào mở cũng chạy hộ mọi project.</p>
+        <div data-sched-panel>${scheds ? schedulesPanelHtml(scheds) : '<p class="muted">Không tải được danh sách lịch.</p>'}</div>
+        ${s?.times?.length ? `<p class="small">Lịch trong config.json: hằng ngày lúc <strong>${s.times.map(escapeHtml).join(', ')}</strong> · lần tới ${escapeHtml(new Date(s.next).toLocaleString('vi-VN'))}</p>` : ''}
+        <details class="cfg"><summary class="small">${icon('file', { size: 13 })}Cấu hình bằng file</summary><p class="muted small">Vẫn đọc <code>"schedule": { "daily": ["02:00"], "tests": [] }</code> trong <code>.e2e-dashboard/config.json</code>. Lịch tạo ở đây lưu ở <code>~/.e2e-dashboard/schedules.json</code>.</p></details></section>
           </div>
         </div>
         <div class="sys-pane" role="tabpanel" id="set-pane-notify" aria-labelledby="set-tab-notify" hidden>
@@ -125,6 +128,8 @@ export async function renderSettings(main) {
       e.target.checked = false;
     } else toast(r.enabled ? 'Đã bật watch' : 'Đã tắt watch');
   });
+  if (scheds) bindSchedules(main.querySelector('[data-sched-panel]'), scheds, () => renderSettings(main));
+  main.querySelector('[data-ci-config]')?.addEventListener('click', () => openCiDialog(ci?.config, () => renderSettings(main)));
   main.querySelector('[data-ci-sync]')?.addEventListener('click', async (e) => {
     const btn = e.currentTarget; // e.target may be the inner <svg>; currentTarget is null after await
     btn.disabled = true;
@@ -232,7 +237,46 @@ export function ciPanelHtml(c) {
     ${c.config ? `<p>GitHub Actions <code>${escapeHtml(c.config.workflow)}</code>${c.config.branch ? ` · branch <code>${escapeHtml(c.config.branch)}</code>` : ''} · mỗi ${escapeHtml(c.config.intervalMinutes)} phút</p>
       <p class="small">${st.lastSync ? `Lần cuối ${escapeHtml(fmtRelative(st.lastSync))}: ${st.lastError ? `<span class="tone-bad">${escapeHtml(st.lastError)}</span>` : `nhập ${escapeHtml(st.lastImported)} run`}` : 'Chưa đồng bộ lần nào.'}</p>
       ${st.recent.length ? `<ul class="small">${st.recent.map((r) => `<li>#${escapeHtml(r.id)} ${escapeHtml(r.branch ?? '')} ${escapeHtml(r.conclusion ?? '')}: ${escapeHtml(r.archived)} report${r.reason ? ` <span class="muted">(${escapeHtml(r.reason)})</span>` : ''}</li>`).join('')}</ul>` : ''}
-      <button type="button" data-ci-sync>${icon('recycle', { size: 14 })}Đồng bộ ngay</button>`
-    : '<p class="muted">Chưa bật.</p>'}
+      <div class="row-tools"><button type="button" data-ci-sync>${icon('recycle', { size: 14 })}Đồng bộ ngay</button><button type="button" data-ci-config>${icon('settings', { size: 14 })}Sửa cấu hình</button></div>`
+    : `<p class="muted">Chưa bật.</p><button type="button" class="primary" data-ci-config>${icon('plus', { size: 14 })}Thêm đồng bộ từ CI</button>`}
     <details class="cfg"><summary class="small">${icon('file', { size: 13 })}Cách cấu hình</summary><p class="muted small">Tự kéo report e2e từ các run CI mới (cần <code>gh auth login</code>): <code>"ci": { "github": { "workflow": "e2e.yml", "artifact": "e2e-report", "branch": "main", "intervalMinutes": 30 } }</code> trong <code>.e2e-dashboard/config.json</code>.</p></details></section>`;
+}
+
+// Form cấu hình "Đồng bộ từ CI" (GitHub Actions): lưu vào .e2e-dashboard/config.json của project đang xem.
+function openCiDialog(cfg, refresh) {
+  document.getElementById('ci-dialog')?.remove();
+  const dlg = document.createElement('dialog');
+  dlg.id = 'ci-dialog';
+  dlg.className = 'confirm-dialog';
+  dlg.setAttribute('aria-labelledby', 'ci-title');
+  dlg.innerHTML = `<form method="dialog" class="run-form confirm-form">
+    <header><h2 id="ci-title">${icon('upload', { size: 18 })}<span>${cfg ? 'Sửa đồng bộ từ CI' : 'Thêm đồng bộ từ CI'}</span></h2></header>
+    <p class="muted small">Cứ mỗi chu kỳ, dashboard kéo report e2e từ các run GitHub Actions mới (cần <code>gh auth login</code> trên máy này).</p>
+    <label class="fld"><span class="fld-l">Workflow</span><input name="workflow" required placeholder="e2e.yml" spellcheck="false"><small class="fld-hint">Tên file workflow trong .github/workflows.</small></label>
+    <label class="fld"><span class="fld-l">Artifact</span><input name="artifact" placeholder="e2e-report" spellcheck="false"><small class="fld-hint">Tên artifact chứa report. Để trống = tự tìm.</small></label>
+    <label class="fld"><span class="fld-l">Branch</span><input name="branch" placeholder="main" spellcheck="false"><small class="fld-hint">Chỉ lấy run của branch này. Để trống = mọi branch.</small></label>
+    <label class="fld"><span class="fld-l">Chu kỳ (phút)</span><input name="intervalMinutes" type="number" min="5" max="1440" value="30"><small class="fld-hint">5 đến 1440 phút.</small></label>
+    <p class="err" hidden></p>
+    <footer><button type="button" data-close>Huỷ</button><button type="submit" class="primary">${icon('check', { size: 14 })}Lưu</button></footer></form>`;
+  const form = dlg.querySelector('form');
+  const err = dlg.querySelector('.err');
+  for (const k of ['workflow', 'artifact', 'branch', 'intervalMinutes']) if (cfg?.[k] != null) form.elements[k].value = String(cfg[k]);
+  dlg.querySelector('[data-close]').addEventListener('click', () => dlg.close());
+  dlg.addEventListener('close', () => dlg.remove());
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(form));
+    body.intervalMinutes = Number(body.intervalMinutes);
+    try {
+      await postJson('/api/ci/config', body);
+      dlg.close();
+      toast('Đã lưu cấu hình đồng bộ CI');
+      refresh();
+    } catch (x) {
+      err.hidden = false;
+      err.textContent = `Không lưu được: ${x.message.replace(/^400: /, '')}`;
+    }
+  });
+  document.body.append(dlg);
+  dlg.showModal();
 }
