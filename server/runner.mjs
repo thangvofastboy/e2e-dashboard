@@ -31,7 +31,7 @@ const flag = (v, what) => {
   return v === true;
 };
 
-export function buildRunArgs({ tests, targets, agents, retries, repeatEach, noCache, grepInvert, workers, tag, tagMode, excludeTag, grep, shard, maxFailures, strictCache, trace, video, lastFailed, updateSnapshots, aiTrace } = {}) {
+export function buildRunArgs({ tests, targets, agents, retries, repeatEach, noCache, grepInvert, workers, tag, tagMode, excludeTag, grep, shard, maxFailures, strictCache, trace, video, lastFailed, updateSnapshots, aiTrace, headed } = {}) {
   const args = ['e2e', 'run', ...list(tests, TEST, 'tests')];
   const t = list(targets, NAME, 'targets');
   const a = list(agents, NAME, 'agents');
@@ -74,6 +74,7 @@ export function buildRunArgs({ tests, targets, agents, retries, repeatEach, noCa
   if (flag(lastFailed, 'lastFailed')) args.push('--last-failed');
   if (flag(updateSnapshots, 'updateSnapshots')) args.push('--update-snapshots');
   if (flag(aiTrace, 'aiTrace')) args.push('--ai-trace');
+  if (flag(headed, 'headed')) args.push('--headed'); // mở trình duyệt có giao diện (cần màn hình)
   return args;
 }
 

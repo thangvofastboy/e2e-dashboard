@@ -135,9 +135,11 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
   const startedAt = Date.now();
   let last = null; // shown in /api/info so a skipped report (bad schema, unsafe path) is not silent
   // a report written after this server started is a finished run: tell the desktop (M3)
-  const ai = createAi({ projectRoot, settings: () => aiPrefs(process.env, readConfig(projectRoot)) });
+  // bối cảnh dự án (Cài đặt › Dự án) gửi kèm mọi lần gọi AI
+  const project = () => readSettings(projectRoot);
+  const ai = createAi({ projectRoot, project, settings: () => aiPrefs(process.env, readConfig(projectRoot)) });
   // viết nội dung QC theo mẫu (kể cả tự log bug): không có công cụ nào
-  const qcAi = createAi({ projectRoot, args: AI_NO_TOOLS_ARGS, settings: () => aiPrefs(process.env, readConfig(projectRoot)) });
+  const qcAi = createAi({ projectRoot, project, args: AI_NO_TOOLS_ARGS, settings: () => aiPrefs(process.env, readConfig(projectRoot)) });
   void syncIndex(projectRoot).catch(() => {}); // chỉ mục SQLite: dựng / bổ sung nền lúc khởi động
   const onArchive = async (r) => {
     last = r;

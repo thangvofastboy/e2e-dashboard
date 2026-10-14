@@ -1,6 +1,8 @@
 // Cài đặt chỉnh trên UI (trang Tự động & lưu trữ), lưu ở .e2e-dashboard/settings.json.
 // workers: số worker mặc định cho run do dashboard khởi động; null = để e2e tự chọn theo máy.
 import { availableParallelism } from 'node:os';
+import { realpath, stat, lstat } from 'node:fs/promises';
+import { resolve, isAbsolute, sep } from 'node:path';
 import { readState, writeState, serial } from './jsonstate.mjs';
 import { validBrowser } from './browsers.mjs';
 
@@ -35,10 +37,47 @@ const linearOrEmpty = (v) => {
   }
 };
 
+const SOURCES_MAX = 20;
+const DESC_MAX = 500;
+const PROMPT_MAX = 8000;
+const inside = (dir, p) => p === dir || p.startsWith(dir.endsWith(sep) ? dir : dir + sep);
+
+// Thư mục nguồn của dự án (tab Dự án): path tương đối với project hoặc tuyệt đối, phải là thư mục có thật.
+// Tương đối thì sau khi theo symlink vẫn phải nằm trong project; tuyệt đối thì bản thân nó không được là symlink.
+export async function normalizeSources(root, input) {
+  const bad = (msg) => Object.assign(new Error(msg), { status: 400 });
+  if (!Array.isArray(input)) throw bad('sources phải là danh sách');
+  if (input.length > SOURCES_MAX) throw bad(`Tối đa ${SOURCES_MAX} thư mục nguồn`);
+  const realRoot = await realpath(root);
+  const out = [];
+  for (const s of input) {
+    const path = String(s?.path ?? '').trim();
+    const description = String(s?.description ?? '').trim();
+    if (!path || path.includes('\0')) throw bad('Thiếu đường dẫn thư mục');
+    if (description.length > DESC_MAX) throw bad(`Mô tả tối đa ${DESC_MAX} ký tự`);
+    const abs = resolve(root, path);
+    let real;
+    try {
+      real = await realpath(abs);
+      if (!(await stat(real)).isDirectory()) throw new Error();
+      if (isAbsolute(path) ? (await lstat(abs)).isSymbolicLink() : !inside(realRoot, real)) throw new Error();
+    } catch {
+      throw bad(`Thư mục không hợp lệ: ${path}`);
+    }
+    out.push({ path, description });
+  }
+  return out;
+}
+
+const validPrompt = (p) => typeof p === 'string' && p.length <= PROMPT_MAX;
+
 export async function readSettings(root) {
   const s = await readState(root, FILE, {});
+  // file sửa tay: sources hỏng thì coi như chưa cấu hình
+  const sources = Array.isArray(s?.sources) && s.sources.length ? await normalizeSources(root, s.sources).catch(() => []) : [];
   // sqlite: dùng chỉ mục SQLite (cache/index.sqlite) — mặc định tắt, bật ở trang Cài đặt hệ thống (cần Node ≥ 22.13)
-  return { workers: validWorkers(s?.workers) ? s.workers : null, sqlite: s?.sqlite === true, browser: validBrowser(s?.browser) ? s.browser : 'chromium', linear: linearOrEmpty(s?.linear) };
+  // headed: mở trình duyệt khi chạy (mặc định tắt); sources / prompt: bối cảnh dự án gửi kèm mọi lần gọi AI
+  return { workers: validWorkers(s?.workers) ? s.workers : null, sqlite: s?.sqlite === true, browser: validBrowser(s?.browser) ? s.browser : 'chromium', headed: s?.headed === true, linear: linearOrEmpty(s?.linear), sources, prompt: validPrompt(s?.prompt) ? s.prompt : '' };
 }
 
 export function writeSettings(root, patch) {
@@ -46,8 +85,12 @@ export function writeSettings(root, patch) {
     if (patch?.workers !== undefined && !validWorkers(patch.workers)) throw Object.assign(new Error('invalid workers'), { status: 400 });
     if (patch?.sqlite !== undefined && typeof patch.sqlite !== 'boolean') throw Object.assign(new Error('invalid sqlite'), { status: 400 });
     if (patch?.browser !== undefined && !validBrowser(patch.browser)) throw Object.assign(new Error('invalid browser'), { status: 400 });
+    if (patch?.headed !== undefined && typeof patch.headed !== 'boolean') throw Object.assign(new Error('invalid headed'), { status: 400 });
+    if (patch?.prompt !== undefined && !validPrompt(patch.prompt)) throw Object.assign(new Error(`Prompt phải là chuỗi tối đa ${PROMPT_MAX} ký tự`), { status: 400 });
     const linear = patch?.linear !== undefined ? normalizeLinear(patch.linear) : undefined;
-    const next = { ...(await readSettings(root)), ...(patch?.workers !== undefined ? { workers: patch.workers } : {}), ...(patch?.sqlite !== undefined ? { sqlite: patch.sqlite } : {}), ...(patch?.browser !== undefined ? { browser: patch.browser } : {}), ...(linear !== undefined ? { linear } : {}) };
+    const sources = patch?.sources !== undefined ? await normalizeSources(root, patch.sources) : undefined;
+    const pick = (k, v = patch?.[k]) => (v !== undefined ? { [k]: v } : {});
+    const next = { ...(await readSettings(root)), ...pick('workers'), ...pick('sqlite'), ...pick('browser'), ...pick('headed'), ...pick('linear', linear), ...pick('sources', sources), ...pick('prompt') };
     await writeState(root, FILE, next);
     return next;
   });

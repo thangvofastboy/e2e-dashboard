@@ -1,6 +1,7 @@
 // AI analysis through Claude Code headless (`claude -p`), read-only tools, streamed (spec §6).
 import { spawn as nodeSpawn, execFile } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
+import { resolve, isAbsolute } from 'node:path';
 import { resultAttempts } from '../reporter/e2e-dashboard.reporter.mjs';
 
 export const PROMPT_VERSION = 2;
@@ -23,8 +24,24 @@ export const AI_NO_TOOLS_ARGS = [...AI_ARGS.slice(0, TOOLS_AT), '--tools', '', .
 export const AI_FIX_ARGS = AI_ARGS.map((a) => (a === 'Read,Grep,Glob' ? 'Read,Grep,Glob,Edit,Write' : a));
 const MAX_TEXT = 4000; // per untrusted field: keeps the prompt bounded
 
-export function cacheKey(action, runId, resultId = '') {
-  return createHash('sha256').update(`${action}\0${runId}\0${resultId}\0${PROMPT_VERSION}`).digest('hex');
+// variant: model / effort đè riêng một lần gọi ("model|effort"); rỗng thì giữ khoá cũ để cache sẵn có vẫn dùng được
+export function cacheKey(action, runId, resultId = '', variant = '') {
+  return createHash('sha256').update(`${action}\0${runId}\0${resultId}\0${PROMPT_VERSION}${variant ? `\0${variant}` : ''}`).digest('hex');
+}
+
+// Bối cảnh dự án do người dùng viết (Cài đặt › Dự án): gửi kèm mọi lần gọi qua --append-system-prompt.
+// Không nằm trong khối dữ liệu không tin cậy; vẫn cắt để lời nhắc không phình.
+export function projectBlock(project) {
+  const sources = (Array.isArray(project?.sources) ? project.sources : []).slice(0, 20);
+  const prompt = String(project?.prompt ?? '').trim().slice(0, 8000);
+  if (!sources.length && !prompt) return '';
+  const dirs = sources.map((s) => `- ${String(s.path).slice(0, 300)}${s.description ? `: ${String(s.description).slice(0, 500)}` : ''}`).join('\n');
+  return ['Bối cảnh dự án (người dùng viết):', dirs && `Thư mục nguồn của hệ thống:\n${dirs}`, prompt && `Hướng dẫn của người dùng:\n${prompt}`].filter(Boolean).join('\n\n');
+}
+
+// Điểm chất lượng (server/quality.mjs) thành các dòng bằng chứng cho action quality-review: test tệ nhất trước
+export function qualityEvidence(q, limit = 40) {
+  return (q?.rows ?? []).slice(0, limit).map((r) => `- [${r.score} điểm, hạng ${r.grade}] ${r.title} · file: ${r.file || '?'} · target: ${r.target} · ${r.status}${r.checks?.length ? `\n  trừ điểm: ${r.checks.map((c) => `${c.text} (-${c.penalty})`).join('; ')}` : ''}`);
 }
 
 // Untrusted text: bounded, and unable to forge the fence that marks it as data.
@@ -450,6 +467,22 @@ Chú ý: kết quả khác nhau trên cùng commit là dấu hiệu flaky thật
 ## Cách làm test ổn định
 `;
   }
+  if (action === 'quality-review') {
+    return `${FRAME(language, fence)}
+
+Nhiệm vụ: đánh giá lại chất lượng các test e2e dưới đây. Điểm là công thức (100 trừ các mục bị phạt); đọc file test (Read) để xác nhận hoặc bác lý do trừ điểm, và tìm vấn đề công thức không thấy.
+
+<${fence}>
+${lines}
+</${fence}>
+
+Trả lời theo khung:
+## Nhận xét từng test
+(mỗi test: điểm có đúng không, vấn đề thật, file:line)
+## Gợi ý sửa theo thứ tự ưu tiên
+(đánh số, việc đáng làm nhất trước, kèm test liên quan)
+`;
+  }
   if (action === 'suggest-locator') {
     const r = (report.run.results ?? []).find((x) => x.id === resultId);
     if (!r) throw new Error('unknown result');
@@ -513,17 +546,23 @@ export const AI_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 export const validModel = (m) => typeof m === 'string' && /^[\w.:][\w.:[\]-]{0,79}$/.test(m);
 
 // settings(): { model, effort } đọc lại mỗi lần chạy (trang Cài đặt hệ thống đổi là có hiệu lực ngay)
-export function createAi({ projectRoot, spawnImpl = nodeSpawn, maxConcurrent = 2, maxQueue = 8, timeoutMs = 300_000, model, settings = () => ({}), args: baseArgs = AI_ARGS }) {
+// project(): { sources, prompt } (có thể async) — bối cảnh dự án gửi mỗi lần gọi; mỗi thư mục nguồn thêm --add-dir
+export function createAi({ projectRoot, spawnImpl = nodeSpawn, maxConcurrent = 2, maxQueue = 8, timeoutMs = 300_000, model, settings = () => ({}), project = () => null, args: baseArgs = AI_ARGS }) {
   let active = 0;
   const queue = [];
   const next = () => {
     while (active < maxConcurrent && queue.length) queue.shift()();
   };
 
-  function runOne({ prompt, resume, onEvent, signal }) {
+  async function runOne({ prompt, resume, onEvent, signal, model: oneModel, effort: oneEffort }) {
+    // settings của dự án đọc lỗi thì vẫn chạy, chỉ thiếu bối cảnh
+    const proj = await Promise.resolve().then(project).catch(() => null);
+    const block = projectBlock(proj);
+    const dirs = (Array.isArray(proj?.sources) ? proj.sources : []).slice(0, 20).map((s) => resolve(projectRoot, String(s.path))).filter((d) => isAbsolute(d) && !d.startsWith('-'));
     return new Promise((done) => {
-      const pick = { model, ...settings() };
-      const args = [...baseArgs, ...(validModel(pick.model) ? ['--model', pick.model] : []), ...(AI_EFFORTS.includes(pick.effort) ? ['--effort', pick.effort] : []), ...(resume ? ['--resume', resume] : [])];
+      // model / effort của riêng lần gọi đè Settings; giá trị sai bị bỏ qua
+      const pick = { model, ...settings(), ...(validModel(oneModel) ? { model: oneModel } : {}), ...(AI_EFFORTS.includes(oneEffort) ? { effort: oneEffort } : {}) };
+      const args = [...baseArgs, ...(validModel(pick.model) ? ['--model', pick.model] : []), ...(AI_EFFORTS.includes(pick.effort) ? ['--effort', pick.effort] : []), ...(block ? ['--append-system-prompt', block] : []), ...dirs.flatMap((d) => ['--add-dir', d]), ...(resume ? ['--resume', resume] : [])];
       const child = spawnImpl('claude', args, { cwd: projectRoot, stdio: ['pipe', 'pipe', 'pipe'] });
       let buf = '';
       let stderr = '';
