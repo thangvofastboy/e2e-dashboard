@@ -21,6 +21,7 @@ import { renderAppErrors } from './views/app-errors.js';
 import { renderSystem } from './views/system.js';
 import { renderFeedback } from './views/feedback.js';
 import { renderManual } from './views/manual.js';
+import { renderLinearIssues } from './views/linear-issues.js';
 import { renderVerify } from './views/verify.js';
 import { viewsButton, openViews } from './saved-views.js';
 import { renderBuild } from './views/build.js';
@@ -51,7 +52,7 @@ import { icon, ICON_SPRITE } from './icons.js';
 // [view, href, label, icon]; groups after the first get a heading. Analysis pages need the server.
 const NAV = [
   [null, [['overview', '#/', 'Overview', 'grid'], ['runs', '#/runs', 'Runs', 'list'], ['live', '#/live', 'Live', 'activity'], ['tests', '#/tests', 'Tests', 'flask']]],
-  ['Theo dõi', [['trends', '#/trends', 'Xu hướng', 'activity'], ['triage', '#/triage', 'Triage lỗi', 'ticket'], ['groups', '#/groups', 'Module / team', 'layers'], ['release', '#/release', 'Phát hành', 'upload'], ['traceability', '#/traceability', 'Truy vết', 'route'], ['lifecycle', '#/lifecycle', 'Vòng đời test', 'recycle'], ['manual', '#/manual', 'Test thủ công', 'flask'], ['verify', '#/verify', 'QC xác nhận', 'check'], ['build', '#/build', 'Ma trận build', 'grid']]],
+  ['Theo dõi', [['trends', '#/trends', 'Xu hướng', 'activity'], ['triage', '#/triage', 'Triage lỗi', 'ticket'], ['groups', '#/groups', 'Module / team', 'layers'], ['release', '#/release', 'Phát hành', 'upload'], ['traceability', '#/traceability', 'Truy vết', 'route'], ['lifecycle', '#/lifecycle', 'Vòng đời test', 'recycle'], ['manual', '#/manual', 'Test thủ công', 'flask'], ['linear-issues', '#/linear-issues', 'Issue Linear', 'ticket'],['verify', '#/verify', 'QC xác nhận', 'check'], ['build', '#/build', 'Ma trận build', 'grid']]],
   ['Phân tích', [['flaky', '#/flaky', 'Flaky', 'shuffle'], ['quality', '#/quality', 'Chất lượng test', 'check'], ['errors', '#/errors', 'Nhóm lỗi', 'layers'], ['cost', '#/cost', 'Chi phí & cache', 'coins'], ['routes', '#/routes', 'Bản đồ route', 'route'], ['branches', '#/branches', 'Branch', 'branch'], ['models', '#/models', 'Model & ngân sách', 'cpu'], ['locators', '#/locators', 'Gợi ý locator', 'crosshair'], ['lint', '#/lint', 'Lint agent', 'lint'], ['app-errors', '#/app-errors', 'Lỗi app', 'terminal'], ['coverage', '#/coverage', 'Coverage', 'crosshair'], ['environment', '#/environment', 'Môi trường', 'cpu']]],
   ['Tích hợp', [['projects', '#/projects', 'Projects', 'folder'], ['qc-templates', '#/qc-templates', 'Mẫu prompt QC', 'file'], ['digest', '#/digest', 'Digest tuần', 'newspaper'], ['report', '#/report', 'Báo cáo', 'file'], ['settings', '#/settings', 'Tự động & lưu trữ', 'gauge'], ['system', '#/system', 'Cài đặt hệ thống', 'settings'], ['feedback', '#/feedback', 'Gửi phản hồi', 'send']]],
 ];
@@ -61,9 +62,9 @@ const VIEWS = {
   flaky: renderFlaky, compare: renderCompare, errors: renderErrors, cost: renderCost, routes: renderRoutes,
   branches: renderBranches, projects: renderProjects, digest: renderDigest, locators: renderLocators, models: renderModels, lint: renderLint,
   test: renderTest, 'app-errors': renderAppErrors, settings: renderSettings, coverage: renderCoverage, environment: renderEnvironment, report: renderReport,
-  system: renderSystem, 'qc-templates': renderQcTemplates, quality: renderTestQuality, feedback: renderFeedback, manual: renderManual, verify: renderVerify, build: renderBuild, trends: renderTrends, triage: renderTriage, groups: renderGroups, release: renderRelease, traceability: renderTraceability, lifecycle: renderLifecycle,
+  system: renderSystem, 'qc-templates': renderQcTemplates, quality: renderTestQuality, feedback: renderFeedback, manual: renderManual, 'linear-issues': renderLinearIssues, verify: renderVerify, build: renderBuild, trends: renderTrends, triage: renderTriage, groups: renderGroups, release: renderRelease, traceability: renderTraceability, lifecycle: renderLifecycle,
 };
-const TITLES = { verify: 'QC xác nhận', 'qc-templates': 'Mẫu prompt QC', quality: 'Chất lượng test', feedback: 'Gửi phản hồi', manual: 'Test thủ công', build: 'Ma trận build', overview: 'Overview', runs: 'Runs', run: 'Run', live: 'Live', tests: 'Tests', test: 'Test', compare: 'So sánh', flaky: 'Flaky', errors: 'Nhóm lỗi', cost: 'Chi phí', routes: 'Route', branches: 'Branch', projects: 'Projects', digest: 'Digest', locators: 'Locator', models: 'Model', lint: 'Lint', 'app-errors': 'Lỗi app', settings: 'Cài đặt', coverage: 'Coverage', environment: 'Môi trường', report: 'Báo cáo', trends: 'Xu hướng', triage: 'Triage', groups: 'Module / team', release: 'Phát hành', traceability: 'Truy vết', lifecycle: 'Vòng đời test', system: 'Cài đặt hệ thống' };
+const TITLES = { verify: 'QC xác nhận', 'qc-templates': 'Mẫu prompt QC', quality: 'Chất lượng test', feedback: 'Gửi phản hồi', manual: 'Test thủ công', 'linear-issues': 'Issue Linear', build: 'Ma trận build', overview: 'Overview', runs: 'Runs', run: 'Run', live: 'Live', tests: 'Tests', test: 'Test', compare: 'So sánh', flaky: 'Flaky', errors: 'Nhóm lỗi', cost: 'Chi phí', routes: 'Route', branches: 'Branch', projects: 'Projects', digest: 'Digest', locators: 'Locator', models: 'Model', lint: 'Lint', 'app-errors': 'Lỗi app', settings: 'Cài đặt', coverage: 'Coverage', environment: 'Môi trường', report: 'Báo cáo', trends: 'Xu hướng', triage: 'Triage', groups: 'Module / team', release: 'Phát hành', traceability: 'Truy vết', lifecycle: 'Vòng đời test', system: 'Cài đặt hệ thống' };
 
 // Which nav groups are folded: a per-viewer convenience, so storage failures are fine.
 function foldedGroups() {
@@ -431,6 +432,7 @@ const PAGE_HELP = {
   quality: 'Chấm điểm từng test, tìm test trùng và đề nghị tách / gộp; Claude Code làm phần sửa mã.',
   verify: 'Bug đã biết có vẻ đã sửa chờ bạn xác nhận; waiver có hạn cho lỗi chưa sửa kịp; nhật ký ai đổi gì.',
   manual: 'Ca QC chạy tay, ghi kết quả từng lần; thống kê gộp với test tự động.',
+  'linear-issues': 'Issue Linear được giao cho bạn: AI đề xuất testcase, bạn sửa rồi Gen file e2e.',
   build: 'Cùng một test qua các build (branch@commit); hàng đổi kết quả được đánh dấu.',
   feedback: 'Góp ý hoặc báo lỗi về e2e-dashboard, đăng thành issue trên GitHub của dự án.',
   flaky: 'Test lúc pass lúc fail: điểm flaky càng cao càng thất thường. Cách ly tạm một test để không làm đỏ cả suite.',
