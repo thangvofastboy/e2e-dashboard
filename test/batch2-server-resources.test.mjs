@@ -57,6 +57,8 @@ test('GET /api/resources cần token và trả machine + app', async () => {
     assert.ok(body.app.dashboard.rssMb > 0);
     assert.ok('cpuPct' in body.app.dashboard);
     assert.equal(body.app.runner, null, 'không có run đang chạy');
+    const sys = await (await fetch(`${base}/api/system`, { headers: { 'x-e2e-dashboard-token': 't' } })).json();
+    assert.ok(sys.hostname && sys.arch, 'bảng Cấu hình máy cần hostname + arch');
   } finally {
     server.close();
   }

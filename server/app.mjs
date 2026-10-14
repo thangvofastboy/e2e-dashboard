@@ -7,7 +7,7 @@ import { envSummary, readEnvFile, writeEnvFile, userSummary, writeUser, setupSta
 import { createReadStream, readFileSync, existsSync } from 'node:fs';
 import { pipeline } from 'node:stream';
 import { join, extname, basename, relative, resolve, dirname } from 'node:path';
-import { platform, release } from 'node:os';
+import { platform, release, hostname, arch } from 'node:os';
 import { timingSafeEqual, createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { safeJoin, realInside, readConfig, VERSION, DATA_DIR, RUN_ID, RESULT_ID, resultAttempts, isLink } from '../reporter/e2e-dashboard.reporter.mjs';
@@ -350,7 +350,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       }
       if (p === '/api/system') {
         return send(res, 200, {
-          version: VERSION, node: process.version, platform: `${platform()} ${release()}`, projectRoot, dataDir: join(projectRoot, DATA_DIR),
+          version: VERSION, node: process.version, platform: `${platform()} ${release()}`, arch: arch(), hostname: hostname(), projectRoot, dataDir: join(projectRoot, DATA_DIR),
           sqlite: (await readSettings(projectRoot)).sqlite, sqliteSupport: sqliteSupport(),
           env: await envSummary(projectRoot), user: await userSummary(env), setup: await setupStatus(projectRoot, { reporter: reporterStatus(projectRoot) }),
         });
