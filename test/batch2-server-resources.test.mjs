@@ -21,8 +21,8 @@ test('parsePs: cộng RSS (MB) và %CPU của nhóm tiến trình, bỏ dòng l�
     '  103   100  abc  1.0', // rss hỏng
     '',
   ].join('\n');
-  assert.deepEqual(parsePs(out, 100), { rssMb: 30, cpuPct: 20, count: 2 });
-  assert.deepEqual(parsePs('', 100), { rssMb: 0, cpuPct: 0, count: 0 });
+  assert.deepEqual(parsePs(out, 100), { rssMb: 30, cpuPct: 20, procs: 2 });
+  assert.deepEqual(parsePs('', 100), { rssMb: 0, cpuPct: 0, procs: 0 });
 });
 
 test('cpuPercent: từ hai mẫu os.cpus()', () => {
@@ -34,7 +34,7 @@ test('cpuPercent: từ hai mẫu os.cpus()', () => {
 
 test('machineResources: đủ khoá', async () => {
   const m = await machineResources(process.cwd(), { sampleMs: 10 });
-  for (const k of ['cores', 'cpuModel', 'cpuPct', 'loadavg', 'memTotal', 'memFree', 'diskTotal', 'diskFree']) assert.ok(k in m, k);
+  for (const k of ['cores', 'cpuModel', 'cpuPct', 'loadavg', 'memTotalMb', 'memFreeMb', 'diskTotalGb', 'diskFreeGb']) assert.ok(k in m, k);
   assert.ok(m.cores >= 1);
 });
 
@@ -42,7 +42,7 @@ test('runnerResources: không có pid / Windows / thiếu ps → null kèm lý d
   assert.equal(await runnerResources(null), null);
   assert.deepEqual(await runnerResources(5, { platform: 'win32' }), { unavailable: 'không đo được' });
   assert.deepEqual(await runnerResources(5, { platform: 'linux', exec: async () => { throw Object.assign(new Error('x'), { code: 'ENOENT' }); } }), { unavailable: 'không đo được' });
-  assert.deepEqual(await runnerResources(5, { platform: 'linux', exec: async () => '5 5 2048 3.0\n' }), { rssMb: 2, cpuPct: 3, count: 1 });
+  assert.deepEqual(await runnerResources(5, { platform: 'linux', exec: async () => '5 5 2048 3.0\n' }), { rssMb: 2, cpuPct: 3, procs: 1 });
 });
 
 test('GET /api/resources cần token và trả machine + app', async () => {
@@ -62,4 +62,19 @@ test('GET /api/resources cần token và trả machine + app', async () => {
   } finally {
     server.close();
   }
+});
+
+// hợp đồng server ↔ UI: output thật của machineResources / parsePs phải đọc được bởi Live và bảng Cấu hình máy
+test('resources: tên field khớp với formatResources (Live) và machineHtml (Hệ thống)', async () => {
+  const { formatResources } = await import('../ui/views/live.js');
+  const { machineHtml } = await import('../ui/views/system.js');
+  const machine = await machineResources(process.cwd(), { sampleMs: 10 });
+  const runner = parsePs('  1 100 10240 5.0\n', 100);
+  const live = formatResources({ machine, app: { runner } });
+  assert.match(live, /RAM \d/);
+  assert.match(live, /Disk trống \d/);
+  assert.match(live, /1 tiến trình/);
+  assert.match(formatResources({ machine, app: { runner: await runnerResources(5, { platform: 'win32' }) } }), /App: không đo được/);
+  const html = machineHtml({ hostname: 'h', platform: 'linux', arch: 'x64' }, { machine }, null);
+  assert.doesNotMatch(html.split('Trình duyệt')[0], /không đo được/);
 });

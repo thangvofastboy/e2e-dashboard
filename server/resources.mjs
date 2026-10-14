@@ -4,6 +4,7 @@ import { statfs } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 
 const MB = 1024 * 1024;
+const GB = MB * 1024;
 const round1 = (n) => Math.round(n * 10) / 10;
 const sum = (t) => Object.values(t ?? {}).reduce((a, b) => a + (Number(b) || 0), 0);
 
@@ -29,10 +30,11 @@ export async function machineResources(root, { sampleMs = 200 } = {}) {
     cpuModel: second[0]?.model?.trim() ?? '',
     cpuPct: cpuPercent(first, second),
     loadavg: loadavg().map(round1),
-    memTotal: totalmem(),
-    memFree: freemem(),
-    diskTotal: disk ? disk.blocks * disk.bsize : null,
-    diskFree: disk ? disk.bavail * disk.bsize : null,
+    // đơn vị theo tên field (MB / GB): UI (live.js formatResources, system.js machineHtml) đọc đúng các tên này
+    memTotalMb: Math.round(totalmem() / MB),
+    memFreeMb: Math.round(freemem() / MB),
+    diskTotalGb: disk ? round1((disk.blocks * disk.bsize) / GB) : null,
+    diskFreeGb: disk ? round1((disk.bavail * disk.bsize) / GB) : null,
   };
 }
 
@@ -48,7 +50,7 @@ export function parsePs(out, pgid) {
     cpu += Number(m[4]);
     count++;
   }
-  return { rssMb: round1(rss / 1024), cpuPct: round1(cpu), count };
+  return { rssMb: round1(rss / 1024), cpuPct: round1(cpu), procs: count };
 }
 
 const runPs = () => new Promise((ok, fail) => execFile('ps', ['-A', '-o', 'pid=,pgid=,rss=,%cpu='], { timeout: 3000, maxBuffer: 4 * MB }, (e, out) => (e ? fail(e) : ok(out))));

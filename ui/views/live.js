@@ -132,7 +132,8 @@ export function formatResources(res) {
   if (m.memTotalMb) parts.push(`RAM ${gb(m.memTotalMb - (m.memFreeMb ?? 0))}/${gb(m.memTotalMb)} GB`);
   if (m.diskFreeGb != null) parts.push(`Disk trống ${Math.round(m.diskFreeGb)} GB`);
   const r = res.app?.runner;
-  if (r) parts.push(`App: ${Math.round(r.rssMb)} MB · ${Math.round(r.cpuPct)}% CPU · ${r.procs} tiến trình`);
+  if (r?.unavailable) parts.push(`App: ${r.unavailable}`); // Windows / thiếu ps
+  else if (r) parts.push(`App: ${Math.round(r.rssMb)} MB · ${Math.round(r.cpuPct)}% CPU · ${r.procs} tiến trình`);
   return parts.length ? `<p class="muted small live-res">${parts.map(escapeHtml).join(' · ')}</p>` : '';
 }
 
