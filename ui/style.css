@@ -1735,3 +1735,16 @@ select { border: 1px solid var(--border); }
 :is(button, a.button).icon-btn { padding: 3px; min-height: 0; }
 :is(button, a.button).icon-btn > .icon { padding: 5px; }
 :is(button, a.button):disabled { opacity: 0.45; }
+
+/* Tab Cài đặt hệ thống / Tự động & lưu trữ theo kiểu mục menu trái: nền trong suốt, icon trong ô tô nhạt theo màu tab (--hue),
+   tab đang chọn: nền tô màu tab, vạch trái, ô icon đặc màu với icon trắng. Đè kiểu nút màu đặc ở trên. */
+.sys-nav button:nth-child(1) { --hue: #d97706; } .sys-nav button:nth-child(2) { --hue: #0d9488; } .sys-nav button:nth-child(3) { --hue: #2563eb; }
+.sys-nav button:nth-child(4) { --hue: #7c3aed; } .sys-nav button:nth-child(5) { --hue: #ea580c; } .sys-nav button:nth-child(6) { --hue: #dc2626; }
+.sys-nav button:nth-child(7) { --hue: #64748b; } .sys-nav button:nth-child(8) { --hue: #16a34a; }
+.sys-nav button[role="tab"] { background: transparent; color: var(--text-primary); border: 1px solid transparent; box-shadow: none; font-weight: 500; border-radius: 10px; }
+.sys-nav button[role="tab"]:hover { background: var(--surface-2); color: var(--text-primary); border-color: transparent; }
+.sys-nav button[role="tab"] .sys-nav-ic { color: var(--hue); background: color-mix(in srgb, var(--hue) 15%, transparent); border-radius: 9px; }
+.sys-nav button[role="tab"][aria-selected="true"] { background: color-mix(in srgb, var(--hue) 22%, var(--surface)); color: var(--text-primary); font-weight: 700; box-shadow: inset 4px 0 0 var(--hue); border-color: transparent; }
+.sys-nav button[role="tab"][aria-selected="true"] .sys-nav-ic { background: var(--hue); color: #fff; }
+.sys-nav button[role="tab"] .sys-nav-ic .icon { --icon-sw: 2.2; }
+.sys-nav button[role="tab"][aria-selected="true"] .sys-nav-ic .icon { --icon-sw: 2.6; }
