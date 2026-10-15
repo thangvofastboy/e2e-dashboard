@@ -45,6 +45,8 @@ test('install.sh --dry-run: in thứ tự 9 bước, hệ điều hành, Node c�
   assert.match(r.stdout, /npm install -g @anthropic-ai\/claude-code/);
   assert.match(r.stdout, /claude plugin marketplace add thangvofastboy\/e2e-dashboard/);
   assert.match(r.stdout, /claude plugin install e2e-dashboard@e2e-dashboard/);
+  assert.match(r.stdout, /dashboard\.mjs autoupdate on/); // tự cập nhật plugin: bật mặc định
+  assert.doesNotMatch(dryRun('22.22.3', { args: ['--no-auto-update'] }).stdout, /autoupdate on/);
   assert.match(r.stdout, /dashboard\.mjs config --yes --gateway anthropic --app-url http:\/\/localhost:5173 --app-command npm run dev/);
   assert.match(r.stdout, /dashboard\.mjs ai --yes --provider anthropic/);
   assert.ok(r.stdout.indexOf('ai --yes') < r.stdout.indexOf('setup --quick'), 'AI trước Quick Setup');
@@ -76,7 +78,7 @@ test('install.sh: chưa có e2e.config thì báo làm tay; --init tạo bằng `
 
 test('install.ps1 có cùng các bước và tham số', () => {
   const ps = readFileSync(join(import.meta.dirname, '..', 'install.ps1'), 'utf8');
-  for (const s of ['[string]$Project', '[switch]$Init', '[string]$Ai', '[string]$ApiKey', '[switch]$AiLogin', '[string]$Gateway', '[string]$AppUrl', '[string]$AppCommand', '[switch]$Yes', '[switch]$NoOpen', '[switch]$SkipProject', '[switch]$DryRun',
+  for (const s of ['[string]$Project', '[switch]$Init', '[string]$Ai', '[string]$ApiKey', '[switch]$AiLogin', '[string]$Gateway', '[string]$AppUrl', '[string]$AppCommand', '[switch]$Yes', '[switch]$NoOpen', '[switch]$NoAutoUpdate', '[switch]$SkipProject', '[switch]$DryRun',
     "'plugin', 'install', $PluginId", "'setup', '--quick', '--yes'", "'config', '--init'", "@($Dash, 'ai')", '$PSBoundParameters.Count -eq 0', "[version]'22.22.3'", 'Summary']) {
     assert.ok(ps.includes(s), s);
   }

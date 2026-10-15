@@ -296,6 +296,17 @@ export async function main(argv, cwd) {
   }
   if (first === 'config') return configCli(argv.slice(1), cwd); // chạy được cả khi chưa có e2e.config (tạo bằng --init)
   if (first === 'ai') return aiCli(argv.slice(1), cwd);
+  if (first === 'autoupdate') {
+    // tự cập nhật plugin: bật / tắt auto-update của marketplace e2e-dashboard trong settings.json của Claude Code
+    const { autoUpdateStatus, setAutoUpdate } = await import('../server/autoupdate.mjs');
+    const want = argv[1];
+    if (want === 'on' || want === 'off') {
+      const r = await setAutoUpdate(want === 'on');
+      return { code: 0, out: `${want === 'on' ? 'Đã bật' : 'Đã tắt'} tự cập nhật plugin e2e-dashboard${r.changed ? '' : ' (vốn đã vậy)'} — ${r.path}.${want === 'on' ? '\nClaude Code tải bản mới sau tin nhắn đầu tiên của mỗi phiên; áp dụng sau /reload-plugins hoặc lần mở sau.' : ''}` };
+    }
+    const st = await autoUpdateStatus();
+    return { code: st.error ? 1 : 0, out: st.error ?? `Tự cập nhật plugin: ${st.enabled ? 'đang bật' : st.off ? 'đang tắt' : 'chưa bật'} (${st.path}). Bật: /e2e-dashboard autoupdate on · Tắt: /e2e-dashboard autoupdate off` };
+  }
   if (first === 'projects') {
     const list = await projectSummaries(findProjectRoot(cwd) ?? cwd);
     if (!list.length) return { code: 0, out: 'Chưa có project nào mở dashboard.' };

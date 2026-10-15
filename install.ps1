@@ -22,6 +22,7 @@ param(
   [string]$AppCommand,
   [switch]$Yes,
   [switch]$NoOpen,
+  [switch]$NoAutoUpdate,
   [switch]$SkipProject,
   [switch]$DryRun
 )
@@ -29,7 +30,7 @@ $ErrorActionPreference = 'Stop'
 
 $Repo = 'thangvofastboy/e2e-dashboard'
 $PluginId = 'e2e-dashboard@e2e-dashboard'
-$Steps = @('Phát hiện hệ điều hành', 'git', 'Node.js >= 22.22.3 (hoặc >= 24.8)', 'Claude Code CLI', 'Plugin e2e-dashboard', 'Cấu hình e2e.config.ts', 'AI cho e2e: model, gói npm, API key / đăng nhập', 'Quick Setup: e2e, thư viện, trình duyệt, reporter', 'Mở dashboard')
+$Steps = @('Phát hiện hệ điều hành', 'git', 'Node.js >= 22.22.3 (hoặc >= 24.8)', 'Claude Code CLI', 'Plugin e2e-dashboard (+ tự cập nhật)', 'Cấu hình e2e.config.ts', 'AI cho e2e: model, gói npm, API key / đăng nhập', 'Quick Setup: e2e, thư viện, trình duyệt, reporter', 'Mở dashboard')
 # model AI cho bước agent: giống AI_PROVIDERS của server/e2eai.mjs (test kiểm tra khớp)
 $AiProviders = [ordered]@{
   'vercel' = @('key', 'AI_GATEWAY_API_KEY', 'Vercel AI Gateway (một key, nhiều model)')
@@ -179,6 +180,7 @@ if ($PSBoundParameters.Count -eq 0 -and (Can-Ask)) {
     }
   }
   $NoOpen = [switch](-not (Ask-YN '5. Cài xong mở dashboard luôn?'))
+  $NoAutoUpdate = [switch](-not (Ask-YN '6. Tự cập nhật plugin khi có bản mới?'))
   Write-Host "`nSẽ cài với:" -ForegroundColor White
   Write-Host "  Project:          $Project$(if ($Init) { ' (tạo e2e.config.ts mới)' })"
   if (-not $SkipProject) {
@@ -187,6 +189,7 @@ if ($PSBoundParameters.Count -eq 0 -and (Can-Ask)) {
     Write-Host "  Model AI:         $($AiProviders[$Ai][2])$(if ($ApiKey) { ' · có API key' })$(if ($AiLogin) { ' · đăng nhập khi cài' })"
   }
   Write-Host "  Mở dashboard:     $(if ($NoOpen) { 'không' } else { 'có' })"
+  Write-Host "  Tự cập nhật:      $(if ($NoAutoUpdate) { 'không' } else { 'có' })"
   if (-not (Ask-YN 'Bắt đầu cài?')) { Write-Host 'Đã huỷ.'; return }
   $Yes = [switch]$true # đã có đủ câu trả lời: các bước sau không hỏi lại
 }
@@ -274,15 +277,25 @@ if ($env:E2E_DASHBOARD_PLUGIN_DIR) {
     if ((Run 'claude' @('plugin', 'install', $PluginId)) -ne 0) { Die 'Không cài được plugin.' }
   }
 }
-if ($DryRun -and -not $env:E2E_DASHBOARD_PLUGIN_DIR) { Finish 'plan' $PluginId }
-else {
+if (-not $DryRun -or $env:E2E_DASHBOARD_PLUGIN_DIR) {
   if (-not $env:E2E_DASHBOARD_PLUGIN_DIR) { $PluginDir = Plugin-Path }
   if (-not $PluginDir -or -not (Test-Path (Join-Path $PluginDir 'bin/dashboard.mjs'))) { Die 'Không tìm thấy plugin sau khi cài (claude plugin list --json).' }
   Ok "$PluginId -> $PluginDir"
-  $ver = try { (Get-Content (Join-Path $PluginDir '.claude-plugin/plugin.json') -Raw | ConvertFrom-Json).version } catch { '?' }
-  Finish $pluginState "v$ver"
 }
 $Dash = Join-Path $(if ($PluginDir) { $PluginDir } else { '<plugin>' }) 'bin/dashboard.mjs'
+# tự cập nhật: bật auto-update của marketplace trong settings.json của Claude Code (mặc định tắt với marketplace bên thứ ba)
+$auNote = ''
+if (-not $NoAutoUpdate) {
+  if ($DryRun -or ((Test-Path $Dash) -and (Select-String -Path $Dash -Pattern "first === 'autoupdate'" -SimpleMatch -Quiet))) {
+    Doing 'bật tự cập nhật plugin (Claude Code tải bản mới sau tin nhắn đầu tiên của mỗi phiên)'
+    if ((Run 'node' @($Dash, 'autoupdate', 'on')) -eq 0) { $auNote = ' · tự cập nhật' } else { Warn 'Chưa bật được tự cập nhật: bật tay trong /plugin › Marketplaces › e2e-dashboard › Enable auto-update.' }
+  } else { Warn 'Plugin bản này chưa hỗ trợ tự bật: bật tay trong /plugin › Marketplaces › e2e-dashboard › Enable auto-update.' }
+} else { Info 'Không bật tự cập nhật (-NoAutoUpdate); cập nhật tay bằng /e2e-dashboard update.' }
+if ($DryRun -and -not $env:E2E_DASHBOARD_PLUGIN_DIR) { Finish 'plan' "$PluginId$auNote" }
+else {
+  $ver = try { (Get-Content (Join-Path $PluginDir '.claude-plugin/plugin.json') -Raw | ConvertFrom-Json).version } catch { '?' }
+  Finish $pluginState "v$ver$auNote"
+}
 # plugin bản cũ chưa có lệnh `config`: tạo config bằng `npx e2e init` trực tiếp
 $hasConfigCmd = $DryRun -or ((Test-Path $Dash) -and (Select-String -Path $Dash -Pattern 'configCli' -Quiet))
 

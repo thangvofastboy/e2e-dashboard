@@ -26,3 +26,16 @@ test('maybePromptSetup: không có root (bản export / server cũ) thì không 
   assert.equal(await maybePromptSetup(null), false);
   assert.equal(await maybePromptSetup({ version: '1' }), false);
 });
+
+test('popup không bật chỉ vì mục tuỳ chọn (tự cập nhật plugin)', async () => {
+  const plan = { canSudo: false, steps: ['autoupdate'], items: [{ id: 'autoupdate', ok: false, optional: true, internal: true }] };
+  const store = () => ({ getItem: () => null, setItem() {} });
+  Object.assign(globalThis, { localStorage: store(), sessionStorage: store(), location: { hash: '#/' } });
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify(plan), { status: 200, headers: { 'content-type': 'application/json' } });
+  try {
+    assert.equal(await maybePromptSetup({ root: '/p', project: 'p' }), false);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});

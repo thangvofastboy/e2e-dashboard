@@ -32,7 +32,8 @@ export async function maybePromptSetup(info, { force = false } = {}) {
   const plan = await getJson('/api/system/quick-setup').catch(() => null);
   if (!plan) return false;
   const { auto, manual } = setupNeeds(plan);
-  if (!auto.length && !manual.length) return false;
+  // chỉ còn mục tuỳ chọn (tự cập nhật plugin, GitHub CLI…): project vẫn chạy được, không bật popup — có ở trang 1 Click Setup
+  if (!auto.some((x) => !x.optional) && !manual.length) return false;
   openSetupDialog(plan, info, key);
   return true;
 }

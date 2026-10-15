@@ -38,12 +38,13 @@ Không có tuỳ chọn nào: hỏi từng thông tin (Enter = giá trị mặc 
   --app-command "CMD"    Lệnh khởi động app để runner tự chạy (vd. "npm run dev"; "" để bỏ)
   -y, --yes              Không hỏi gì: dùng giá trị mặc định / tham số ở trên
   --no-open              Cài xong không mở dashboard
+  --no-auto-update       Không bật tự cập nhật plugin (mặc định: bật auto-update của marketplace e2e-dashboard)
   --skip-project         Chỉ cài máy + plugin, không đụng vào project
   --dry-run              Chỉ phát hiện hệ điều hành và in các bước sẽ làm, không cài gì
 EOF
 }
 
-STEPS=("Phát hiện hệ điều hành" "git" "Node.js ≥ 22.22.3 (hoặc ≥ 24.8)" "Claude Code CLI" "Plugin e2e-dashboard" "Cấu hình e2e.config.ts" "AI cho e2e: model, gói npm, API key / đăng nhập" "Quick Setup: e2e, thư viện, trình duyệt, reporter" "Mở dashboard")
+STEPS=("Phát hiện hệ điều hành" "git" "Node.js ≥ 22.22.3 (hoặc ≥ 24.8)" "Claude Code CLI" "Plugin e2e-dashboard (+ tự cập nhật)" "Cấu hình e2e.config.ts" "AI cho e2e: model, gói npm, API key / đăng nhập" "Quick Setup: e2e, thư viện, trình duyệt, reporter" "Mở dashboard")
 # model AI cho bước agent: giống AI_PROVIDERS của server/e2eai.mjs (test kiểm tra hai danh sách khớp nhau)
 AI_IDS=(vercel anthropic openrouter openai chatgpt copilot opencode-console grok claude-code openai-compatible none)
 AI_LABELS=("Vercel AI Gateway (một key, nhiều model)" "Anthropic Claude (API key, kể cả credit API của gói Max/Team)" "OpenRouter (API key)" "OpenAI (API key)" "Gói ChatGPT Plus / Pro (đăng nhập)" "GitHub Copilot (đăng nhập)" "OpenCode Console (đăng nhập)" "SuperGrok / X Premium+ (đăng nhập)" "Claude Code CLI: đăng nhập Pro/Max của \`claude\` (THỬ NGHIỆM)" "Model local / OpenAI-compatible (Ollama, LM Studio…)" "Không dùng AI (chỉ test bằng locator)")
@@ -295,6 +296,7 @@ wizard() {
     esac
   fi
   if ask_yn "5. Cài xong mở dashboard luôn?" y; then OPEN=1; else OPEN=0; fi
+  if ask_yn "6. Tự cập nhật plugin khi có bản mới?" y; then AUTO_UPDATE=1; else AUTO_UPDATE=0; fi
 
   printf '\n%sSẽ cài với:%s\n' "$B" "$N" >/dev/tty
   printf '  Project:            %s%s\n' "$PROJECT" "$([ "$INIT" = 1 ] && echo ' (tạo e2e.config.ts mới)' || true)" >/dev/tty
@@ -303,6 +305,7 @@ wizard() {
     printf '  Model AI:           %s%s\n' "$(ai_label "${AI:-$cur_ai}")" "$([ -n "$API_KEY" ] && echo ' · có API key' || true)$([ "$AI_LOGIN" = 1 ] && echo ' · đăng nhập khi cài' || true)" >/dev/tty
   fi
   printf '  Mở dashboard:       %s\n' "$([ "$OPEN" = 1 ] && echo có || echo không)" >/dev/tty
+  printf '  Tự cập nhật plugin: %s\n' "$([ "$AUTO_UPDATE" = 1 ] && echo có || echo không)" >/dev/tty
   ask_yn "Bắt đầu cài?" y || { echo "Đã huỷ." >/dev/tty; exit 1; }
   YES=1 # đã có đủ câu trả lời: các bước sau không hỏi lại
 }
@@ -329,7 +332,7 @@ plugin_path() {
 # cả phần chạy nằm trong main(): `curl … | bash` đọc script từ stdin, bash phải đọc hết trước khi chạy
 # để lệnh con nào đọc stdin cũng không nuốt mất phần script còn lại
 main() {
-  PROJECT="$PWD"; OPEN=1; DRY_RUN=0; SKIP_PROJECT=0; YES=0; INIT=0; APP_URL=""; APP_CMD=""; APP_CMD_SET=0
+  PROJECT="$PWD"; OPEN=1; AUTO_UPDATE=1; DRY_RUN=0; SKIP_PROJECT=0; YES=0; INIT=0; APP_URL=""; APP_CMD=""; APP_CMD_SET=0
   AI=""; API_KEY="${E2E_AI_API_KEY:-}"; AI_BASE_URL=""; AI_MODEL=""; AI_LOGIN=0
   local no_args=0
   [ $# -eq 0 ] && no_args=1
@@ -351,6 +354,7 @@ main() {
       --init) INIT=1; shift ;;
       -y|--yes) YES=1; shift ;;
       --no-open) OPEN=0; shift ;;
+      --no-auto-update) AUTO_UPDATE=0; shift ;;
       --skip-project) SKIP_PROJECT=1; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       -h|--help) usage; exit 0 ;;
@@ -470,15 +474,29 @@ main() {
     run claude plugin marketplace add "$REPO" </dev/null
     run claude plugin install "$PLUGIN_ID" </dev/null
   fi
-  if [ "$DRY_RUN" = 1 ] && [ -z "${E2E_DASHBOARD_PLUGIN_DIR:-}" ]; then
-    finish plan "$PLUGIN_ID"
-  else
+  if [ "$DRY_RUN" != 1 ] || [ -n "${E2E_DASHBOARD_PLUGIN_DIR:-}" ]; then
     if [ -z "${E2E_DASHBOARD_PLUGIN_DIR:-}" ]; then PLUGIN_DIR="$(plugin_path)"; fi
     { [ -n "$PLUGIN_DIR" ] && [ -f "$PLUGIN_DIR/bin/dashboard.mjs" ]; } || die "Không tìm thấy plugin sau khi cài (claude plugin list --json)."
     ok "$PLUGIN_ID → $PLUGIN_DIR"
-    finish "$plugin_state" "v$(node -p "require(process.argv[1]).version" "$PLUGIN_DIR/.claude-plugin/plugin.json" 2>/dev/null || echo '?')"
   fi
   DASH="${PLUGIN_DIR:-<plugin>}/bin/dashboard.mjs"
+  # tự cập nhật: bật auto-update của marketplace trong settings.json của Claude Code (mặc định tắt với marketplace bên thứ ba)
+  local au_note=""
+  if [ "$AUTO_UPDATE" = 1 ]; then
+    if [ "$DRY_RUN" = 1 ] || grep -q "first === 'autoupdate'" "$DASH" 2>/dev/null; then
+      doing "bật tự cập nhật plugin (Claude Code tải bản mới sau tin nhắn đầu tiên của mỗi phiên)"
+      if run node "$DASH" autoupdate on </dev/null; then au_note=" · tự cập nhật"; else warn "Chưa bật được tự cập nhật: bật tay trong /plugin › Marketplaces › e2e-dashboard › Enable auto-update."; fi
+    else
+      warn "Plugin bản này chưa hỗ trợ tự bật: bật tay trong /plugin › Marketplaces › e2e-dashboard › Enable auto-update."
+    fi
+  else
+    info "Không bật tự cập nhật (--no-auto-update); cập nhật tay bằng /e2e-dashboard update."
+  fi
+  if [ "$DRY_RUN" = 1 ] && [ -z "${E2E_DASHBOARD_PLUGIN_DIR:-}" ]; then
+    finish plan "$PLUGIN_ID$au_note"
+  else
+    finish "$plugin_state" "v$(node -p "require(process.argv[1]).version" "$PLUGIN_DIR/.claude-plugin/plugin.json" 2>/dev/null || echo '?')$au_note"
+  fi
   # plugin bản cũ chưa có lệnh `config`: tạo config bằng `npx e2e init` trực tiếp, không sửa URL / lệnh
   local has_config_cmd=1
   if [ "$DRY_RUN" != 1 ] && ! grep -q 'configCli' "$DASH" 2>/dev/null; then has_config_cmd=0; fi

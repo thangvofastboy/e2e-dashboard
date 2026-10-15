@@ -11,6 +11,7 @@ import { tools, resetTools, setupStatus } from './system.mjs';
 import { readSettings } from './settings.mjs';
 import { osInfo } from './osinfo.mjs';
 import { aiStatus } from './e2eai.mjs';
+import { autoUpdateStatus, setAutoUpdate } from './autoupdate.mjs';
 
 // lệnh thoát mã 0 trong 3 giây: async để không chặn event loop của dashboard (SSE Live, request khác) khi sudo / which treo
 const exitsZero = (cmd, args) => new Promise((done) => {
@@ -182,6 +183,12 @@ export async function quickSetupPlan(root, opts = {}) {
   const claudeArgv = [npm, 'install', '-g', '@anthropic-ai/claude-code'];
   add({ id: 'claude', label: 'Claude Code CLI (cho tính năng AI)', ok: Boolean(t.claude), detail: t.claude ?? 'Không thấy lệnh claude trên PATH', cmd: claudeArgv, display: show(claudeArgv) });
 
+  // 4b. tự cập nhật plugin khi có bản mới (auto-update của marketplace trong settings.json của Claude Code)
+  const au = opts.autoUpdate ?? (await autoUpdateStatus(opts.env ?? process.env));
+  add({ id: 'autoupdate', label: 'Tự cập nhật plugin e2e-dashboard', optional: true, ok: au.enabled || au.off, internal: !au.enabled && !au.off && !au.error, manual: Boolean(au.error),
+    detail: au.enabled ? `Đã bật (${au.path})` : au.off ? 'Bạn đã tắt: bật lại bằng /e2e-dashboard autoupdate on' : au.error ?? 'Chưa bật: Claude Code tự tải bản mới sau tin nhắn đầu tiên của mỗi phiên',
+    display: au.error ? `thêm "extraKnownMarketplaces": { "e2e-dashboard": { "autoUpdate": true } } vào ${au.path}` : '/e2e-dashboard autoupdate on' });
+
   // 5. reporter, .env, .gitignore: setup() sẵn có
   const setupItems = opts.setupItems ?? (await setupStatus(root, { reporter: typeof opts.reporter === 'function' ? opts.reporter() : opts.reporter }));
   const todo = setupItems.filter((x) => !x.ok && x.fix === 'setup');
@@ -220,7 +227,15 @@ async function runSteps(root, ids, { onEvent = () => {}, signal, inherit = false
     if (signal?.aborted) break;
     onEvent({ type: 'step', id: s.id, label: s.label, display: s.display });
     let code = 0;
-    if (s.internal) {
+    if (s.id === 'autoupdate') {
+      try {
+        const r = await setAutoUpdate(true, planOpts.env ?? process.env);
+        onEvent({ type: 'log', id: s.id, text: `Đã bật auto-update cho marketplace e2e-dashboard trong ${r.path}. Bản mới áp dụng sau /reload-plugins hoặc lần mở Claude Code sau.` });
+      } catch (e) {
+        onEvent({ type: 'log', id: s.id, text: e.message });
+        code = 1;
+      }
+    } else if (s.internal) {
       try {
         const setup = setupFn ?? (await import('../bin/dashboard.mjs')).setup; // lazy: bin kéo theo nhiều module server
         for (const line of await setup(root)) onEvent({ type: 'log', id: s.id, text: line });

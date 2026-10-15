@@ -15,7 +15,7 @@ const project = (pkg, installed = []) => {
   }
   return root;
 };
-const base = { os: 'linux', which: (c) => c === 'apt-get', canSudo: false, nodeMajor: 22, browser: 'chromium', setupItems: [], tools: { git: 'git 2', gh: 'gh 2', claude: '1.0' }, browserEntries: ['chromium-1243', 'chromium_headless_shell-1243'] };
+const base = { autoUpdate: { enabled: true }, os: 'linux', which: (c) => c === 'apt-get', canSudo: false, nodeMajor: 22, browser: 'chromium', setupItems: [], tools: { git: 'git 2', gh: 'gh 2', claude: '1.0' }, browserEntries: ['chromium-1243', 'chromium_headless_shell-1243'] };
 const item = (plan, id) => plan.items.find((x) => x.id === id);
 
 test('máy đủ hết: không có bước nào', async () => {
