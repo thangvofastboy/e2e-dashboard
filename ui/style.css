@@ -64,7 +64,7 @@ h2 { font-size: calc(15px * var(--fs)); margin: 0; }
 .error { color: var(--bad); }
 .empty, .empty-state { color: var(--text-secondary); }
 .empty-state { padding: 48px 0; text-align: center; }
-.icon { flex: none; vertical-align: -0.15em; }
+.icon { flex: none; vertical-align: -0.15em; --icon-sw: 2; }
 
 /* tones: color lives on marks (icon, bar, tint); text uses the matching ink */
 .tone-good { --tone: var(--good); --tone-bg: var(--good-bg); --tone-ink: var(--good-ink); }
@@ -201,7 +201,7 @@ button, select, a.button { font: inherit; color: var(--text-primary); background
 button:hover, a.button:hover { background: var(--surface-2); text-decoration: none; }
 /* text inputs everywhere look like the buttons and selects beside them */
 input[type="text"], input[type="number"], input[type="search"], input[type="url"], input[type="email"], input[type="password"], input:not([type]) { font: inherit; min-height: 34px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-primary); }
-form.row label { display: inline-flex; align-items: center; gap: 6px; } form.row { gap: 10px; align-items: center; }
+form.row label { display: inline-flex; align-items: center; gap: 6px; } form.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; } /* thiếu display:flex thì gap vô tác dụng, ô nhập dính nhau khi xuống dòng */
 /* native select: own chevron (drawn with gradients so it follows the theme colours), themed options */
 select { appearance: none; padding-right: 32px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%2364748b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-position: right 11px center; background-size: 12px 8px; background-repeat: no-repeat; }
 select:hover { background-color: var(--surface-2); }
@@ -296,7 +296,7 @@ button[aria-pressed="true"] { background: var(--info-bg); color: var(--info-ink)
 button.primary { background: var(--series-1); border-color: transparent; color: var(--on-primary, #fff); font-weight: 600; }
 button.primary:hover { background: color-mix(in srgb, var(--series-1) 85%, #000); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-ai .icon { color: #a855f7; } .btn-stop .icon { color: var(--bad); }
+.btn-ai .icon { color: var(--ai-ink); } .btn-stop .icon { color: var(--bad); }
 .sel-bar { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
 .sel-bar .icon { color: var(--bad); } .sel-bar .primary .icon { color: var(--on-primary, #fff); }
 .test-list li { display: flex; align-items: center; }
@@ -320,9 +320,9 @@ dialog#run-dialog::backdrop { background: rgba(15, 23, 42, 0.5); }
 .mono-list { margin: 6px 0 0; padding-left: 18px; max-height: 160px; overflow: auto; }
 #ai-panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(460px, 100vw); z-index: 20; background: var(--surface); border-left: 1px solid var(--border); box-shadow: -12px 0 40px rgba(0, 0, 0, 0.2); display: flex; flex-direction: column; }
 #ai-panel header { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--border); }
-#ai-panel h2 { display: flex; align-items: center; gap: 8px; font-size: calc(15px * var(--fs)); } #ai-panel h2 .icon { color: #a855f7; }
+#ai-panel h2 { display: flex; align-items: center; gap: 8px; font-size: calc(15px * var(--fs)); } #ai-panel h2 .icon { color: var(--ai-ink); }
 .ai-status { display: flex; align-items: center; gap: 6px; padding: 8px 16px; font-size: calc(12.5px * var(--fs)); border-bottom: 1px solid var(--border); min-height: 34px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.ai-status .icon { color: #a855f7; flex: none; }
+.ai-status .icon { color: var(--ai-ink); flex: none; }
 .ai-status .icon[href], .ai-status svg use[href="#i-loader"], .chat-status svg use[href="#i-loader"] { animation: spin 1s linear infinite; transform-origin: center; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .ai-status svg use, .chat-status svg use { animation: none; } }
@@ -339,7 +339,7 @@ dialog#run-dialog::backdrop { background: rgba(15, 23, 42, 0.5); }
 .msg.user .bubble { background: var(--series-1); color: #fff; border-bottom-right-radius: 4px; white-space: pre-wrap; }
 .msg.ai .bubble { background: var(--surface-2); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
 .msg.ai .bubble > :first-child { margin-top: 0; } .msg.ai .bubble > :last-child { margin-bottom: 0; }
-.chat-status { display: flex; align-items: center; gap: 6px; } .chat-status .icon { color: #a855f7; flex: none; }
+.chat-status { display: flex; align-items: center; gap: 6px; } .chat-status .icon { color: var(--ai-ink); flex: none; }
 .chat-input { display: flex; gap: 6px; align-items: flex-end; padding: 12px 16px; border-top: 1px solid var(--border); }
 .chat-input textarea { flex: 1; font: inherit; resize: none; field-sizing: content; min-height: 38px; max-height: 160px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); color: var(--text-primary); }
 .chat-input button .icon { color: var(--series-1); }
@@ -413,7 +413,7 @@ dialog#run-dialog::backdrop { background: rgba(15, 23, 42, 0.5); }
 /* visual diff */
 .visual { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 10px; margin: 8px 0; }
 .visual-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 8px; }
-.seg-btns { display: inline-flex; gap: 4px; }
+.seg-btns { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .seg-btns button { min-height: 30px; padding: 3px 9px; font-size: calc(12.5px * var(--fs)); }
 .visual-body { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .visual-body figure { margin: 0; }
@@ -492,7 +492,6 @@ dialog#search-dialog { margin-top: 10vh; width: min(680px, calc(100vw - 32px)); 
 .lock-badge { display: inline-flex; align-items: center; gap: 3px; font-size: calc(11px * var(--fs)); padding: 1px 7px; border-radius: 10px; background: var(--warn-bg); color: var(--warn-ink); }
 .lock-badge .icon { color: var(--warn); }
 .n-models { --hue: #0891b2; } .n-lint { --hue: #65a30d; }
-.lint-rules { display: flex; flex-wrap: wrap; gap: 6px; }
 .anomalies { margin-bottom: 16px; }
 .anomalies ul { margin: 6px 0 0; padding-left: 18px; }
 .owners { display: inline-flex; gap: 4px; align-items: center; color: var(--text-secondary); font-size: calc(12px * var(--fs)); }
@@ -626,7 +625,7 @@ main h1:focus { outline: none; }
 .tri-input { width: 120px; } .tri-input.wide { width: 100%; min-width: 160px; }
 .tri-table td { vertical-align: top; }
 .life-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; font-size: calc(13px * var(--fs)); }
-.ev-form { flex-wrap: wrap; gap: 6px; margin-bottom: 8px; } .ev-form input[name="label"] { flex: 1; min-width: 180px; }
+.ev-form { flex-wrap: wrap; gap: 8px; margin-bottom: 8px; } .ev-form input[name="label"] { flex: 1; min-width: 180px; }
 .table-wrap { overflow-x: auto; }
 
 /* ---- motion: show that the system is working (all of it off under prefers-reduced-motion) */
@@ -836,7 +835,7 @@ details.cfg[open] > summary { margin-bottom: 4px; }
 h1 .icon-btn { margin-left: 6px; } /* ⓘ, ☆, phóng to cạnh tiêu đề: tách ra cho dễ bấm */
 figcaption .help-tip { margin-left: auto; }
 :is(.charts > figure, #main > section.panel, #main > .fill, .two-col > .panel, .ov-top > .health-score, .run-summary) { position: relative; }
-:is(.charts > figure, #main > section.panel, #main > .fill, .two-col > .panel, .ov-top > .health-score, .run-summary) > .fs-btn { position: absolute; top: -11px; right: -11px; z-index: 2; opacity: 0; min-height: 0; padding: 4px; border: 1px solid var(--border); border-radius: 50%; background: var(--surface); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); transition: opacity 0.15s; } /* ngồi trên mép góc: không che chip, link ở góc phải panel */
+:is(.charts > figure, #main > section.panel, #main > .fill, .two-col > .panel, .ov-top > .health-score, .run-summary) > .fs-btn { position: absolute; bottom: 6px; right: 6px; /* thẻ không có tiêu đề: góc dưới phải, ít đè nút nhất; có tiêu đề thì nút nằm trong dòng tiêu đề (.fs-inline) */ z-index: 2; opacity: 0; min-height: 0; padding: 4px; border: 1px solid var(--border); border-radius: 50%; background: var(--surface); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); transition: opacity 0.15s; } /* ngồi trên mép góc: không che chip, link ở góc phải panel */
 :is(.charts > figure, #main > section.panel, #main > .fill, .two-col > .panel, .ov-top > .health-score, .run-summary):hover > .fs-btn, .fs-btn:focus-visible, :fullscreen > .fs-btn { opacity: 1; }
 @media (hover: none) { .fs-btn { opacity: 1; } }
 figcaption:has(.help-tip) { padding-right: 30px; }
@@ -849,7 +848,6 @@ figure:fullscreen svg.chart { flex: 1; max-height: calc(100vh - 120px); }
 figure:fullscreen figcaption { font-size: calc(17px * var(--fs)); }
 
 /* Cài đặt hệ thống */
-.system-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 12px; align-items: start; }
 
 .form-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; }
 .form-label { min-width: 120px; color: var(--text-secondary); }
@@ -869,13 +867,11 @@ figure:fullscreen figcaption { font-size: calc(17px * var(--fs)); }
 .hook-list { list-style: none; padding: 0; margin: 6px 0; display: flex; flex-direction: column; gap: 6px; }
 .setup-list { list-style: none; padding: 0; margin: 0 0 10px; display: flex; flex-direction: column; gap: 8px; }
 .setup-item { display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: start; }
-.system-grid .keys td { overflow-wrap: anywhere; } .system-grid .keys { table-layout: fixed; } .system-grid .keys td:first-child { width: 34%; white-space: normal; }
 [data-part="out"]:empty { display: none; }
 .heal-list { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 10px; max-height: 360px; overflow: auto; }
 .heal-item { border-left: 3px solid var(--border); padding-left: 10px; }
 .heal-msg { display: block; margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .heal-diff pre { max-height: 320px; overflow: auto; margin: 6px 0; padding: 8px; background: var(--surface-2, rgba(127,127,127,.08)); border-radius: 6px; white-space: pre; }
-.system-grid .keys code { white-space: normal; word-break: break-all; }
 [data-part="ai"]:empty { display: none; }
 .ai-summary { border-left: 3px solid var(--violet); }
 .ai-summary h2 .icon { color: var(--violet); }
@@ -898,9 +894,6 @@ figure:fullscreen figcaption { font-size: calc(17px * var(--fs)); }
 .linear-meta label { display: flex; flex-direction: column; gap: 4px; }
 .linear-meta input[aria-invalid="true"] { border-color: var(--bad); }
 .linear-edit textarea { font: calc(12.5px * var(--fs))/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-primary); resize: vertical; }
-.linear-shot-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
-.linear-shot-row figure { margin: 0; width: 160px; }
-.linear-shot-row img { width: 100%; border-radius: 6px; border: 1px solid var(--border); }
 .linear-modes { margin: 8px 0; }
 .linear-modes [aria-pressed="true"] { background: var(--info-bg); color: var(--info-ink); border-color: transparent; font-weight: 600; }
 .linear-pane { max-height: 52vh; overflow: auto; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
@@ -1475,7 +1468,7 @@ p.tone-good, p.tone-warn, p.tone-bad { color: var(--tone-ink); }
 .project { gap: 6px; }
 .project-chips { display: inline-flex; gap: 6px; flex-wrap: wrap; }
 .project-path code { font-size: 0.85em; }
-.project footer .project-tools { margin-left: auto; display: inline-flex; gap: 4px; }
+.project footer .project-tools { margin-left: auto; display: inline-flex; gap: 6px; }
 .project-sel { font-weight: 600; }
 
 /* Tests: thanh lọc dính trên cùng (tiêu đề và panel test bị ảnh hưởng cuộn bình thường: panel có thể dài hơn màn hình) */
@@ -1484,11 +1477,11 @@ p.tone-good, p.tone-warn, p.tone-bad { color: var(--tone-ink); }
 
 /* Màu icon trong nút theo ý nghĩa (nút primary / tab đang chọn giữ màu chữ) */
 :where(button, a.button):not(.primary, [aria-selected="true"]) :is(.ic-play, .ic-check) { color: var(--good); }
-:where(button, a.button):not(.primary, [aria-selected="true"]) :is(.ic-close, .ic-x, .ic-trash, .ic-ban) { color: var(--bad); }
+:where(button, a.button):not(.primary, [aria-selected="true"]) :is(.ic-close, .ic-x, .ic-ban) { color: var(--bad); }
 :where(button, a.button):not(.primary, [aria-selected="true"]) :is(.ic-copy, .ic-download, .ic-external, .ic-rerun) { color: var(--info); }
 :where(button, a.button):not(.primary, [aria-selected="true"]) :is(.ic-edit, .ic-alert) { color: var(--warn); }
 :where(button, a.button):not(.primary, [aria-selected="true"]) :is(.ic-plus, .ic-folder, .ic-crosshair) { color: #6366f1; }
-:where(button, a.button):not(.primary, [aria-selected="true"]) .ic-yinyang { color: #a855f7; }
+:where(button, a.button):not(.primary, .ai-fab, [aria-selected="true"]) .ic-sparkles { color: var(--ai-ink); }
 
 /* Nút copy ở góc khối code (Markdown: hướng dẫn, trả lời AI) */
 .code-wrap { position: relative; }
@@ -1499,3 +1492,246 @@ p.tone-good, p.tone-warn, p.tone-bad { color: var(--tone-ink); }
 .qc-ai-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
 .qc-ai-form textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-primary); resize: vertical; }
 @media (max-width: 600px) { .qc-ai-grid { grid-template-columns: 1fr; } }
+
+/* ===== Style người dùng chọn (Cài đặt hệ thống › Giao diện, ui/prefs.js) =====
+   Mỗi bảng màu / màu nhấn có 3 selector: sáng, tối chọn tay, tối theo hệ điều hành. Đặt cuối file để thắng token gốc;
+   biến thể tối có thêm một thuộc tính nên thắng biến thể sáng. Màu nhấn đứng sau bảng màu: chọn tay thì thắng. */
+
+/* Bảng màu: Nord */
+:root[data-palette="nord"] {
+  --page: #e5e9f0; --surface: #eceff4; --surface-2: #e5e9f0; --border: #d8dee9;
+  --text-primary: #2e3440; --text-secondary: #4c566a; --muted: #5e6779;
+  --grid: #d8dee9; --axis: #c0c8d6; --series-1: #4c6f99; --link: #4c6f99;
+  --info: #4c6f99; --info-bg: #dbe5f1; --info-ink: #3b5577; --muted-bg: #e5e9f0; --muted-ink: #4c566a;
+}
+:root[data-palette="nord"][data-theme="dark"] {
+  --page: #242933; --surface: #2e3440; --surface-2: #3b4252; --border: #434c5e;
+  --text-primary: #eceff4; --text-secondary: #d8dee9; --muted: #a3adbf;
+  --grid: #3b4252; --axis: #4c566a; --series-1: #88c0d0; --link: #8fbcbb; --on-primary: #2e3440;
+  --info: #81a1c1; --info-bg: rgba(129, 161, 193, 0.18); --info-ink: #b4c8dc; --muted-bg: rgba(216, 222, 233, 0.08); --muted-ink: #d8dee9;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="nord"]:not([data-theme="light"]) {
+    --page: #242933; --surface: #2e3440; --surface-2: #3b4252; --border: #434c5e;
+    --text-primary: #eceff4; --text-secondary: #d8dee9; --muted: #a3adbf;
+    --grid: #3b4252; --axis: #4c566a; --series-1: #88c0d0; --link: #8fbcbb; --on-primary: #2e3440;
+    --info: #81a1c1; --info-bg: rgba(129, 161, 193, 0.18); --info-ink: #b4c8dc; --muted-bg: rgba(216, 222, 233, 0.08); --muted-ink: #d8dee9;
+  }
+}
+
+/* Bảng màu: Solarized */
+:root[data-palette="solarized"] {
+  --page: #eee8d5; --surface: #fdf6e3; --surface-2: #f5efdc; --border: #e0d9c4;
+  --text-primary: #073642; --text-secondary: #586e75; --muted: #5f747c;
+  --grid: #e8e1cc; --axis: #d3cbb2; --series-1: #1f6fa8; --link: #1f6fa8;
+  --info: #1f6fa8; --info-bg: #e3edf2; --info-ink: #1b5a85; --muted-bg: #eee8d5; --muted-ink: #586e75;
+}
+:root[data-palette="solarized"][data-theme="dark"] {
+  --page: #00212b; --surface: #002b36; --surface-2: #073642; --border: #0e4552;
+  --text-primary: #eee8d5; --text-secondary: #93a1a1; --muted: #93a1a1;
+  --grid: #073642; --axis: #2a5560; --series-1: #4fa3e0; --link: #6cb6eb; --on-primary: #002b36;
+  --info: #4fa3e0; --info-bg: rgba(79, 163, 224, 0.16); --info-ink: #9fd0f2; --muted-bg: rgba(147, 161, 161, 0.12); --muted-ink: #c5cfcf;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="solarized"]:not([data-theme="light"]) {
+    --page: #00212b; --surface: #002b36; --surface-2: #073642; --border: #0e4552;
+    --text-primary: #eee8d5; --text-secondary: #93a1a1; --muted: #93a1a1;
+    --grid: #073642; --axis: #2a5560; --series-1: #4fa3e0; --link: #6cb6eb; --on-primary: #002b36;
+    --info: #4fa3e0; --info-bg: rgba(79, 163, 224, 0.16); --info-ink: #9fd0f2; --muted-bg: rgba(147, 161, 161, 0.12); --muted-ink: #c5cfcf;
+  }
+}
+
+/* Bảng màu: Tương phản cao (dễ đọc, viền rõ) */
+:root[data-palette="contrast"] {
+  --page: #ffffff; --surface: #ffffff; --surface-2: #f0f0f0; --border: #1a1a1a;
+  --text-primary: #000000; --text-secondary: #1a1a1a; --muted: #333333;
+  --grid: #8c8c8c; --axis: #333333; --series-1: #0040c0; --link: #0030a0; --shadow: none;
+  --good: #006b1b; --good-bg: #d9f5df; --good-ink: #004d13; --warn: #8a4b00; --warn-bg: #ffecc7; --warn-ink: #5c3200;
+  --bad: #b00000; --bad-bg: #ffdede; --bad-ink: #7a0000; --info: #0040c0; --info-bg: #dde6ff; --info-ink: #002a80;
+  --muted-bg: #ececec; --muted-ink: #1a1a1a;
+}
+:root[data-palette="contrast"][data-theme="dark"] {
+  --page: #000000; --surface: #0a0a0a; --surface-2: #161616; --border: #e6e6e6;
+  --text-primary: #ffffff; --text-secondary: #f0f0f0; --muted: #d0d0d0;
+  --grid: #555555; --axis: #bbbbbb; --series-1: #66b3ff; --link: #8cc8ff; --on-primary: #000000;
+  --good: #4ade80; --good-bg: rgba(74, 222, 128, 0.18); --good-ink: #bbf7d0; --warn: #ffc04d; --warn-bg: rgba(255, 192, 77, 0.18); --warn-ink: #ffe2a8;
+  --bad: #ff6b6b; --bad-bg: rgba(255, 107, 107, 0.2); --bad-ink: #ffc9c9; --info: #66b3ff; --info-bg: rgba(102, 179, 255, 0.18); --info-ink: #cce5ff;
+  --muted-bg: rgba(255, 255, 255, 0.1); --muted-ink: #f0f0f0;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="contrast"]:not([data-theme="light"]) {
+    --page: #000000; --surface: #0a0a0a; --surface-2: #161616; --border: #e6e6e6;
+    --text-primary: #ffffff; --text-secondary: #f0f0f0; --muted: #d0d0d0;
+    --grid: #555555; --axis: #bbbbbb; --series-1: #66b3ff; --link: #8cc8ff; --on-primary: #000000;
+    --good: #4ade80; --good-bg: rgba(74, 222, 128, 0.18); --good-ink: #bbf7d0; --warn: #ffc04d; --warn-bg: rgba(255, 192, 77, 0.18); --warn-ink: #ffe2a8;
+    --bad: #ff6b6b; --bad-bg: rgba(255, 107, 107, 0.2); --bad-ink: #ffc9c9; --info: #66b3ff; --info-bg: rgba(102, 179, 255, 0.18); --info-ink: #cce5ff;
+    --muted-bg: rgba(255, 255, 255, 0.1); --muted-ink: #f0f0f0;
+  }
+}
+
+/* Màu nhấn: nút chính, link, biểu đồ. Bản sáng chữ trắng trên nút ≥ 4.5:1; bản tối dùng màu sáng + chữ tối */
+:root[data-accent="blue"] { --series-1: #2563eb; --link: #1d4ed8; --on-primary: #ffffff; }
+:root[data-accent="violet"] { --series-1: #7c3aed; --link: #6d28d9; --on-primary: #ffffff; }
+:root[data-accent="emerald"] { --series-1: #047857; --link: #047857; --on-primary: #ffffff; }
+:root[data-accent="rose"] { --series-1: #e11d48; --link: #be123c; --on-primary: #ffffff; }
+:root[data-accent="amber"] { --series-1: #b45309; --link: #92400e; --on-primary: #ffffff; }
+:root[data-accent="blue"][data-theme="dark"] { --series-1: #60a5fa; --link: #93c5fd; --on-primary: #0b1220; }
+:root[data-accent="violet"][data-theme="dark"] { --series-1: #a78bfa; --link: #c4b5fd; --on-primary: #1e1b4b; }
+:root[data-accent="emerald"][data-theme="dark"] { --series-1: #34d399; --link: #6ee7b7; --on-primary: #052e16; }
+:root[data-accent="rose"][data-theme="dark"] { --series-1: #fb7185; --link: #fda4af; --on-primary: #4c0519; }
+:root[data-accent="amber"][data-theme="dark"] { --series-1: #fbbf24; --link: #fcd34d; --on-primary: #451a03; }
+@media (prefers-color-scheme: dark) {
+  :root[data-accent="blue"]:not([data-theme="light"]) { --series-1: #60a5fa; --link: #93c5fd; --on-primary: #0b1220; }
+  :root[data-accent="violet"]:not([data-theme="light"]) { --series-1: #a78bfa; --link: #c4b5fd; --on-primary: #1e1b4b; }
+  :root[data-accent="emerald"]:not([data-theme="light"]) { --series-1: #34d399; --link: #6ee7b7; --on-primary: #052e16; }
+  :root[data-accent="rose"]:not([data-theme="light"]) { --series-1: #fb7185; --link: #fda4af; --on-primary: #4c0519; }
+  :root[data-accent="amber"]:not([data-theme="light"]) { --series-1: #fbbf24; --link: #fcd34d; --on-primary: #451a03; }
+}
+/* chấm màu cạnh tên màu nhấn trong Cài đặt */
+.opt input[name="accent"] + span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; background: var(--sw, var(--series-1)); border: 1px solid color-mix(in srgb, var(--text-primary) 25%, transparent); }
+.opt input[name="accent"][value="blue"] + span { --sw: #2563eb; }
+.opt input[name="accent"][value="violet"] + span { --sw: #7c3aed; }
+.opt input[name="accent"][value="emerald"] + span { --sw: #059669; }
+.opt input[name="accent"][value="rose"] + span { --sw: #e11d48; }
+.opt input[name="accent"][value="amber"] + span { --sw: #d97706; }
+
+/* Mật độ */
+@media screen and (min-width: 901px) { :root[data-density="compact"] main { padding: 14px; } :root[data-density="comfortable"] main { padding: 32px; } } /* mobile và bản in giữ padding riêng */
+:root[data-density="compact"] .kpis { gap: 8px; margin-bottom: 10px; }
+:root[data-density="compact"] :is(.kpi, .charts figure, .panel) { padding: 8px 10px; }
+:root[data-density="compact"] :is(.table th, .table td) { padding: 4px 8px; }
+:root[data-density="compact"] .nav nav a { padding: 4px 8px; min-height: 32px; }
+:root[data-density="comfortable"] .kpis { gap: 16px; margin-bottom: 22px; }
+:root[data-density="comfortable"] :is(.kpi, .charts figure, .panel) { padding: 16px 18px; }
+:root[data-density="comfortable"] :is(.table th, .table td) { padding: 11px 14px; }
+:root[data-density="comfortable"] .nav nav a { padding: 9px 11px; min-height: 44px; }
+
+/* Bo góc */
+:root[data-radius="sharp"] { --radius: 4px; }
+:root[data-radius="sharp"] :is(button, a.button, select, input, textarea, .opt-group, .nav nav a) { border-radius: 4px; }
+:root[data-radius="round"] { --radius: 20px; }
+:root[data-radius="round"] :is(button:not(.block), a.button, .nav nav a) { border-radius: 999px; }
+:root[data-radius="round"] :is(select, input:not([type="checkbox"]):not([type="radio"]), textarea, .opt-group) { border-radius: 14px; }
+
+/* Chart: chọn loại ngay trên chart (ui/charts.js lineChart) và mark dạng cột */
+.chart-box { position: relative; }
+.chart-type { display: flex; justify-content: flex-end; gap: 4px; margin: -2px 0 6px; }
+.chart-type .ct-btn { min-height: 24px; padding: 1px 8px; font-size: calc(11px * var(--fs)); color: var(--text-secondary); background: transparent; border: 1px solid var(--border); border-radius: 999px; }
+.chart-type .ct-btn:hover { color: var(--text-primary); background: var(--surface-2); }
+.chart-type .ct-btn[aria-pressed="true"] { color: var(--info-ink); background: var(--info-bg); border-color: transparent; font-weight: 600; }
+.chart .bar { fill: var(--series-1); }
+@media print { .chart-type { display: none; } }
+
+/* Ngôi sao lấp lánh: nút chat AI nổi và avatar AI nhấp nháy nhẹ; tắt khi hệ điều hành giảm chuyển động */
+@keyframes twinkle { 0%, 100% { transform: scale(1) rotate(0deg); opacity: 1; } 50% { transform: scale(1.12) rotate(8deg); opacity: 0.85; } }
+/* lấp lánh có giới hạn: nút chat 3 nhịp khi hiện ra rồi chỉ khi rê chuột; avatar chỉ khi AI đang trả lời; vòng suy nghĩ là chỉ báo đang tải */
+.ai-fab .icon { animation: twinkle 2.4s ease-in-out 3; transform-origin: center; }
+.ai-fab:hover .icon, .msg.ai.typing .ai-av .icon, .think-orb .icon { animation: twinkle 2.4s ease-in-out infinite; transform-origin: center; }
+@media (prefers-reduced-motion: reduce) { .ai-fab .icon, .ai-av .icon, .think-orb .icon { animation: none; } }
+
+/* Thanh cuộn của khối tự cuộn mảnh cho đỡ nặng mắt */
+#main > .fill, #main > .two-col.fill > .panel, .table-wrap { scrollbar-width: thin; }
+
+/* AI: màu chủ đạo navy đậm. Nút chat nổi, avatar và vòng "đang suy nghĩ": nền navy + sao trắng, viền sáng mảnh để nổi trên nền tối.
+   Icon AI đứng một mình (tiêu đề panel, nút AI): --ai-ink, navy ở theme sáng, navy nhạt ở theme tối cho đủ tương phản. */
+:root { --ai-navy: linear-gradient(135deg, #1e3a8a, #172554); --ai-ink: #1e3a8a; }
+:root[data-theme="dark"] { --ai-ink: #93c5fd; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --ai-ink: #93c5fd; } }
+.ai-fab { background: var(--ai-navy); color: #fff; border: 2px solid rgba(255, 255, 255, 0.22); box-shadow: 0 8px 22px rgba(23, 37, 84, 0.55); }
+.ai-fab:hover { box-shadow: 0 12px 28px rgba(23, 37, 84, 0.7); }
+.ai-fab:focus-visible { outline-color: color-mix(in srgb, #3b82f6 60%, transparent); }
+.ai-fab .icon, .avatar.ai-av .icon, .think-orb .icon { color: #fff; }
+.avatar.ai-av { background: var(--ai-navy); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18), 0 2px 8px rgba(23, 37, 84, 0.45); }
+.think-orb { background: var(--ai-navy); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18); }
+
+/* Nút phóng to trong dòng tiêu đề (app.js pageExtras): đẩy về cuối dòng, không định vị tuyệt đối */
+:is(h2, figcaption) > .fs-btn.fs-inline { position: static; margin-left: auto; opacity: 0; transition: opacity 0.15s; }
+:is(h2, figcaption):has(> .fs-inline) { display: flex; align-items: center; gap: 6px; }
+:is(.charts > figure, #main > section.panel, #main > .fill, .two-col > .panel, .ov-top > .health-score, .run-summary):hover .fs-inline, .fs-inline:focus-visible, :fullscreen .fs-inline { opacity: 1; }
+/* nút đang ẩn (opacity 0) không được nhận click thay cho phần tử bên dưới */
+.fs-btn { pointer-events: none; }
+:is(.charts > figure, #main > section.panel, #main > .fill, .two-col > .panel, .ov-top > .health-score, .run-summary):hover .fs-btn, .fs-btn:focus-visible, :fullscreen .fs-btn, .fs-page { pointer-events: auto; }
+@media (hover: none) { .fs-btn { pointer-events: auto; } .fs-inline { opacity: 1; } }
+
+/* Đang tải lần đầu (ui/index.html): hiện tới khi app.js dựng giao diện thay nội dung #app */
+.boot { position: fixed; inset: 0; display: grid; place-content: center; justify-items: center; gap: 14px; background: var(--page); color: var(--text-secondary); }
+.boot-mark { width: 44px; height: 44px; border-radius: 50%; background: var(--ai-navy); box-shadow: 0 0 0 0 rgba(30, 58, 138, 0.45); animation: boot-pulse 1.4s ease-out infinite; }
+.boot-bar { width: 160px; height: 3px; border-radius: 999px; background: linear-gradient(90deg, transparent, var(--series-1), transparent) 0 0 / 40% 100% no-repeat, var(--border); animation: busy-slide 1.1s ease-in-out infinite; }
+.boot-text { font-size: calc(12.5px * var(--fs)); }
+@keyframes boot-pulse { 0% { box-shadow: 0 0 0 0 rgba(30, 58, 138, 0.45); transform: scale(0.96); } 70% { box-shadow: 0 0 0 16px rgba(30, 58, 138, 0); transform: scale(1); } 100% { box-shadow: 0 0 0 0 rgba(30, 58, 138, 0); transform: scale(0.96); } }
+
+/* Vào trang: các khối hiện dần theo thứ tự (chạy một lần mỗi lần đổi trang, chỉ transform + opacity) */
+#main.entering > :is(.kpis, .charts, .panel, section, .two-col, .table-wrap, .fill) { animation: block-in 0.32s ease-out both; }
+#main.entering > :nth-child(2) { animation-delay: 0.03s; } #main.entering > :nth-child(3) { animation-delay: 0.06s; } #main.entering > :nth-child(4) { animation-delay: 0.09s; }
+#main.entering > :nth-child(5) { animation-delay: 0.12s; } #main.entering > :nth-child(n + 6) { animation-delay: 0.15s; }
+@keyframes block-in { from { opacity: 0; transform: translateY(8px); } }
+
+/* Bấm nút: lún nhẹ + vòng sáng, nhả ra thì về ngay. Chỉ transform / box-shadow, không chèn phần tử vào nút */
+:is(button, a.button, .opt > span, .ct-btn) { transition: transform 0.12s ease, box-shadow 0.18s ease, background-color 0.15s, border-color 0.15s, color 0.15s; }
+:is(button, a.button):not(:disabled, [aria-busy="true"]):active { transform: translateY(1px) scale(0.97); box-shadow: 0 0 0 3px color-mix(in srgb, var(--series-1) 25%, transparent); }
+.ai-fab:not(:disabled):active { transform: scale(0.93); }
+.opt input:active + span { transform: scale(0.97); }
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-mark, .boot-bar, #main.entering > * { animation: none !important; }
+  :is(button, a.button):active, .ai-fab:active, .opt input:active + span { transform: none; }
+}
+
+/* Nút theo kiểu mục menu trái: không viền, bo 10px, nền nhạt, hover như menu; icon nằm trong ô vuông bo góc tô nhạt
+   theo màu của chính icon (currentColor). Nút chính / đang chọn giống mục menu đang mở: nền tô màu nhấn, vạch trái,
+   ô icon đặc màu. Ô nhập và select giữ viền vì là ô nhập, không phải nút. */
+:is(button, a.button):not(.ai-fab, .ct-btn, .block, .seg-btn-raw) {
+  border: 1px solid transparent; border-radius: 10px; background: color-mix(in srgb, var(--text-primary) 5%, var(--surface));
+  font-weight: 500; box-shadow: none; gap: 8px; padding: 5px 10px 5px 6px; min-height: 36px;
+}
+:is(button, a.button):not(.ai-fab, .ct-btn, .block):hover { background: var(--surface-2); border-color: transparent; text-decoration: none; }
+:is(button, a.button):not(.ai-fab, .ct-btn, .block) > .icon {
+  box-sizing: content-box; padding: 4px; border-radius: 7px; background: color-mix(in srgb, currentColor 15%, transparent); --icon-sw: 2.2;
+}
+/* nút chỉ có icon: chỉ còn ô icon, nền nút trong suốt */
+:is(button, a.button).icon-btn { background: transparent; padding: 3px; min-height: 0; }
+:is(button, a.button).icon-btn:hover { background: var(--surface-2); }
+/* nút chính và nút đang chọn: như mục menu đang mở */
+:is(button, a.button):is(.primary, [aria-pressed="true"], [aria-selected="true"]):not(.ai-fab, .ct-btn) {
+  background: color-mix(in srgb, var(--series-1) 22%, var(--surface)); color: var(--text-primary); font-weight: 700;
+  box-shadow: inset 4px 0 0 var(--series-1); border-color: transparent;
+}
+:is(button, a.button):is(.primary, [aria-pressed="true"], [aria-selected="true"]):not(.ai-fab, .ct-btn):hover { background: color-mix(in srgb, var(--series-1) 30%, var(--surface)); }
+:is(button, a.button):is(.primary, [aria-pressed="true"], [aria-selected="true"]):not(.ai-fab, .ct-btn) > .icon { background: var(--series-1); color: var(--on-primary, #fff); }
+button.primary[aria-busy="true"]::after { border-color: var(--series-1); border-right-color: transparent; }
+:is(button, a.button):not(.ai-fab):disabled { opacity: 0.5; }
+/* nút nguy hiểm (dừng, xoá vĩnh viễn) giữ màu đỏ như mục menu đang mở */
+:is(button, a.button).btn-stop:is(.primary, :not(.primary)) { box-shadow: inset 4px 0 0 var(--bad); background: color-mix(in srgb, var(--bad) 14%, var(--surface)); }
+:is(button, a.button).btn-stop > .icon { background: var(--bad); color: #fff; }
+select { border: 1px solid var(--border); }
+/* padding cân: nút không có icon, và nút chỉ hiện icon (chữ đã ẩn ở chế độ icon-only) */
+:is(button, a.button):not(.ai-fab, .ct-btn, .block, .icon-btn):not(:has(> .icon)) { padding: 5px 10px; }
+.icon-only :is(button, a.button):not(.ai-fab, .ct-btn, .block, .icon-btn):has(> .btn-label) { padding: 5px 6px; gap: 0; }
+.icon-only :is(button, a.button):not(.ai-fab, .ct-btn, .block, .icon-btn):has(> .btn-label):has(> .btn-count) { padding-right: 9px; gap: 6px; }
+
+/* Nút theo màu của icon, như mục menu đang chọn: nền đặc đậm, icon trắng đậm. Màu lấy theo nhóm icon (cùng bảng với icon ở trên);
+   nút chính giữ màu nhấn; nút chọn / đang bật có vòng sáng. Nền pha tối đi 18% để chữ trắng đọc được ở mọi bảng màu. */
+:root { --btn-good: #16a34a; --btn-bad: #dc2626; --btn-warn: #b45309; --btn-info: #2563eb; --btn-violet: #7c3aed; --btn-teal: #0f766e; }
+:is(button, a.button):not(.ai-fab, .ct-btn, .block, .fs-btn, .opt) {
+  --btn-hue: var(--series-1);
+  background: color-mix(in srgb, var(--btn-hue) 82%, #000); color: #fff; border-color: transparent; font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+}
+:is(button, a.button):not(.ai-fab, .ct-btn, .block, .fs-btn, .opt):hover { background: color-mix(in srgb, var(--btn-hue) 92%, #000); color: #fff; border-color: transparent; }
+:is(button, a.button):not(.ai-fab, .ct-btn, .block, .fs-btn, .opt) > .icon {
+  background: rgba(255, 255, 255, 0.2); color: #fff; border-radius: 7px; padding: 4px; box-sizing: content-box; --icon-sw: 2.6;
+}
+/* nhóm theo icon: good (check, play, upload…) xanh lá · bad (x, stop, ban…) đỏ · warn (alert, timer…) cam · info (search, copy…) xanh dương ·
+   violet (sparkles, flask, terminal…) tím · teal (route, folder, grid…) xanh ngọc. Nút chính không đổi màu. */
+:is(button, a.button):not(.primary):has(> .icon:is(.ic-check, .ic-play, .ic-upload, .ic-unlock, .ic-heart, .ic-star)) { --btn-hue: var(--btn-good); }
+:is(button, a.button):not(.primary):has(> .icon:is(.ic-x, .ic-close, .ic-stop, .ic-ban, .ic-square, .ic-pin, .ic-ticket, .ic-trash)) { --btn-hue: var(--btn-bad); }
+:is(button, a.button):not(.primary):has(> .icon:is(.ic-alert, .ic-timer, .ic-clock, .ic-skip, .ic-bolt, .ic-zap, .ic-bulb, .ic-lock, .ic-coins, .ic-sun)) { --btn-hue: var(--btn-warn); }
+:is(button, a.button):not(.primary):has(> .icon:is(.ic-info, .ic-search, .ic-eye, .ic-file, .ic-table, .ic-list, .ic-columns, .ic-copy, .ic-edit, .ic-external, .ic-download, .ic-arrow, .ic-send, .ic-loader, .ic-settings)) { --btn-hue: var(--btn-info); }
+:is(button, a.button):not(.primary):has(> .icon:is(.ic-sparkles, .ic-flask, .ic-layers, .ic-code, .ic-terminal, .ic-cpu, .ic-lint, .ic-crosshair, .ic-moon)) { --btn-hue: var(--btn-violet); }
+:is(button, a.button):not(.primary):has(> .icon:is(.ic-route, .ic-branch, .ic-commit, .ic-folder, .ic-grid, .ic-filter, .ic-shuffle, .ic-recycle, .ic-rerun, .ic-activity, .ic-gauge, .ic-image, .ic-video, .ic-newspaper, .ic-users)) { --btn-hue: var(--btn-teal); }
+/* chọn / đang bật: vòng sáng quanh nút */
+:is(button, a.button)[aria-pressed="true"], :is(button, a.button)[aria-selected="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--btn-hue, var(--series-1)); }
+/* nút chỉ có icon: ô màu vuông, không lề thừa */
+:is(button, a.button).icon-btn { padding: 3px; min-height: 0; }
+:is(button, a.button).icon-btn > .icon { padding: 5px; }
+:is(button, a.button):disabled { opacity: 0.45; }

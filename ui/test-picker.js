@@ -61,14 +61,11 @@ export function bindPicker(wrap, rows, { emptyLabel = '', onChange = null } = {}
   q.setAttribute('role', 'combobox');
   q.setAttribute('aria-controls', list.id);
   q.setAttribute('aria-autocomplete', 'list');
-  const opts = () => [...list.querySelectorAll('[role=option]')];
+  let os = []; // các dòng của lần vẽ gần nhất: id gắn một lần, phím ↑↓ chỉ đổi dòng cũ / mới (cây vài nghìn test)
   const mark = (i) => {
-    const os = opts();
+    os[active]?.setAttribute('aria-selected', 'false');
     active = Math.max(0, Math.min(i, os.length - 1));
-    os.forEach((o, j) => {
-      o.id = `${uid}-${j}`;
-      o.setAttribute('aria-selected', String(j === active));
-    });
+    os[active]?.setAttribute('aria-selected', 'true');
     // focus vẫn ở ô lọc: trình đọc màn hình đọc dòng đang chọn qua aria-activedescendant
     if (os[active]) q.setAttribute('aria-activedescendant', os[active].id);
     else q.removeAttribute('aria-activedescendant');
@@ -76,7 +73,13 @@ export function bindPicker(wrap, rows, { emptyLabel = '', onChange = null } = {}
   };
   const paint = () => {
     list.innerHTML = listHtml(filterTests(rows, q.value), q.value.trim() ? '' : emptyLabel);
-    mark(Math.max(0, opts().findIndex((o) => o.dataset.v === hidden.value)));
+    os = [...list.querySelectorAll('[role=option]')];
+    os.forEach((o, j) => {
+      o.id = `${uid}-${j}`;
+      o.setAttribute('aria-selected', 'false');
+    });
+    active = -1;
+    mark(Math.max(0, os.findIndex((o) => o.dataset.v === hidden.value)));
   };
   const close = () => {
     pop.hidden = true;
@@ -120,7 +123,7 @@ export function bindPicker(wrap, rows, { emptyLabel = '', onChange = null } = {}
         typing = null;
         paint(); // Enter ngay sau khi gõ: chọn theo bộ lọc mới nhất
       }
-      pick(opts()[active]);
+      pick(os[active]);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation(); // không đóng dialog bao ngoài

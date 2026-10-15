@@ -195,7 +195,7 @@ export function openAskPanel() {
   panel.id = 'ai-panel';
   panel.className = 'ai-chat';
   panel.setAttribute('aria-label', 'Hỏi AI');
-  panel.innerHTML = `<header><h2>${icon('yinyang', { size: 16 })}Hỏi AI về bộ test</h2><span class="chat-head-btns"><button type="button" class="icon-btn" data-new title="Cuộc trò chuyện mới" aria-label="Cuộc trò chuyện mới">${icon('plus')}</button><button type="button" class="icon-btn" data-close aria-label="Đóng">${icon('close')}</button></span></header>
+  panel.innerHTML = `<header><h2>${icon('sparkles', { size: 16 })}Hỏi AI về bộ test</h2><span class="chat-head-btns"><button type="button" class="icon-btn" data-new title="Cuộc trò chuyện mới" aria-label="Cuộc trò chuyện mới">${icon('plus')}</button><button type="button" class="icon-btn" data-close aria-label="Đóng">${icon('close')}</button></span></header>
     <div class="chat-log" aria-live="polite"></div>
     <form class="chat-input"><textarea name="q" rows="1" placeholder="Nhắn cho AI… (Enter gửi, Shift+Enter xuống dòng)" aria-label="Câu hỏi" maxlength="4000"></textarea><button type="submit" aria-label="Gửi">${icon('send', { size: 14 })}</button></form>`;
   document.body.append(panel);

@@ -20,7 +20,7 @@ function liIssuesTable(items) {
       return `<tr><td>${liIssueLink(i)}</td><td>${escapeHtml(i.title)}</td><td>${escapeHtml(i.state)}</td><td class="muted small">${escapeHtml(i.assignee)}</td>
         <td><span class="chip tone-${LI_TONE[s]}">${s}</span></td>
         <td><button type="button" class="small-btn" data-open="${escapeHtml(i.identifier)}"${i.testcases?.length ? '' : ' hidden'}>${icon('ticket', { size: 13 })}Mở testcase</button>
-          <button type="button" class="small-btn" data-analyze="${escapeHtml(i.identifier)}">${icon('yinyang', { size: 13 })}Phân tích</button></td></tr>`;
+          <button type="button" class="small-btn" data-analyze="${escapeHtml(i.identifier)}">${icon('sparkles', { size: 13 })}Phân tích</button></td></tr>`;
     }).join('')}</tbody></table></div></section>`;
 }
 
@@ -110,7 +110,7 @@ export async function renderLinearIssues(main) {
     }
     if (btn.dataset.analyze) {
       const id = btn.dataset.analyze;
-      const r = await liBusy(btn, () => postJson(`/api/linear/issues/${id}/analyze`, {}));
+      const r = await liBusy(btn, () => postJson(`/api/linear/issues/${encodeURIComponent(id)}/analyze`, {}));
       if (r) liEditing = { identifier: id, testcases: r.testcases };
       return draw();
     }
@@ -126,7 +126,7 @@ export async function renderLinearIssues(main) {
     }
     if (btn.hasAttribute('data-save')) {
       const testcases = liReadEditor(main);
-      const r = await liBusy(btn, () => postJson(`/api/linear/issues/${id}/testcases`, { testcases }));
+      const r = await liBusy(btn, () => postJson(`/api/linear/issues/${encodeURIComponent(id)}/testcases`, { testcases }));
       if (r) {
         toast('Đã lưu testcase');
         liEditing = { identifier: id, testcases: r.testcases };
@@ -134,7 +134,7 @@ export async function renderLinearIssues(main) {
       return draw();
     }
     if (btn.hasAttribute('data-gen')) {
-      const r = await liBusy(btn, () => postJson(`/api/linear/issues/${id}/gen`, {}));
+      const r = await liBusy(btn, () => postJson(`/api/linear/issues/${encodeURIComponent(id)}/gen`, {}));
       if (r) {
         toast(`Đã tạo ${r.saved}`);
         liEditing = null;

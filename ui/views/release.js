@@ -26,7 +26,7 @@ export async function renderRelease(main) {
   const opt = (sel) => d.tags.map((t) => `<option value="${escapeHtml(t.name)}" ${t.name === sel ? 'selected' : ''}>${escapeHtml(t.name)} · ${escapeHtml(t.date.slice(0, 10))}</option>`).join('');
   const tools = `<label>Từ <select data-rel="from"><option value="">(tag trước)</option>${opt(d.from?.name)}</select></label><label>Đến <select data-rel="to">${opt(d.to?.name)}</select></label>
     <button type="button" class="primary no-print" data-print>${icon('download', { size: 14 })}In / Lưu PDF</button>
-    ${isExport() || d.error || !d.to ? '' : `<button type="button" class="btn-ai no-print" data-ai-release>${icon('yinyang', { size: 14 })}AI viết ghi chú QA</button>`}`;
+    ${isExport() || d.error || !d.to ? '' : `<button type="button" class="btn-ai no-print" data-ai-release>${icon('sparkles', { size: 14 })}AI viết ghi chú QA</button>`}`;
   if (d.error === 'unknown-tag') {
     main.innerHTML = `${head(tools)}${emptyBox('Không thấy tag này', '')}`;
   } else {

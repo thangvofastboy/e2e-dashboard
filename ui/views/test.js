@@ -42,7 +42,7 @@ export async function renderTest(main, route) {
         ${t.owners?.length ? `<span class="owners">${icon('users', { size: 13 })}${escapeHtml(t.owners.join(', '))}</span>` : ''}
         ${t.quarantine ? `<span class="lock-badge">${icon('lock', { size: 11 })}cách ly đến ${escapeHtml(t.quarantine.until.slice(0, 10))}</span>` : ''}</div></div>
       <div class="actions">${isExport() ? '' : `<button type="button" class="primary" data-run>${icon('play', { size: 14 })}Chạy test này</button>
-        ${t.flaky && lastFail ? `<button type="button" class="btn-ai" data-why>${icon('yinyang', { size: 14 })}Vì sao flaky?</button>` : ''}`}</div></div>
+        ${t.flaky && lastFail ? `<button type="button" class="btn-ai" data-why>${icon('sparkles', { size: 14 })}Vì sao flaky?</button>` : ''}`}</div></div>
     <section class="kpis">
       <div class="kpi tone-${toneFor(rate)}"><div class="kpi-label">Pass rate (${escapeHtml(done.length)} run)</div><div class="kpi-value">${fmtPct(rate)}</div><div class="kpi-sub">${meter(rate, toneFor(rate), '')}</div></div>
       <div class="kpi tone-info"><div class="kpi-label">Thời gian TB</div><div class="kpi-value">${fmtDuration(avg)}</div><div class="kpi-sub">gần nhất ${escapeHtml(fmtDuration(latest?.durationMs))}</div></div>

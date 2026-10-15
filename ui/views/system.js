@@ -8,11 +8,11 @@ import { icon } from '../icons.js';
 import { currentLang, setLang } from '../i18n.js';
 import { replaceParams } from '../router.js';
 import { fmtBytes } from './settings.js';
-import { FONT_SCALES, storedTheme, setTheme, storedFont, setFont, NAV_LOCKED, storedHiddenNav, setNavHidden } from '../prefs.js';
+import { FONT_SCALES, storedTheme, setTheme, storedFont, setFont, PALETTES, ACCENTS, DENSITIES, RADII, CHART_TYPES, STYLE_KEYS, storedStyle, setStyle, NAV_LOCKED, storedHiddenNav, setNavHidden } from '../prefs.js';
 import { storedIconOnly, setIconOnly } from '../icon-only.js';
 import { renderMarkdown } from '../markdown.js';
 import { GUIDE_MD } from '../guide.js';
-import { memoryHtml, pollMemory, relearn, CTX_PROMPT_MAX as PROMPT_MAX } from '../project-context.js';
+import { memoryHtml, pollMemory, relearn, CTX_PROMPT_MAX } from '../project-context.js';
 
 const STATE = { set: ['good', 'check', 'Đã điền'], placeholder: ['warn', 'alert', 'Còn giá trị mẫu'], empty: ['bad', 'x', 'Trống'], missing: ['bad', 'x', 'Chưa có'] };
 const chip = (state) => {
@@ -60,8 +60,8 @@ export function projectSourcesHtml(prefs, ctx = null) {
       <h3>Thư mục nguồn <span class="muted small">(tối đa ${SRC_MAX}; đường dẫn tương đối với project hoặc tuyệt đối)</span></h3>
       <ul class="src-list" data-src-list>${sources.map(srcRowHtml).join('')}</ul>
       <p><button type="button" data-src-add${sources.length >= SRC_MAX ? ' disabled' : ''}>${icon('folder', { size: 14 })}Thêm thư mục</button></p>
-      <label class="fb-field"><span>Prompt <span class="muted small" data-prompt-count>${prompt.length}/${PROMPT_MAX}</span></span>
-        <textarea class="proj-prompt" name="prompt" rows="8" maxlength="${PROMPT_MAX}" placeholder="Hệ thống gồm… Quy ước đặt tên… Luồng nghiệp vụ chính…" aria-label="Prompt cho AI">${escapeHtml(prompt)}</textarea></label>
+      <label class="fb-field"><span>Prompt <span class="muted small" data-prompt-count>${prompt.length}/${CTX_PROMPT_MAX}</span></span>
+        <textarea class="proj-prompt" name="prompt" rows="8" maxlength="${CTX_PROMPT_MAX}" placeholder="Hệ thống gồm… Quy ước đặt tên… Luồng nghiệp vụ chính…" aria-label="Prompt cho AI">${escapeHtml(prompt)}</textarea></label>
       <p class="err small tone-bad" data-sources-err hidden></p>
       <div class="form-row"><button type="submit" class="primary">${icon('check', { size: 14 })}Lưu</button></div>
     </form>
@@ -77,7 +77,7 @@ function readSourcesForm(f) {
   const j = sources.findIndex((s) => s.description.length > SRC_DESC_MAX);
   if (j >= 0) return { error: `Dòng ${j + 1}: mô tả dài quá ${SRC_DESC_MAX} ký tự.` };
   const prompt = f.prompt.value;
-  if (prompt.length > PROMPT_MAX) return { error: `Prompt dài quá ${PROMPT_MAX} ký tự.` };
+  if (prompt.length > CTX_PROMPT_MAX) return { error: `Prompt dài quá ${CTX_PROMPT_MAX} ký tự.` };
   return { sources, prompt, testDir: f.testDir.value.trim() };
 }
 
@@ -125,6 +125,11 @@ function appearanceHtml() {
   return `<section class="panel"><h2>${icon('sun', { size: 18 })} Giao diện</h2>
     <p class="muted">Lưu trên trình duyệt này, không ảnh hưởng người khác.</p>
     ${setRow('Theme', 'Sáng, tối hoặc theo hệ điều hành', seg('theme', [['system', 'Theo hệ thống'], ['light', 'Sáng'], ['dark', 'Tối']], storedTheme() ?? 'system', 'Theme'))}
+    ${setRow('Bảng màu', 'Bộ màu nền và chữ; mỗi bảng có bản sáng và tối, đi theo Theme', seg('palette', PALETTES, storedStyle('palette'), 'Bảng màu'))}
+    ${setRow('Màu nhấn', 'Màu của nút chính, link và biểu đồ', seg('accent', ACCENTS, storedStyle('accent'), 'Màu nhấn'))}
+    ${setRow('Mật độ', 'Khoảng cách trong bảng, thẻ và menu. Gọn hiện được nhiều dòng hơn', seg('density', DENSITIES, storedStyle('density'), 'Mật độ'))}
+    ${setRow('Bo góc', 'Độ bo của thẻ, nút và ô nhập', seg('radius', RADII, storedStyle('radius'), 'Bo góc'))}
+    ${setRow('Kiểu biểu đồ', 'Cho các biểu đồ theo thời gian (pass rate, thời gian chạy, token, chi phí…). Mặc định: như thiết kế của từng biểu đồ', seg('chart', CHART_TYPES, storedStyle('chart'), 'Kiểu biểu đồ'))}
     ${setRow('Cỡ chữ', 'Áp dụng cho toàn bộ dashboard', seg('font', FONT_SCALES, storedFont(), 'Cỡ chữ'))}
     ${setRow('Ngôn ngữ', 'Giao diện tiếng Anh còn ở bản beta', seg('lang', [['vi', 'Tiếng Việt'], ['en', 'English']], currentLang(), 'Ngôn ngữ'))}
     ${setRow('Nút chỉ hiện icon', 'Ẩn chữ trên nút có icon, rê chuột hoặc Tab tới để xem tên. Mặc định bật', `<label class="switch"><input type="checkbox" name="iconOnly"${storedIconOnly() ? ' checked' : ''}><span class="track"></span><span class="sr-only">Nút chỉ hiện icon</span></label>`)}
@@ -463,6 +468,7 @@ export async function renderSystem(main) {
     }
     if (t.name === 'iconOnly') return setIconOnly(t.checked);
     if (t.name === 'navShow') return setNavHidden(t.value, !t.checked);
+    if (STYLE_KEYS.includes(t.name)) return setStyle(t.name, t.value);
     if (t.name === 'theme') setTheme(t.value === 'system' ? null : t.value);
     else if (t.name === 'font') setFont(t.value);
     else if (t.name === 'lang') setLang(t.value);
@@ -470,7 +476,7 @@ export async function renderSystem(main) {
   main.addEventListener('input', (e) => {
     if (e.target.name !== 'prompt') return;
     const c = main.querySelector('[data-prompt-count]');
-    if (c) c.textContent = `${e.target.value.length}/${PROMPT_MAX}`;
+    if (c) c.textContent = `${e.target.value.length}/${CTX_PROMPT_MAX}`;
   });
   main.addEventListener('keydown', (e) => {
     if (e.target.matches('.env-text') && (e.ctrlKey || e.metaKey) && e.key === 's') {

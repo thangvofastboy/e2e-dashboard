@@ -27,8 +27,14 @@ export function projectCardHtml(p) {
   </article>`;
 }
 
+// một vòng hỏi trạng thái AI cho cả trang: vẽ lại (sau Sửa / Thêm / poll xong) thì dừng vòng cũ, rời trang thì dừng hẳn
+let stopPoll = () => {};
+
 export async function renderProjects(main) {
   const { projects } = await getJson('/api/projects');
+  if (!main.isConnected) return; // đã rời trang trong lúc tải: không vẽ, không mở poll mới
+  stopPoll();
+  stopPoll = () => {};
   const add = `<button type="button" class="primary" data-add-project>${icon('plus', { size: 14 })}Thêm project</button>`;
   const head = pageHead('Projects', 'folder', 'Mọi project đã mở dashboard trên máy này (lưu ở <code>~/.e2e-dashboard/projects.json</code>). Bấm <strong>Chọn để chạy</strong> để chuyển sang project đó: Run sẽ chạy e2e trong thư mục của project đang chọn.', add);
   main.innerHTML = projects.length ? `${head}<section class="projects">${[...projects].sort((a, b) => b.current - a.current).map(projectCardHtml).join('')}</section>` : `${head}${emptyBox('Chưa có project nào')}`;
@@ -64,7 +70,8 @@ export async function renderProjects(main) {
     }));
   // project mà AI đang đọc: vẽ lại thẻ khi đọc xong (trả hàm dừng cho router khi rời trang)
   const learning = projects.find((x) => x.ai?.state === 'learning');
-  if (learning) return pollMemory(learning.root, (m) => m.state !== 'learning' && renderProjects(main), 4000);
+  if (learning) stopPoll = pollMemory(learning.root, (m) => m.state !== 'learning' && renderProjects(main), 4000);
+  return () => stopPoll();
 }
 
 // Hộp chọn thư mục: duyệt cây thư mục phía server (trình duyệt không trả đường dẫn tuyệt đối), hoặc gõ thẳng đường dẫn.

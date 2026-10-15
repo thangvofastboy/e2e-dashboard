@@ -57,7 +57,7 @@ import { icon, ICON_SPRITE } from './icons.js';
 // [view, href, label, icon]; groups after the first get a heading. Analysis pages need the server.
 const NAV = [
   [null, [['overview', '#/', 'Overview', 'grid'], ['runs', '#/runs', 'Runs', 'list'], ['live', '#/live', 'Live', 'activity'], ['tests', '#/tests', 'Tests', 'flask']]],
-  ['Theo dõi', [['qc-ai', '#/qc-ai', 'AI hỗ trợ QC', 'yinyang'], ['trends', '#/trends', 'Xu hướng', 'activity'], ['triage', '#/triage', 'Triage lỗi', 'ticket'], ['groups', '#/groups', 'Module / team', 'layers'], ['release', '#/release', 'Phát hành', 'upload'], ['traceability', '#/traceability', 'Truy vết', 'route'], ['lifecycle', '#/lifecycle', 'Vòng đời test', 'recycle'], ['manual', '#/manual', 'Test thủ công', 'flask'], ['linear-issues', '#/linear-issues', 'Issue Linear', 'ticket'],['verify', '#/verify', 'QC xác nhận', 'check'], ['build', '#/build', 'Ma trận build', 'grid']]],
+  ['Theo dõi', [['qc-ai', '#/qc-ai', 'AI hỗ trợ QC', 'sparkles'], ['trends', '#/trends', 'Xu hướng', 'activity'], ['triage', '#/triage', 'Triage lỗi', 'ticket'], ['groups', '#/groups', 'Module / team', 'layers'], ['release', '#/release', 'Phát hành', 'upload'], ['traceability', '#/traceability', 'Truy vết', 'route'], ['lifecycle', '#/lifecycle', 'Vòng đời test', 'recycle'], ['manual', '#/manual', 'Test thủ công', 'flask'], ['linear-issues', '#/linear-issues', 'Issue Linear', 'ticket'],['verify', '#/verify', 'QC xác nhận', 'check'], ['build', '#/build', 'Ma trận build', 'grid']]],
   ['Phân tích', [['flaky', '#/flaky', 'Flaky', 'shuffle'], ['quality', '#/quality', 'Chất lượng test', 'check'], ['errors', '#/errors', 'Nhóm lỗi', 'layers'], ['cost', '#/cost', 'Chi phí & cache', 'coins'], ['routes', '#/routes', 'Bản đồ route', 'route'], ['branches', '#/branches', 'Branch', 'branch'], ['models', '#/models', 'Model & ngân sách', 'cpu'], ['locators', '#/locators', 'Gợi ý locator', 'crosshair'], ['lint', '#/lint', 'Lint agent', 'lint'], ['app-errors', '#/app-errors', 'Lỗi app', 'terminal'], ['coverage', '#/coverage', 'Coverage', 'crosshair'], ['environment', '#/environment', 'Môi trường', 'cpu']]],
   ['Tích hợp', [['projects', '#/projects', 'Projects', 'folder'], ['qc-templates', '#/qc-templates', 'Mẫu prompt QC', 'file'], ['digest', '#/digest', 'Digest tuần', 'newspaper'], ['report', '#/report', 'Báo cáo', 'file'], ['settings', '#/settings', 'Tự động & lưu trữ', 'gauge'], ['setup', '#/setup', '1 Click Setup', 'zap'], ['system', '#/system', 'Cài đặt hệ thống', 'settings'], ['feedback', '#/feedback', 'Gửi phản hồi', 'send']]],
 ];
@@ -154,7 +154,7 @@ function shell() {
   });
   document.querySelector('[data-search]')?.addEventListener('click', openSearch);
   // Hỏi AI: nút tròn nổi góc phải dưới (ẩn khi khung AI đang mở, xem style.css .ai-fab); bản export chỉ đọc nên không có
-  if (!isExport()) document.body.insertAdjacentHTML('beforeend', `<button type="button" class="ai-fab" data-ask title="Hỏi AI về bộ test" aria-label="Hỏi AI về bộ test">${icon('yinyang', { size: 22 })}</button>`);
+  if (!isExport()) document.body.insertAdjacentHTML('beforeend', `<button type="button" class="ai-fab" data-ask title="Hỏi AI về bộ test" aria-label="Hỏi AI về bộ test">${icon('sparkles', { size: 22 })}</button>`);
   document.querySelector('[data-ask]')?.addEventListener('click', openAskPanel);
   document.querySelector('[data-keys]')?.addEventListener('click', shortcutHelp);
   document.querySelector('[data-lang]').addEventListener('click', () => setLang(currentLang() === 'en' ? 'vi' : 'en'));
@@ -253,6 +253,9 @@ async function route() {
   // never over the page the viewer moved to
   const main = document.getElementById('main').cloneNode(false);
   main.dataset.view = r.view; // chú giải + nút phóng to theo trang (enhance)
+  // khối hiện dần chỉ ở lần vẽ đầu sau khi đổi trang; trang vẽ lại khi lọc / gõ tìm thì không nháy lại
+  main.classList.add('entering');
+  setTimeout(() => main.classList.remove('entering'), 1500);
   document.getElementById('main').replaceWith(main);
   attachTooltips(main);
   main.innerHTML = '<div class="skeleton" aria-busy="true" aria-label="Đang tải"><i class="sk-h"></i><i class="sk-row"></i><i class="sk-row"></i><i class="sk-block"></i></div>';
@@ -421,8 +424,6 @@ function enhance(root) {
   }
   for (const t of root.querySelectorAll('table.table:not([data-paged])')) pageItems(t, [...t.tBodies].flatMap((b) => [...b.rows]), 25);
   for (const u of root.querySelectorAll('ul.life-list:not([data-paged]), ul.eg-tests:not([data-paged])')) pageItems(u, [...u.children], 10);
-  markFill(document.getElementById('main'));
-  pageExtras(document.getElementById('main'));
 }
 
 // Chú giải từng trang (ⓘ cạnh tiêu đề) và từng chart (ⓘ cạnh tên chart): rê chuột hoặc Tab tới để đọc.
@@ -497,7 +498,13 @@ function pageExtras(main) {
   }
   // Live dựng lại DOM mỗi snapshot: phóng to từng khối sẽ bị thoát ngay, chỉ dùng nút cả trang
   if (!document.fullscreenEnabled || main.dataset.view === 'live') return;
-  for (const el of main.querySelectorAll(MAXABLE)) if (!el.querySelector(':scope > .fs-btn')) el.insertAdjacentHTML('beforeend', fsBtn(false));
+  // có tiêu đề: nút nằm cuối dòng tiêu đề (không đè nút khác, không tràn khung cuộn); không có thì nổi ở góc
+  for (const el of main.querySelectorAll(MAXABLE)) {
+    if (el.querySelector(':scope > .fs-btn, :scope > :is(h2, figcaption) > .fs-btn')) continue;
+    const head = el.querySelector(':scope > :is(h2, figcaption)');
+    if (head) head.insertAdjacentHTML('beforeend', fsBtn(false).replace('class="icon-btn fs-btn', 'class="icon-btn fs-btn fs-inline'));
+    else el.insertAdjacentHTML('beforeend', fsBtn(false));
+  }
 }
 // phần tử fullscreen che mọi thứ ngoài nó: mang toast và tooltip vào trong, thoát thì trả về body
 document.addEventListener('fullscreenchange', () => {
@@ -528,13 +535,19 @@ function markFill(main) {
 if (isExport() && !location.hash) location.hash = `#/run/${encodeURIComponent(globalThis.__E2ED_EXPORT__.runId)}`;
 initI18n(); // before shell(): the VI/EN button label reads the stored language
 // created after initI18n's observer, so English translation sees whole strings before boldNumbers splits them;
-// the tooltip and the run pill change on every mouse move / snapshot and never hold anything to enhance
+// the tooltip, the run pill and toasts change on every mouse move / snapshot / message and never hold anything to enhance
+// Chỉ quét phần vừa đổi (cha của mỗi mutation, để gồm cả chính phần tử bị thay nội dung), không quét cả body:
+// khung AI gõ chữ mỗi 30 ms và Live vẽ lại mỗi snapshot, mỗi lần quét cả trang là hàng chục querySelectorAll.
+// pageExtras (gồm iconOnly cho nút sinh ra sau lần vẽ: Live, nút Copy trả lại nội dung) chỉ chạy khi <main> có đổi.
 new MutationObserver((ms) => {
-  if (ms.every((m) => m.target.closest?.('#chart-tip, #run-pill'))) return;
-  enhance(document.body);
-  // nút sinh ra sau lần vẽ trang (Live, kết quả AI, nút Copy trả lại nội dung): cũng chỉ hiện icon; nút đã bọc thì không đổi DOM nữa
+  const roots = new Set();
+  for (const m of ms) if (!m.target.closest?.('#chart-tip, #run-pill, #toasts')) roots.add(m.target.parentElement ?? m.target);
+  if (!roots.size) return;
+  for (const r of roots) if (r.isConnected) enhance(r);
   const main = document.getElementById('main');
-  if (main && !isExport()) iconOnly(main);
+  if (!main || ![...roots].some((r) => main.contains(r) || r.contains(main))) return; // khung AI, dialog, toast: trang không đổi
+  markFill(main);
+  pageExtras(main);
 }).observe(document.body, { childList: true, subtree: true });
 // Lỗi JS của giao diện → server ghi lại cho tự sửa lỗi (trang Cài đặt hệ thống). Mỗi lỗi gửi một lần / lần tải trang, tối đa 5.
 const sentErrors = new Set();
