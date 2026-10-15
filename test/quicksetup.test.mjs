@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { quickSetupPlan, runQuickSetup, pickPm, spawnStep } from '../server/quicksetup.mjs';
+import { quickSetupPlan, runQuickSetup, pickPm, spawnStep, jsPm, quickSetupRunning } from '../server/quicksetup.mjs';
 
 const project = (pkg, installed = []) => {
   const root = mkdtempSync(join(tmpdir(), 'e2ed-qs-'));
@@ -58,13 +58,13 @@ test('gói hệ thống: sudo -n khi sudo không cần mật khẩu, không thì
   const noTools = { ...base, tools: { git: null, gh: null, claude: null } };
   const manual = await quickSetupPlan(root, noTools);
   assert.equal(item(manual, 'git').manual, true);
-  assert.equal(item(manual, 'git').display, 'sudo apt-get install -y git');
+  assert.equal(item(manual, 'git').display, "sudo sh -c 'apt-get update && apt-get install -y git'");
   assert.ok(!manual.steps.includes('git'));
   assert.ok(manual.steps.includes('claude'));
   const auto = await quickSetupPlan(root, { ...noTools, canSudo: true });
-  assert.deepEqual(item(auto, 'git').cmd, ['sudo', '-n', 'apt-get', 'install', '-y', 'git']);
+  assert.deepEqual(item(auto, 'git').cmd, ['sudo', '-n', 'sh', '-c', 'apt-get update && apt-get install -y git']);
   const cli = await quickSetupPlan(root, { ...noTools, interactive: true });
-  assert.deepEqual(item(cli, 'gh').cmd, ['sudo', 'apt-get', 'install', '-y', 'gh']);
+  assert.deepEqual(item(cli, 'gh').cmd, ['sudo', 'sh', '-c', 'apt-get update && apt-get install -y gh']);
   const mac = await quickSetupPlan(root, { ...noTools, os: 'darwin', which: (c) => c === 'brew' });
   assert.deepEqual(item(mac, 'gh').cmd, ['brew', 'install', 'gh']);
   assert.equal(pickPm('linux', () => false), null);
@@ -111,4 +111,42 @@ test('quickPlanHtml: mục tự cài có nút Cài tất cả, mục chạy tay 
   assert.match(html, /setup --quick/);
   assert.doesNotMatch(html, /Node/);
   assert.match(quickPlanHtml({ steps: [], items: [{ id: 'x', ok: true }] }), /không cần cài/);
+});
+
+test('jsPm theo lockfile: pnpm / yarn / bun dùng đúng lệnh, Yarn PnP không đòi node_modules', async () => {
+  const pnpm = project({ devDependencies: { zod: '3' } });
+  writeFileSync(join(pnpm, 'pnpm-lock.yaml'), '');
+  assert.equal(jsPm(pnpm, 'win32').bin, 'pnpm.cmd');
+  const plan = await quickSetupPlan(pnpm, base);
+  assert.deepEqual(item(plan, 'e2e').cmd, ['pnpm', 'add', '-D', 'e2e', '@e2e-dev/web']);
+  const yarn = project({ devDependencies: { e2e: '1', '@e2e-dev/web': '1', zod: '3' } });
+  writeFileSync(join(yarn, 'yarn.lock'), '');
+  assert.deepEqual(item(await quickSetupPlan(yarn, base), 'deps').cmd, ['yarn', 'install']);
+  writeFileSync(join(yarn, '.pnp.cjs'), '');
+  const pnp = await quickSetupPlan(yarn, { ...base, browserEntries: [] });
+  assert.equal(item(pnp, 'deps').ok, true);
+  assert.equal(item(pnp, 'browsers').manual, true);
+  assert.match(item(pnp, 'browsers').display, /^yarn e2e-web install/);
+  assert.equal(jsPm(project(null)).name, 'npm');
+});
+
+test('runQuickSetup: đánh dấu đang chạy để chặn run test; lần gọi thứ hai cùng lúc bị từ chối', async () => {
+  const root = project(null);
+  const plan = { items: [{ id: 'deps', label: 'd', cmd: [process.execPath, '-e', 'setTimeout(() => {}, 300)'] }], steps: ['deps'] };
+  const first = runQuickSetup(root, ['deps'], { plan });
+  assert.equal(quickSetupRunning(root), true);
+  await assert.rejects(runQuickSetup(root, ['deps'], { plan }), (e) => e.status === 409);
+  await first;
+  assert.equal(quickSetupRunning(root), false);
+});
+
+test('spawnStep huỷ thì giết cả nhóm tiến trình (cháu không sống sót)', { skip: process.platform === 'win32' }, async () => {
+  const ac = new AbortController();
+  const out = [];
+  const p = spawnStep(tmpdir(), [process.execPath, '-e', "const c=require('child_process').spawn(process.execPath,['-e','setTimeout(()=>{},20000)'],{stdio:'ignore'});console.log(c.pid);setTimeout(()=>{},20000)"], { signal: ac.signal, onLine: (l) => out.push(l) });
+  while (!out.length) await new Promise((r) => setTimeout(r, 20));
+  ac.abort();
+  await p;
+  await new Promise((r) => setTimeout(r, 100));
+  assert.throws(() => process.kill(Number(out[0]), 0)); // tiến trình cháu đã chết
 });

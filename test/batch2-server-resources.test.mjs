@@ -65,16 +65,16 @@ test('GET /api/resources cần token và trả machine + app', async () => {
 });
 
 // hợp đồng server ↔ UI: output thật của machineResources / parsePs phải đọc được bởi Live và bảng Cấu hình máy
-test('resources: tên field khớp với formatResources (Live) và machineHtml (Hệ thống)', async () => {
-  const { formatResources } = await import('../ui/views/live.js');
+test('resources: tên field khớp với resourcesHtml (Live) và machineHtml (Hệ thống)', async () => {
+  const { resourcesHtml } = await import('../ui/views/live.js');
   const { machineHtml } = await import('../ui/views/system.js');
   const machine = await machineResources(process.cwd(), { sampleMs: 10 });
   const runner = parsePs('  1 100 10240 5.0\n', 100);
-  const live = formatResources({ machine, app: { runner } });
-  assert.match(live, /RAM \d/);
-  assert.match(live, /Disk trống \d/);
+  const live = resourcesHtml([{ machine, app: { runner } }]);
+  assert.match(live, /\d+\.\d\/\d+\.\d GB/);
+  assert.match(live, /Disk trống/);
   assert.match(live, /1 tiến trình/);
-  assert.match(formatResources({ machine, app: { runner: await runnerResources(5, { platform: 'win32' }) } }), /App: không đo được/);
+  assert.match(resourcesHtml([{ machine, app: { runner: await runnerResources(5, { platform: 'win32' }) } }]), /không đo được/);
   const html = machineHtml({ hostname: 'h', platform: 'linux', arch: 'x64' }, { machine }, null);
   assert.doesNotMatch(html.split('Trình duyệt')[0], /không đo được/);
 });

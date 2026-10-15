@@ -256,9 +256,10 @@ async function writeUserNow(env, patch) {
 }
 
 // ----- tình trạng setup -----
-let toolCache = null; // ponytail: đo một lần mỗi server; cài thêm CLI thì khởi động lại dashboard
+let toolCache = null; // đo một lần mỗi server; Quick Setup gọi resetTools() sau khi cài
 function tool(cmd, args = ['--version']) {
-  const r = spawnSync(cmd, args, { encoding: 'utf8', timeout: 5000 });
+  // Windows: npm cài CLI toàn cục thành claude.cmd, spawn không qua shell không thấy (args là hằng, không có chỗ chèn lệnh)
+  const r = spawnSync(cmd, args, { encoding: 'utf8', timeout: 5000, shell: process.platform === 'win32' });
   return r.status === 0 ? (r.stdout || r.stderr).trim().split('\n')[0].slice(0, 80) : null;
 }
 export function resetTools() {

@@ -51,7 +51,8 @@ test('Quick Setup: chạy bước project qua SSE, id lạ bị bỏ qua, id sai
   assert.equal(ev.find((e) => e.type === 'step-done').ok, true);
   assert.ok(existsSync(join(root, 'e2e-dashboard.reporter.mjs')));
   assert.equal(ev.at(-1).type, 'done');
-  assert.ok(ev.at(-1).plan.items.find((x) => x.id === 'project').ok);
+  const after = await (await fetch(`${base}/api/system/quick-setup`, { headers: auth })).json();
+  assert.ok(after.items.find((x) => x.id === 'project').ok); // kế hoạch lập lại thấy reporter đã cài
   const bad = await fetch(`${base}/api/system/quick-setup/run`, { method: 'POST', headers: auth, body: JSON.stringify({ ids: ['rm -rf /'] }) });
   assert.equal(bad.status, 400);
 });

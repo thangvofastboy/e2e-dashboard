@@ -32,6 +32,7 @@ import { ciConfig, createCiSync, syncCi } from './cisync.mjs';
 import { reportSchedule, createReportScheduler, sendReport } from './reports.mjs';
 import { publishSite } from './site.mjs';
 import { readSettings } from './settings.mjs';
+import { quickSetupRunning } from './quicksetup.mjs';
 
 const UI_DIR = fileURLToPath(new URL('../ui', import.meta.url));
 
@@ -185,6 +186,7 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
   // Scheduled runs and watch mode share the runner (one run at a time) and skip quarantined tests.
   const grepInvert = async () => quarantineFlags(await readQuarantine(projectRoot)).args.filter((x) => x !== '--grep-invert');
   const startAuto = async (opts) => {
+    if (quickSetupRunning(projectRoot)) return { ok: false, error: 'Quick Setup đang cài thư viện' }; // node_modules đang được ghi
     try {
       const { workers, browser, headed } = await readSettings(projectRoot); // worker / trình duyệt / headed mặc định ở Settings
       return runner.start({ ...opts, ...(workers ? { workers } : {}), browser, headed, grepInvert: await grepInvert() });
@@ -215,6 +217,7 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
     const { excludeQuarantined, ...opts } = s.options ?? {};
     const root = resolve(s.root);
     try {
+      if (quickSetupRunning(root)) return { ok: false, error: 'Quick Setup đang cài thư viện' };
       if (!(await scheduleRootAllowed(s, projectRoot))) return { ok: false, error: 'Project của lịch này đã bị gỡ khỏi Projects: thêm lại project hoặc xoá lịch.' };
       const defaults = await readSettings(root);
       const q = excludeQuarantined === false ? [] : quarantineFlags(await readQuarantine(root)).args.filter((x) => x !== '--grep-invert');
