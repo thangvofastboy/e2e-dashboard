@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.16.0 — 2026-10-15
+
+- **Quick Setup** (*Cài đặt hệ thống*): kiểm tra máy (git, gh, Node, e2e + `@e2e-dev/web`, thư viện của project, Chromium + headless shell, Claude CLI), hiện kế hoạch các phần thiếu, bấm một lần để cài hết. Có thêm lệnh `e2e-dashboard setup --quick [--yes]`. Chọn npm / pnpm / yarn / bun theo lockfile; khi đang cài thì không chạy test (kể cả chạy tay, lịch, MCP); *Huỷ* dừng cả cây tiến trình.
+- **Hỏi AI dạng chat**: nút nổi góc màn hình thay cho mục trên menu. Chat được lưu trên máy (`state/ai-chats.json`, tối đa 100 chat). *Phân tích lỗi bằng AI* cũng thêm vào lịch sử; mở lại chat cũ để hỏi tiếp hoặc xoá.
+- **Live dễ theo dõi hơn**: dải biểu đồ tài nguyên realtime trên header (CPU / RAM máy, CPU / RAM của test, disk trống, mỗi thẻ một màu và sparkline); bố cục 2 cột *Đang chạy* | *Test fail*; KPI và thanh tiến độ chia đoạn; đồng hồ, ETA, số worker. Danh sách fail dài chỉ vẽ 50 dòng đầu.
+- **Icon trong nút có màu**.
+- **Sửa lỗi**: nút Dừng ở Live đôi khi không nhận click vì bị vẽ lại mỗi giây; đồng hồ hiện `NaN:NaN`; số trên nút *Chỉ test fail* lệch với ô Fail; trên máy mới `apt-get` báo "Unable to locate package".
+
 ## v0.15.2 — 2026-10-14
 
 - **Linear qua MCP nhận ngay**: vừa bật plugin Linear, đăng nhập `/mcp` hay đổi tài khoản Claude thì dashboard không còn báo "chưa có Linear" suốt 5 phút: kết quả "chưa kết nối" chỉ giữ 30 giây. Thêm nút **Kiểm tra lại** ở *Cài đặt hệ thống → Tích hợp* để dò lại ngay.
