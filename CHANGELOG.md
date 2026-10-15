@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.16.2 — 2026-10-15
+
+- **Chat với AI có cảm giác trò chuyện**: avatar và tên Claude, lời chào khi mở khung Hỏi AI, tin nhắn trượt lên khi xuất hiện, chữ AI hiện dần như đang gõ (bấm Dừng thì hiện hết ngay). Khung chỉ tự cuộn xuống khi bạn đang ở cuối.
+- **Hiệu ứng "đang suy nghĩ"**: quả cầu tím phát sáng, chữ có vệt sáng chạy và ba chấm nhảy; nhãn đổi theo việc AI đang làm (suy nghĩ → đọc file → trả lời). Có ở khung Hỏi AI, Phân tích lỗi, tóm tắt AI ở Live, viết bằng AI ở Linear và Mẫu prompt QC. Tắt khi máy bật giảm chuyển động.
+- **Sửa lỗi**: zip trang tĩnh chỉ gồm các run đang có trong trang (trước gom cả run của lần xuất cũ) và không đọc qua thư mục symlink; nén zip không làm dashboard đứng; đóng rồi mở lại khung Hỏi AI lúc đang trả lời không còn bị cắt câu; Mẫu prompt QC giữ kết quả cũ khi AI lỗi.
+
 ## v0.16.1 — 2026-10-15
 
 - **Sửa project** (*Projects*): nút bút chì để đổi tên hiển thị và chuyển sang thư mục mới khi project đã đổi chỗ; tên đã sửa giữ nguyên khi mở lại dashboard. Project đang mở chỉ đổi được tên.
