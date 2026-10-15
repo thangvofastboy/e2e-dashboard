@@ -323,15 +323,26 @@ dialog#run-dialog::backdrop { background: rgba(15, 23, 42, 0.5); }
 #ai-panel h2 { display: flex; align-items: center; gap: 8px; font-size: calc(15px * var(--fs)); } #ai-panel h2 .icon { color: #a855f7; }
 .ai-status { display: flex; align-items: center; gap: 6px; padding: 8px 16px; font-size: calc(12.5px * var(--fs)); border-bottom: 1px solid var(--border); min-height: 34px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .ai-status .icon { color: #a855f7; flex: none; }
-.ai-status .icon[href], .ai-status svg use[href="#i-loader"] { animation: spin 1s linear infinite; transform-origin: center; }
+.ai-status .icon[href], .ai-status svg use[href="#i-loader"], .chat-status svg use[href="#i-loader"] { animation: spin 1s linear infinite; transform-origin: center; }
 @keyframes spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .ai-status svg use { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .ai-status svg use, .chat-status svg use { animation: none; } }
 .ai-body { flex: 1; overflow: auto; padding: 12px 16px; line-height: 1.6; }
 .ai-body h2 { font-size: calc(14px * var(--fs)); margin: 14px 0 6px; color: var(--series-1); }
 #ai-panel .err { margin: 0 16px; }
 .ai-actions { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
 .followup { display: flex; gap: 6px; } .followup input { flex: 1; font: inherit; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text-primary); }
 .followup button .icon { color: var(--series-1); }
+.chat-head-btns { display: flex; gap: 4px; }
+.chat-log { flex: 1; overflow: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; line-height: 1.6; }
+.msg { display: flex; } .msg.user { justify-content: flex-end; }
+.msg .bubble { max-width: 88%; padding: 8px 12px; border-radius: 12px; overflow-wrap: anywhere; }
+.msg.user .bubble { background: var(--series-1); color: #fff; border-bottom-right-radius: 4px; white-space: pre-wrap; }
+.msg.ai .bubble { background: var(--surface-2); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+.msg.ai .bubble > :first-child { margin-top: 0; } .msg.ai .bubble > :last-child { margin-bottom: 0; }
+.chat-status { display: flex; align-items: center; gap: 6px; } .chat-status .icon { color: #a855f7; flex: none; }
+.chat-input { display: flex; gap: 6px; align-items: flex-end; padding: 12px 16px; border-top: 1px solid var(--border); }
+.chat-input textarea { flex: 1; font: inherit; resize: none; field-sizing: content; min-height: 38px; max-height: 160px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); color: var(--text-primary); }
+.chat-input button .icon { color: var(--series-1); }
 
 /* M2/M3: grouped nav, analysis pages, health score, visual diff, route map, projects, Linear */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

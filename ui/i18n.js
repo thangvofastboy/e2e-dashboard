@@ -73,7 +73,7 @@ const EN = {
   '.. (thư mục cha)': '.. (parent folder)', 'Lần tới:': 'Next:', 'Lần gần nhất:': 'Last:', 'đã chạy': 'started',
   // dialogs & AI
   'Chạy toàn bộ suite': 'Run the whole suite', 'Chạy test': 'Run tests', 'Toàn bộ suite': 'Whole suite', 'Danh sách test': 'Test list', 'Phân tích lại': 'Analyze again', 'Hỏi thêm về kết quả này…': 'Ask a follow-up…',
-  'Câu hỏi của bạn…': 'Your question…', 'Hỏi AI về bộ test': 'Ask AI about the suite', 'Đang phân tích…': 'Analyzing…', 'Xong.': 'Done.', 'Bảng phím tắt này': 'This shortcut list', 'Test kế tiếp': 'Next test', 'Test trước': 'Previous test',
+  'Câu hỏi của bạn…': 'Your question…', 'Tự cài': 'Auto', 'Chạy tay': 'Manual', 'Quick Setup xong': 'Quick Setup done', 'Máy đã đủ mọi thứ, không cần cài gì.': 'Everything is installed, nothing to do.', '(tuỳ chọn)': '(optional)', 'Cuộc trò chuyện mới': 'New chat', 'Nhắn cho AI… (Enter gửi, Shift+Enter xuống dòng)': 'Message AI… (Enter to send, Shift+Enter for newline)', 'Đang suy nghĩ…': 'Thinking…', 'Dừng': 'Stop', 'Hỏi AI về bộ test': 'Ask AI about the suite', 'Đang phân tích…': 'Analyzing…', 'Xong.': 'Done.', 'Bảng phím tắt này': 'This shortcut list', 'Test kế tiếp': 'Next test', 'Test trước': 'Previous test',
   'Đang chạy': 'Running', 'Đang nhận dữ liệu live': 'Receiving live data', 'Mở screenshot': 'Open screenshot', 'Mở screenshot lúc fail': 'Open failure screenshot', 'Chạy lại test đang xem': 'Rerun the current test', 'Phân tích lỗi bằng AI': 'Analyze the failure with AI', 'Mô tả issue': 'Issue description', 'Copy cho Claude (Linear MCP)': 'Copy for Claude (Linear MCP)', 'Gửi lên Linear': 'Send to Linear',
   // M6 pages
   'Không tìm thấy route nào của app': 'No app routes found', 'Fail tập trung ở': 'Failures concentrate in',

@@ -136,6 +136,8 @@ export function reporterStatus(projectRoot) {
   }
 }
 
+let quickSetupBusy = false; // một Quick Setup mỗi server: hai npm install cùng lúc giẫm lên node_modules
+
 const NO_AI = { run: async ({ onEvent }) => onEvent({ type: 'error', message: 'AI chưa sẵn sàng trên server này.' }) };
 
 function startSse(res) {
@@ -375,6 +377,10 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         });
       }
       if (p === '/api/system/envfile') return send(res, 200, await readEnvFile(projectRoot, url.searchParams.get('name') ?? ''));
+      if (p === '/api/system/quick-setup') {
+        const { quickSetupPlan } = await import('./quicksetup.mjs');
+        return send(res, 200, await quickSetupPlan(projectRoot, { reporter: reporterStatus(projectRoot) }));
+      }
       if (p === '/api/ai/summary') {
         const runId = url.searchParams.get('runId') ?? '';
         if (!RUN_ID.test(runId)) return send(res, 400, { error: 'invalid runId' });
@@ -1149,6 +1155,26 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       if (p === '/api/system/doctor') {
         const { doctor } = await import('./doctor.mjs');
         return send(res, 200, await doctor(projectRoot, { dryRun: Boolean((await readBody(req)).dryRun), reporter: reporterStatus(projectRoot) }));
+      }
+      if (p === '/api/system/quick-setup/run') {
+        // body chỉ là id bước; lệnh lấy từ kế hoạch server dựng lại lúc bấm
+        const ids = (await readBody(req)).ids;
+        if (!Array.isArray(ids) || !ids.every((x) => typeof x === 'string' && /^[a-z0-9-]{1,30}$/.test(x))) return send(res, 400, { error: 'invalid ids' });
+        if (quickSetupBusy) return send(res, 409, { error: 'Quick Setup đang chạy' });
+        if (runner.state().running || live.snapshot().status === 'running') return send(res, 409, { error: 'Đang có run chạy: dừng run trước khi cài (npm install dưới run đang chạy dễ làm hỏng run)' });
+        quickSetupBusy = true;
+        const ac = new AbortController();
+        res.on('close', () => !res.writableEnded && ac.abort()); // tab đóng: dừng lệnh đang cài
+        const write = startSse(res);
+        try {
+          const { runQuickSetup } = await import('./quicksetup.mjs');
+          await runQuickSetup(projectRoot, ids, { onEvent: write, signal: ac.signal, reporter: () => reporterStatus(projectRoot) });
+        } catch (e) {
+          write({ type: 'error', message: e.message });
+        } finally {
+          quickSetupBusy = false;
+        }
+        return res.end();
       }
       if (p === '/api/system/setup') {
         const { setup } = await import('../bin/dashboard.mjs'); // lazy: bin kéo theo nhiều module server

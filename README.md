@@ -346,6 +346,7 @@ Lệnh này copy `e2e-dashboard.reporter.mjs` (kèm `.d.mts`) vào project và t
 |---|:-:|---|
 | `/e2e-dashboard` | 🖥️ | Bật server nền nếu chưa chạy, mở trình duyệt, in URL |
 | `/e2e-dashboard setup` | 🔌 | Gắn reporter vào `e2e.config.ts` để xem live; chọn trình duyệt mặc định (`E2E_BROWSER`) |
+| `/e2e-dashboard setup --quick [--yes]` | ⚡ | Quick Setup: kiểm tra Git, gh, Node, e2e ([tester-army/e2e](https://github.com/tester-army/e2e)) + `@e2e-dev/web`, `node_modules`, Chromium + headless shell, Claude CLI, reporter/.env; hiện lệnh rồi cài phần thiếu (sudo hỏi mật khẩu trong terminal). Trong dashboard: *Cài đặt hệ thống › Project › Quick Setup* |
 | `/e2e-dashboard doctor [--dry-run]` | 🩺 | Chuyển dữ liệu theo bố cục cũ sang bố cục mới (runs theo ngày, `state/`, `runtime/`), dựng lại chỉ mục SQLite nếu đã bật. `--dry-run` chỉ liệt kê, không ghi |
 | `/e2e-dashboard export [runId]` | 📤 | Xuất một run (mặc định là run mới nhất) thành HTML tự chứa |
 | `/e2e-dashboard status` | ℹ️ | Xem server có đang chạy không |

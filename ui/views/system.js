@@ -1,7 +1,7 @@
 import { AI_MODELS } from '../ai-models.js';
-import { getJson, postJson } from '../api.js';
+import { getJson, postJson, postStream } from '../api.js';
 import { confirmDialog } from '../confirm.js';
-import { pageHead } from '../analysis.js';
+import { pageHead, copyToClipboard } from '../analysis.js';
 import { toast } from '../toast.js';
 import { escapeHtml, cap } from '../format.js';
 import { icon } from '../icons.js';
@@ -179,6 +179,22 @@ function userHtml(u, linear = null) {
   </section>`;
 }
 
+// kế hoạch Quick Setup: mục thiếu, lệnh sẽ chạy (tự cài) hoặc lệnh để copy (chạy tay: cần mật khẩu sudo, Node…)
+export function quickPlanHtml(plan) {
+  const todo = plan.items.filter((x) => !x.ok);
+  if (!todo.length) return `<p class="tone-good">${icon('check', { size: 14 })} Máy đã đủ mọi thứ, không cần cài gì.</p>`;
+  const rows = todo.map((x) => {
+    const auto = plan.steps.includes(x.id);
+    return `<li class="setup-item"><span class="tone-${auto ? 'warn' : 'muted'}">${icon(auto ? 'download' : 'terminal', { size: 15 })}</span>
+      <span><strong>${escapeHtml(x.label)}</strong>${x.optional ? ' <span class="muted small">(tuỳ chọn)</span>' : ''}<br><span class="muted small">${escapeHtml(x.detail)}</span><br>
+      <code>${escapeHtml(x.display ?? '')}</code> <span class="chip tone-${auto ? 'warn' : 'muted'}">${auto ? 'Tự cài' : 'Chạy tay'}</span>${auto ? '' : ` <button type="button" class="icon-btn" data-copy-cmd="${escapeHtml(x.display ?? '')}" aria-label="Copy lệnh">${icon('copy', { size: 13 })}</button>`}</span></li>`;
+  }).join('');
+  const sudoNote = !plan.canSudo && todo.some((x) => !plan.steps.includes(x.id) && /^sudo /.test(x.display ?? '')) ? '<p class="muted small">Lệnh cần mật khẩu sudo không chạy được từ trình duyệt: copy chạy trong terminal, hoặc chạy <code>/e2e-dashboard setup --quick</code> để cài hết (sudo sẽ hỏi mật khẩu).</p>' : '';
+  return `<ul class="setup-list">${rows}</ul>${sudoNote}
+    ${plan.steps.length ? `<p><button type="button" class="primary" data-quick-run="${escapeHtml(plan.steps.join(','))}">${icon('download', { size: 14 })}Cài tất cả (${plan.steps.length})</button></p>` : ''}
+    <pre class="log" data-quick-log hidden></pre>`;
+}
+
 function setupHtml(items) {
   const rows = items.map((x) => `<li class="setup-item"><span class="tone-${x.ok ? 'good' : x.optional ? 'muted' : 'bad'}">${icon(x.ok ? 'check' : x.optional ? 'info' : 'x', { size: 15 })}</span>
       <span><strong>${escapeHtml(x.label)}</strong><br><span class="muted small">${escapeHtml(x.detail)}</span></span></li>`).join('');
@@ -187,7 +203,8 @@ function setupHtml(items) {
   return `<section class="panel"><h2>${icon('flask', { size: 18 })} Thiết lập project</h2>
     ${sysStats(sysStat('Mục đạt', `${ok}/${items.length}`, ok === items.length ? 'good' : 'warn'), sysStat('Cần sửa', items.filter((x) => !x.ok && !x.optional).length, items.some((x) => !x.ok && !x.optional) ? 'bad' : 'good'), sysStat('Tuỳ chọn chưa bật', items.filter((x) => !x.ok && x.optional).length, 'muted'))}
     <ul class="setup-list">${rows}</ul>
-    <p><button type="button" class="${needs ? 'primary' : ''}" data-setup>${icon('rerun', { size: 14 })}Chạy setup</button> <span class="muted small">Cài / cập nhật reporter, gắn vào e2e.config, tạo .env từ .env.example, thêm .env vào .gitignore.</span></p>
+    <p><button type="button" class="${needs ? 'primary' : ''}" data-quick>${icon('zap', { size: 14 })}Quick Setup</button> <span class="muted small">Kiểm tra máy và thư viện (Git, Node, e2e, node_modules, Chromium + headless shell, Claude CLI, reporter, .env), xem lệnh sẽ chạy rồi cài phần còn thiếu.</span></p>
+    <div data-quick-box hidden></div>
     <p><button type="button" data-doctor>${icon('recycle', { size: 14 })}Chạy doctor</button> <span class="muted small">Chuyển dữ liệu cũ sang bố cục mới (runs/YYYY/MM/DD, state/, runtime/) và dựng lại chỉ mục SQLite.</span></p>
     <pre class="log" data-setup-out hidden></pre>
   </section>`;
@@ -554,13 +571,41 @@ export async function renderSystem(main) {
         const out = main.querySelector('[data-setup-out]');
         out.hidden = false;
         out.textContent = [...r.lines, ...r.warn.map((w) => `Lưu ý: ${w}`)].join('\n');
-      } else if ('setup' in b.dataset) {
+      } else if ('quick' in b.dataset) {
         b.setAttribute('aria-busy', 'true');
-        const r = await postJson('/api/system/setup', {});
-        await reload();
-        const out = main.querySelector('[data-setup-out]');
+        const box = main.querySelector('[data-quick-box]');
+        box.innerHTML = quickPlanHtml(await getJson('/api/system/quick-setup'));
+        box.hidden = false;
+        b.removeAttribute('aria-busy');
+      } else if ('copyCmd' in b.dataset) {
+        copyToClipboard(b.dataset.copyCmd, b);
+      } else if ('quickRun' in b.dataset) {
+        b.setAttribute('aria-busy', 'true');
+        b.disabled = true;
+        const out = main.querySelector('[data-quick-log]');
         out.hidden = false;
-        out.textContent = r.lines.join('\n');
+        const lines = [];
+        const push = (t) => {
+          lines.push(t);
+          out.textContent = lines.slice(-400).join('\n');
+          out.scrollTop = out.scrollHeight;
+        };
+        let failed = 0;
+        await postStream('/api/system/quick-setup/run', { ids: b.dataset.quickRun.split(',') }, (e) => {
+          if (e.type === 'step') push(`\n▶ ${e.label}\n$ ${e.display}`);
+          if (e.type === 'log') push(e.text);
+          if (e.type === 'step-done') {
+            if (!e.ok) failed++;
+            push(e.ok ? '✓ Xong' : `✗ Lỗi (mã ${e.code})`);
+          }
+          if (e.type === 'error') push(`✗ ${e.message}`);
+        });
+        toast(failed ? `Quick Setup: ${failed} bước lỗi, xem log` : 'Quick Setup xong', failed ? 'bad' : 'good');
+        const log = lines.join('\n');
+        await reload();
+        const keep = main.querySelector('[data-setup-out]');
+        keep.hidden = false;
+        keep.textContent = log.trim();
       }
     } catch (x) {
       b.removeAttribute('aria-busy');
