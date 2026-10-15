@@ -200,3 +200,18 @@ test('Node: ngưỡng của e2e (22.22.3 / 24.8), không phải chỉ ≥ 22', a
     assert.equal(nodeOkForE2e(v), ok, v);
   }
 });
+
+test('AI cho e2e: thiếu gói của provider → bước cài; thiếu API key / đăng nhập → làm tay kèm lệnh', async () => {
+  const root = project({ devDependencies: { e2e: '1', '@e2e-dev/web': '1' } }, ['e2e', '@e2e-dev/web']);
+  const ai = { provider: 'anthropic', label: 'Anthropic', kind: 'key', packages: ['ai', 'zod', '@ai-sdk/anthropic'], missing: ['@ai-sdk/anthropic'], install: ['npm', 'install', '-D', '@ai-sdk/anthropic'], installDisplay: 'npm install -D @ai-sdk/anthropic', env: 'ANTHROPIC_API_KEY', keyState: 'missing', keyUrl: 'https://console.anthropic.com/settings/keys' };
+  const plan = await quickSetupPlan(root, { ...base, ai });
+  assert.deepEqual(item(plan, 'ai').cmd, ['npm', 'install', '-D', '@ai-sdk/anthropic']);
+  assert.ok(plan.steps.includes('ai'));
+  assert.equal(item(plan, 'ai-key').manual, true);
+  assert.match(item(plan, 'ai-key').display, /ANTHROPIC_API_KEY=… trong \.env/);
+  const sub = await quickSetupPlan(root, { ...base, ai: { provider: 'copilot', label: 'GitHub Copilot (đăng nhập)', kind: 'login', packages: ['ai'], missing: [], loggedIn: false, loginDisplay: 'npx e2e login github-copilot' } });
+  assert.equal(item(sub, 'ai').ok, true);
+  assert.equal(item(sub, 'ai-login').ok, false);
+  assert.equal(item(sub, 'ai-login').display, 'npx e2e login github-copilot');
+  assert.equal((await quickSetupPlan(root, base)).items.find((x) => x.id === 'ai').ok, true); // không có config / không dùng AI: không bắt cài gì
+});

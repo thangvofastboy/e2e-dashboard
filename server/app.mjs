@@ -381,7 +381,8 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       }
       if (p === '/api/system/e2e-config') {
         const { e2eConfigStatus } = await import('./e2econfig.mjs');
-        return send(res, 200, await e2eConfigStatus(projectRoot));
+        const { aiStatus, AI_PROVIDERS } = await import('./e2eai.mjs');
+        return send(res, 200, { ...(await e2eConfigStatus(projectRoot)), ai: await aiStatus(projectRoot), providers: Object.entries(AI_PROVIDERS).map(([id, x]) => ({ id, label: x.label, kind: x.kind, env: x.env ?? null })) });
       }
       if (p === '/api/ai/chats') {
         const { listChats, getChat } = await import('./aichats.mjs');
@@ -1182,6 +1183,14 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         if ((appUrl !== undefined && typeof appUrl !== 'string') || (command !== undefined && typeof command !== 'string') || String(appUrl ?? '').length > 2000 || String(command ?? '').length > 500) return send(res, 400, { error: 'invalid body' });
         const { updateE2eConfig } = await import('./e2econfig.mjs');
         return send(res, 200, await updateE2eConfig(projectRoot, { appUrl, command }));
+      }
+      if (p === '/api/system/ai') {
+        // đổi provider trong e2e.config (+ API key vào .env); gói npm cài qua Quick Setup, đăng nhập subscription chạy trong terminal
+        const { provider, apiKey, baseURL, modelId } = await readBody(req);
+        const str = (v, max) => v === undefined || (typeof v === 'string' && v.length <= max);
+        if (typeof provider !== 'string' || !str(apiKey, 4000) || !str(baseURL, 2000) || !str(modelId, 100)) return send(res, 400, { error: 'invalid body' });
+        const { setAiProvider } = await import('./e2eai.mjs');
+        return send(res, 200, await setAiProvider(projectRoot, provider, { apiKey: apiKey || undefined, baseURL: baseURL || undefined, modelId: modelId || undefined }));
       }
       if (p === '/api/system/doctor') {
         const { doctor } = await import('./doctor.mjs');

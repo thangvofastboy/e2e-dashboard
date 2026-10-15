@@ -4,9 +4,12 @@
 #   curl -fsSL https://raw.githubusercontent.com/thangvofastboy/e2e-dashboard/main/install.sh | bash
 #   curl -fsSL …/install.sh | bash -s -- --project ~/code/my-app --app-url http://localhost:5173 --app-command "npm run dev"
 #
-# 8 bước, bước nào đã có thì bỏ qua (chạy lại bao nhiêu lần cũng được):
+# Chạy không tham số (có terminal): hỏi trước thư mục project, URL app, lệnh khởi động, model AI + API key,
+# rồi cài một mạch không hỏi thêm. Có tham số: dùng tham số, chỉ hỏi phần còn thiếu.
+# 9 bước, bước nào đã có thì bỏ qua (chạy lại bao nhiêu lần cũng được):
 #   1 hệ điều hành → 2 git → 3 Node (≥ 22.22.3 / ≥ 24.8) → 4 Claude Code CLI → 5 plugin → 6 e2e.config.ts
-#   → 7 Quick Setup (e2e + @e2e-dev/web, node_modules, Chromium, reporter, .env) → 8 mở dashboard.
+#   → 7 AI cho e2e (model, gói npm của provider, API key / đăng nhập)
+#   → 8 Quick Setup (e2e + @e2e-dev/web, node_modules, Chromium, reporter, .env) → 9 mở dashboard.
 # Windows: dùng install.ps1 (hoặc chạy script này trong WSL, cách e2e khuyên dùng trên Windows).
 # Viết cho bash 3.2 (bash mặc định của macOS): mảng rỗng mở bằng ${a[@]+"${a[@]}"} để không vấp set -u.
 set -euo pipefail
@@ -19,11 +22,17 @@ NODE_LINE="22"
 usage() {
   cat <<'EOF'
 Dùng: install.sh [tuỳ chọn]
+Không có tuỳ chọn nào: hỏi từng thông tin (Enter = giá trị mặc định) rồi mới cài.
 
   --project DIR          Thư mục project e2e (mặc định: thư mục hiện tại)
   --init                 Chưa có e2e.config.ts thì tạo bằng `e2e init` (không hỏi)
-  --gateway ID           Model cho bước agent khi tạo config: vercel | openrouter | openai-compatible |
-                         chatgpt | copilot | opencode-console | grok | none (mặc định: hỏi, hoặc vercel)
+  --ai ID                Model AI cho bước agent: vercel | anthropic | openrouter | openai | chatgpt |
+                         copilot | opencode-console | grok | openai-compatible | none
+  --api-key KEY          API key của model (lưu vào .env); hoặc đặt biến E2E_AI_API_KEY
+  --ai-base-url URL      openai-compatible: URL server model (vd. http://127.0.0.1:11434/v1)
+  --ai-model ID          openai-compatible: model id server đó phục vụ
+  --ai-login             Gói subscription (chatgpt, copilot…): đăng nhập ngay trong lúc cài
+  --gateway ID           Như --ai (tên cũ)
   --app-url URL          URL app đang test, ghi vào e2e.config.ts
   --app-command "CMD"    Lệnh khởi động app để runner tự chạy (vd. "npm run dev"; "" để bỏ)
   -y, --yes              Không hỏi gì: dùng giá trị mặc định / tham số ở trên
@@ -33,7 +42,26 @@ Dùng: install.sh [tuỳ chọn]
 EOF
 }
 
-STEPS=("Phát hiện hệ điều hành" "git" "Node.js ≥ 22.22.3 (hoặc ≥ 24.8)" "Claude Code CLI" "Plugin e2e-dashboard" "Cấu hình e2e.config.ts" "Quick Setup: e2e, thư viện, trình duyệt, reporter" "Mở dashboard")
+STEPS=("Phát hiện hệ điều hành" "git" "Node.js ≥ 22.22.3 (hoặc ≥ 24.8)" "Claude Code CLI" "Plugin e2e-dashboard" "Cấu hình e2e.config.ts" "AI cho e2e: model, gói npm, API key / đăng nhập" "Quick Setup: e2e, thư viện, trình duyệt, reporter" "Mở dashboard")
+# model AI cho bước agent: giống AI_PROVIDERS của server/e2eai.mjs (test kiểm tra hai danh sách khớp nhau)
+AI_IDS=(vercel anthropic openrouter openai chatgpt copilot opencode-console grok openai-compatible none)
+AI_LABELS=("Vercel AI Gateway (một key, nhiều model)" "Anthropic Claude (API key, kể cả credit API của gói Max/Team)" "OpenRouter (API key)" "OpenAI (API key)" "Gói ChatGPT Plus / Pro (đăng nhập)" "GitHub Copilot (đăng nhập)" "OpenCode Console (đăng nhập)" "SuperGrok / X Premium+ (đăng nhập)" "Model local / OpenAI-compatible (Ollama, LM Studio…)" "Không dùng AI (chỉ test bằng locator)")
+ai_kind() {
+  case "$1" in
+    vercel|anthropic|openrouter|openai) echo key ;;
+    chatgpt|copilot|opencode-console|grok) echo login ;;
+    openai-compatible) echo local ;;
+    *) echo none ;;
+  esac
+}
+ai_env() {
+  case "$1" in vercel) echo AI_GATEWAY_API_KEY ;; anthropic) echo ANTHROPIC_API_KEY ;; openrouter) echo OPENROUTER_API_KEY ;; openai) echo OPENAI_API_KEY ;; esac
+}
+ai_label() {
+  local i
+  for ((i = 0; i < ${#AI_IDS[@]}; i++)); do [ "${AI_IDS[$i]}" = "$1" ] && { echo "${AI_LABELS[$i]}"; return; }; done
+  echo "$1"
+}
 TOTAL=${#STEPS[@]}
 RESULT=()   # kết quả từng bước "trạng thái|ghi chú|giây", in ở bảng tổng kết
 CUR=0
@@ -169,6 +197,105 @@ load_nvm() {
   return 1
 }
 
+# model AI đang dùng trong config (theo import, như detectProvider của server/e2eai.mjs)
+detect_ai() {
+  local f="$1"
+  grep -q 'agents[[:space:]]*:' "$f" 2>/dev/null || { echo none; return; }
+  if grep -q "e2e/oauth/chatgpt" "$f"; then echo chatgpt
+  elif grep -q "e2e/oauth/copilot" "$f"; then echo copilot
+  elif grep -q "e2e/oauth/opencode-console" "$f"; then echo opencode-console
+  elif grep -q "e2e/oauth/grok" "$f"; then echo grok
+  elif grep -q "@openrouter/ai-sdk-provider" "$f"; then echo openrouter
+  elif grep -q "createOpenAICompatible" "$f"; then echo openai-compatible
+  elif grep -q "import { anthropic }" "$f"; then echo anthropic
+  elif grep -q "import { openai }" "$f"; then echo openai
+  elif grep -q "import { gateway }" "$f"; then echo vercel
+  else echo custom; fi
+}
+config_file() {
+  local n
+  for n in e2e.config.ts e2e.config.mts e2e.config.js e2e.config.mjs; do [ -f "$1/$n" ] && { echo "$1/$n"; return 0; }; done
+  return 1
+}
+
+# hỏi một câu trên terminal (stdin có thể đang là script pipe từ curl): $1 câu hỏi, $2 mặc định
+ask() {
+  local a
+  if [ -n "${2:-}" ]; then printf '  %s %s[%s]%s: ' "$1" "$D" "$2" "$N" >/dev/tty; else printf '  %s: ' "$1" >/dev/tty; fi
+  IFS= read -r a </dev/tty || a=""
+  echo "${a:-${2:-}}"
+}
+ask_secret() {
+  local a
+  printf '  %s: ' "$1" >/dev/tty
+  IFS= read -rs a </dev/tty || a=""
+  printf '\n' >/dev/tty
+  echo "$a"
+}
+ask_yn() { # $1 câu hỏi, $2 mặc định y|n
+  local a
+  a="$(ask "$1 $([ "${2:-y}" = y ] && echo '(Y/n)' || echo '(y/N)')" "")"
+  case "$a" in "") [ "${2:-y}" = y ] ;; y|Y|yes|c|C|có) return 0 ;; *) return 1 ;; esac
+}
+
+# chạy không tham số: hỏi hết thông tin trước, cài sau
+wizard() {
+  printf '\n%sTrả lời vài câu trước khi cài%s %s(Enter = giá trị trong [ ])%s\n' "$B" "$N" "$D" "$N" >/dev/tty
+  local dir cfg cur_url="" cur_cmd="" cur_ai="" i def a
+  dir="$(ask "1. Thư mục project e2e" "$PROJECT")"
+  dir="${dir/#\~/$HOME}"
+  PROJECT="$dir"
+  if ROOT_GUESS="$(find_project "$PROJECT")" && cfg="$(config_file "$ROOT_GUESS")"; then
+    printf '     %sĐã có %s%s\n' "$D" "$cfg" "$N" >/dev/tty
+    cur_url="$(sed -n "s/.*url[[:space:]]*:[^'\"]*['\"]\([^'\"]*\)['\"].*/\1/p" "$cfg" | head -n1)"
+    cur_cmd="$(sed -n "s/^[[:space:]]*command[[:space:]]*:[[:space:]]*{[[:space:]]*executable:[[:space:]]*'\([^']*\)',[[:space:]]*args:[[:space:]]*\[\(.*\)\].*/\1 \2/p" "$cfg" | head -n1 | tr -d "',")"
+    cur_ai="$(detect_ai "$cfg")"
+  else
+    ROOT_GUESS=""
+    if ask_yn "   Chưa có e2e.config.ts ở đó. Tạo mới bằng \`e2e init\`?" y; then INIT=1; else SKIP_PROJECT=1; fi
+  fi
+  if [ "$SKIP_PROJECT" != 1 ]; then
+    APP_URL="$(ask "2. URL app đang test" "${cur_url:-http://localhost:3000}")"
+    a="$(ask "3. Lệnh khởi động app để runner tự chạy (vd. npm run dev; - = không dùng)" "${cur_cmd:--}")"
+    [ "$a" = "-" ] && a=""
+    APP_CMD="$a"; APP_CMD_SET=1
+    printf '  4. Model AI cho bước agent của e2e:\n' >/dev/tty
+    def="${cur_ai:-vercel}"; [ "$def" = custom ] && def=""
+    for ((i = 0; i < ${#AI_IDS[@]}; i++)); do
+      printf '     %2d) %-18s %s%s\n' "$((i + 1))" "${AI_IDS[$i]}" "${AI_LABELS[$i]}" "$([ "${AI_IDS[$i]}" = "$def" ] && echo '  ← hiện tại / mặc định' || true)" >/dev/tty
+    done
+    while :; do
+      a="$(ask "   Chọn số" "$def")"
+      if [ -z "$a" ]; then AI=""; break; fi
+      if [[ "$a" =~ ^[0-9]+$ ]] && [ "$a" -ge 1 ] && [ "$a" -le ${#AI_IDS[@]} ]; then AI="${AI_IDS[$((a - 1))]}"; break; fi
+      for i in "${AI_IDS[@]}"; do [ "$i" = "$a" ] && { AI="$a"; break 2; }; done
+      printf '     Chọn số trong danh sách.\n' >/dev/tty
+    done
+    case "$(ai_kind "$AI")" in
+      key)
+        printf '     %sCần %s. Key lưu vào .env của project (git-ignore, quyền 600).%s\n' "$D" "$(ai_env "$AI")" "$N" >/dev/tty
+        API_KEY="$(ask_secret "   Dán $(ai_env "$AI") (Enter để bỏ qua, điền sau trong dashboard)")" ;;
+      login)
+        local lbl; lbl="$(ai_label "$AI")"
+        if ask_yn "   Đăng nhập ${lbl% (đăng nhập)} ngay trong lúc cài?" y; then AI_LOGIN=1; fi ;;
+      local)
+        AI_BASE_URL="$(ask "   URL server model" "http://127.0.0.1:11434/v1")"
+        AI_MODEL="$(ask "   Model id" "gpt-6-luna")" ;;
+    esac
+  fi
+  if ask_yn "5. Cài xong mở dashboard luôn?" y; then OPEN=1; else OPEN=0; fi
+
+  printf '\n%sSẽ cài với:%s\n' "$B" "$N" >/dev/tty
+  printf '  Project:            %s%s\n' "$PROJECT" "$([ "$INIT" = 1 ] && echo ' (tạo e2e.config.ts mới)' || true)" >/dev/tty
+  if [ "$SKIP_PROJECT" != 1 ]; then
+    printf '  URL app:            %s\n  Lệnh khởi động:     %s\n' "$APP_URL" "${APP_CMD:-không}" >/dev/tty
+    printf '  Model AI:           %s%s\n' "$(ai_label "${AI:-$cur_ai}")" "$([ -n "$API_KEY" ] && echo ' · có API key' || true)$([ "$AI_LOGIN" = 1 ] && echo ' · đăng nhập khi cài' || true)" >/dev/tty
+  fi
+  printf '  Mở dashboard:       %s\n' "$([ "$OPEN" = 1 ] && echo có || echo không)" >/dev/tty
+  ask_yn "Bắt đầu cài?" y || { echo "Đã huỷ." >/dev/tty; exit 1; }
+  YES=1 # đã có đủ câu trả lời: các bước sau không hỏi lại
+}
+
 find_project() {
   local d n
   d="$(cd "$1" 2>/dev/null && pwd)" || return 1
@@ -191,13 +318,21 @@ plugin_path() {
 # cả phần chạy nằm trong main(): `curl … | bash` đọc script từ stdin, bash phải đọc hết trước khi chạy
 # để lệnh con nào đọc stdin cũng không nuốt mất phần script còn lại
 main() {
-  PROJECT="$PWD"; OPEN=1; DRY_RUN=0; SKIP_PROJECT=0; YES=0; INIT=0; GATEWAY=""; APP_URL=""; APP_CMD=""; APP_CMD_SET=0
+  PROJECT="$PWD"; OPEN=1; DRY_RUN=0; SKIP_PROJECT=0; YES=0; INIT=0; APP_URL=""; APP_CMD=""; APP_CMD_SET=0
+  AI=""; API_KEY="${E2E_AI_API_KEY:-}"; AI_BASE_URL=""; AI_MODEL=""; AI_LOGIN=0
+  local no_args=0
+  [ $# -eq 0 ] && no_args=1
   while [ $# -gt 0 ]; do
     case "$1" in
       --project) PROJECT="${2:?--project cần đường dẫn}"; shift 2 ;;
       --project=*) PROJECT="${1#*=}"; shift ;;
-      --gateway) GATEWAY="${2:?--gateway cần giá trị}"; shift 2 ;;
-      --gateway=*) GATEWAY="${1#*=}"; shift ;;
+      --ai|--gateway) AI="${2:?$1 cần giá trị}"; shift 2 ;;
+      --ai=*|--gateway=*) AI="${1#*=}"; shift ;;
+      --api-key) API_KEY="${2:?--api-key cần giá trị}"; shift 2 ;;
+      --api-key=*) API_KEY="${1#*=}"; shift ;;
+      --ai-base-url) AI_BASE_URL="${2:?--ai-base-url cần URL}"; shift 2 ;;
+      --ai-model) AI_MODEL="${2:?--ai-model cần giá trị}"; shift 2 ;;
+      --ai-login) AI_LOGIN=1; shift ;;
       --app-url) APP_URL="${2:?--app-url cần URL}"; shift 2 ;;
       --app-url=*) APP_URL="${1#*=}"; shift ;;
       --app-command) [ $# -ge 2 ] || { echo "--app-command cần lệnh" >&2; exit 2; }; APP_CMD="$2"; APP_CMD_SET=1; shift 2 ;;
@@ -213,6 +348,8 @@ main() {
   done
 
   printf '%se2e-dashboard: cài môi trường%s%s\n' "$B" "$N" "$([ "$DRY_RUN" = 1 ] && echo ' (dry-run: không cài gì)')"
+  if [ -n "$AI" ] && [ "$(ai_label "$AI")" = "$AI" ]; then echo "--ai phải là một trong: ${AI_IDS[*]}" >&2; exit 2; fi
+  if [ "$no_args" = 1 ] && can_ask; then wizard; fi
   printf '%sCác bước sẽ chạy theo thứ tự (bước nào đã có thì bỏ qua):%s\n' "$D" "$N"
   local i
   for ((i = 1; i <= TOTAL; i++)); do printf '  %d. %s\n' "$i" "${STEPS[$((i - 1))]}"; done
@@ -339,7 +476,7 @@ main() {
   step 6
   ROOT=""
   local args=()
-  if [ -n "$GATEWAY" ]; then args+=(--gateway "$GATEWAY"); fi
+  if [ -n "$AI" ]; then args+=(--gateway "$AI"); fi
   if [ -n "$APP_URL" ]; then args+=(--app-url "$APP_URL"); fi
   if [ "$APP_CMD_SET" = 1 ]; then args+=(--app-command "$APP_CMD"); fi
   if [ "$SKIP_PROJECT" = 1 ]; then
@@ -383,7 +520,7 @@ main() {
           (cd "$PROJECT" && run node "$DASH" config --init --yes ${args[@]+"${args[@]}"} </dev/null) || die "Tạo e2e.config.ts lỗi (xem ở trên)."
         fi
       else
-        (cd "$PROJECT" && run npx --yes e2e init --yes --engine web --gateway "${GATEWAY:-vercel}" --skills .claude/skills --mcp .mcp.json --no-install </dev/null) || die "e2e init lỗi (xem ở trên)."
+        (cd "$PROJECT" && run npx --yes e2e init --yes --engine web --gateway "${AI:-vercel}" --skills .claude/skills --mcp .mcp.json --no-install </dev/null) || die "e2e init lỗi (xem ở trên)."
       fi
       if [ "$DRY_RUN" = 1 ]; then
         ROOT="$PROJECT"
@@ -395,8 +532,34 @@ main() {
     fi
   fi
 
-  # ── 7. Quick Setup ──
+  # ── 7. AI cho e2e ──
   step 7
+  if [ -z "$ROOT" ]; then
+    info "Bỏ qua: chưa có project e2e"
+    finish skip "chưa có project"
+  elif [ "$DRY_RUN" != 1 ] && ! grep -q 'aiCli' "$DASH" 2>/dev/null; then
+    warn "Plugin bản này chưa có lệnh ai: chọn model và cài gói AI theo https://e2e.tester.army/docs/models"
+    finish manual "plugin cũ"
+  else
+    local ai_args=()
+    if [ -n "$AI" ]; then ai_args+=(--provider "$AI"); fi
+    if [ -n "$AI_BASE_URL" ]; then ai_args+=(--base-url "$AI_BASE_URL"); fi
+    if [ -n "$AI_MODEL" ]; then ai_args+=(--model "$AI_MODEL"); fi
+    if [ "$AI_LOGIN" = 1 ]; then ai_args+=(--login); fi
+    doing "cấu hình model AI$([ -n "$AI" ] && echo " ($AI)" || true), cài gói npm của provider$([ -n "$API_KEY" ] && echo ', lưu API key vào .env' || true)$([ "$AI_LOGIN" = 1 ] && echo ', đăng nhập' || true)"
+    # API key đi qua biến môi trường, không nằm trên dòng lệnh (ps thấy được)
+    local tty=/dev/null
+    if [ "$AI_LOGIN" = 1 ] || can_ask; then { : </dev/tty; } 2>/dev/null && tty=/dev/tty; fi
+    if (cd "$ROOT" && E2E_AI_API_KEY="$API_KEY" run node "$DASH" ai $(can_ask || echo --yes) ${ai_args[@]+"${ai_args[@]}"} <"$tty"); then
+      finish "$([ "$DRY_RUN" = 1 ] && echo plan || echo done)" "${AI:-giữ model hiện tại}"
+    else
+      warn "AI chưa sẵn sàng (xem 'Còn phải làm' ở trên): làm tiếp ở dashboard → Cài đặt hệ thống › Project › Cấu hình e2e.config.ts."
+      finish manual "xem 'Còn phải làm' ở trên"
+    fi
+  fi
+
+  # ── 8. Quick Setup ──
+  step 8
   if [ -z "$ROOT" ]; then
     info "Bỏ qua: chưa có project e2e"
     finish skip "chưa có project"
@@ -411,8 +574,8 @@ main() {
     fi
   fi
 
-  # ── 8. Mở dashboard ──
-  step 8
+  # ── 9. Mở dashboard ──
+  step 9
   if [ "$DRY_RUN" != 1 ] && ! claude auth status --text >/dev/null 2>&1; then
     warn "Claude Code chưa đăng nhập: gõ \`claude\` một lần để đăng nhập (tính năng AI của dashboard dùng phiên này)."
   fi
@@ -424,7 +587,7 @@ main() {
     if (cd "$ROOT" && run node "$DASH" </dev/null); then finish "$([ "$DRY_RUN" = 1 ] && echo plan || echo done)" ""; else finish fail "xem log ở trên"; fi
   else
     info "Mở sau: trong Claude Code gõ /e2e-dashboard (hoặc: cd \"$ROOT\" && node \"$DASH\")"
-    finish skip "--no-open"
+    finish skip "không mở"
   fi
 
   summary

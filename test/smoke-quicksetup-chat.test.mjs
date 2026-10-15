@@ -102,3 +102,25 @@ test('e2e.config: GET đọc URL app / lệnh, POST sửa đúng hai giá trị,
     writeFileSync(cfgPath, before);
   }
 });
+
+test('AI cho e2e: GET trả provider + danh sách; POST đổi provider và lưu key vào .env; provider lạ bị từ chối', async () => {
+  const cfgPath = join(root, 'e2e.config.ts');
+  const before = readFileSync(cfgPath, 'utf8');
+  writeFileSync(cfgPath, "import type { E2EConfig } from 'e2e';\nexport default {\n  targets: [],\n} satisfies E2EConfig;\n");
+  try {
+    const cur = await (await fetch(`${base}/api/system/e2e-config`, { headers: auth })).json();
+    assert.equal(cur.ai.provider, 'none');
+    assert.ok(cur.providers.some((p) => p.id === 'anthropic' && p.kind === 'key'));
+    const r = await (await fetch(`${base}/api/system/ai`, { method: 'POST', headers: auth, body: JSON.stringify({ provider: 'anthropic', apiKey: 'sk-ant-smoke' }) })).json();
+    assert.equal(r.provider, 'anthropic');
+    assert.equal(r.keySaved, true);
+    assert.match(readFileSync(join(root, '.env'), 'utf8'), /^ANTHROPIC_API_KEY=sk-ant-smoke$/m);
+    assert.match(readFileSync(cfgPath, 'utf8'), /import \{ anthropic \} from '@ai-sdk\/anthropic';/);
+    const plan = await (await fetch(`${base}/api/system/quick-setup`, { headers: auth })).json();
+    assert.deepEqual(plan.items.find((x) => x.id === 'ai').cmd.slice(-3), ['ai', 'zod', '@ai-sdk/anthropic']);
+    const bad = await fetch(`${base}/api/system/ai`, { method: 'POST', headers: auth, body: JSON.stringify({ provider: 'xyz' }) });
+    assert.equal(bad.status, 400);
+  } finally {
+    writeFileSync(cfgPath, before);
+  }
+});

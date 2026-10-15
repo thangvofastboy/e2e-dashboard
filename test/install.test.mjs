@@ -34,18 +34,21 @@ test('install.sh: cú pháp bash hợp lệ, --help thoát 0, tham số lạ tho
   assert.equal(spawnSync('bash', [SCRIPT, '--xyz']).status, 2);
 });
 
-test('install.sh --dry-run: in thứ tự 8 bước, hệ điều hành, Node cũ → nvm, cài claude + plugin, cấu hình config, Quick Setup', { skip }, () => {
-  const r = dryRun('20.11.0', { args: ['--app-url', 'http://localhost:5173', '--app-command', 'npm run dev'] });
+test('install.sh --dry-run: in thứ tự 9 bước, hệ điều hành, Node cũ → nvm, cài claude + plugin, cấu hình config, Quick Setup', { skip }, () => {
+  const r = dryRun('20.11.0', { args: ['--app-url', 'http://localhost:5173', '--app-command', 'npm run dev', '--ai', 'anthropic', '--api-key', 'sk-ant-bimat'] });
   assert.equal(r.status, 0, r.stderr);
-  for (let i = 1; i <= 8; i++) assert.ok(r.stdout.includes(`[${i}/8]`), `bước ${i}`);
+  for (let i = 1; i <= 9; i++) assert.ok(r.stdout.includes(`[${i}/9]`), `bước ${i}`);
   assert.match(r.stdout, /Các bước sẽ chạy theo thứ tự/);
-  assert.match(r.stdout, /\[1\/8\] Phát hiện hệ điều hành\n {2}✓ \S+/);
+  assert.match(r.stdout, /\[1\/9\] Phát hiện hệ điều hành\n {2}✓ \S+/);
   assert.match(r.stdout, /Trình quản lý gói: /);
   assert.match(r.stdout, /nvm install 22/);
   assert.match(r.stdout, /npm install -g @anthropic-ai\/claude-code/);
   assert.match(r.stdout, /claude plugin marketplace add thangvofastboy\/e2e-dashboard/);
   assert.match(r.stdout, /claude plugin install e2e-dashboard@e2e-dashboard/);
-  assert.match(r.stdout, /dashboard\.mjs config --yes --app-url http:\/\/localhost:5173 --app-command npm run dev/);
+  assert.match(r.stdout, /dashboard\.mjs config --yes --gateway anthropic --app-url http:\/\/localhost:5173 --app-command npm run dev/);
+  assert.match(r.stdout, /dashboard\.mjs ai --yes --provider anthropic/);
+  assert.ok(r.stdout.indexOf('ai --yes') < r.stdout.indexOf('setup --quick'), 'AI trước Quick Setup');
+  assert.doesNotMatch(r.stdout, /sk-ant-bimat/); // key không bao giờ in ra / lên dòng lệnh
   assert.match(r.stdout, /dashboard\.mjs setup --quick --yes/);
   assert.match(r.stdout, /Tổng kết\n {2}1\. ✓ đã có/);
   assert.match(r.stdout, /3\. · sẽ chạy +Node\.js/);
@@ -63,7 +66,7 @@ test('install.sh: chưa có e2e.config thì báo làm tay; --init tạo bằng `
   assert.match(none.stdout, /Không thấy e2e\.config/);
   assert.doesNotMatch(none.stdout, /setup --quick/);
   assert.match(none.stdout, /6\. ! làm tay +Cấu hình e2e\.config\.ts/);
-  const init = dryRun('22.22.3', { config: false, args: ['--init', '--gateway', 'none'] });
+  const init = dryRun('22.22.3', { config: false, args: ['--init', '--gateway', 'none'] }); // --gateway = tên cũ của --ai
   assert.match(init.stdout, /config --init --yes --gateway none/);
   assert.match(init.stdout, /setup --quick --yes/);
   const skipped = dryRun('22.22.3', { args: ['--skip-project'] });
@@ -73,11 +76,17 @@ test('install.sh: chưa có e2e.config thì báo làm tay; --init tạo bằng `
 
 test('install.ps1 có cùng các bước và tham số', () => {
   const ps = readFileSync(join(import.meta.dirname, '..', 'install.ps1'), 'utf8');
-  for (const s of ['[string]$Project', '[switch]$Init', '[string]$Gateway', '[string]$AppUrl', '[string]$AppCommand', '[switch]$Yes', '[switch]$NoOpen', '[switch]$SkipProject', '[switch]$DryRun',
-    "'plugin', 'install', $PluginId", "'setup', '--quick', '--yes'", "'config', '--init'", "[version]'22.22.3'", 'Summary']) {
+  for (const s of ['[string]$Project', '[switch]$Init', '[string]$Ai', '[string]$ApiKey', '[switch]$AiLogin', '[string]$Gateway', '[string]$AppUrl', '[string]$AppCommand', '[switch]$Yes', '[switch]$NoOpen', '[switch]$SkipProject', '[switch]$DryRun',
+    "'plugin', 'install', $PluginId", "'setup', '--quick', '--yes'", "'config', '--init'", "@($Dash, 'ai')", '$PSBoundParameters.Count -eq 0', "[version]'22.22.3'", 'Summary']) {
     assert.ok(ps.includes(s), s);
   }
   const sh = readFileSync(SCRIPT, 'utf8');
   const steps = (src, re) => [...re.exec(src)[1].matchAll(/'([^']+)'|"([^"]+)"/g)].map((m) => (m[1] ?? m[2]).replace(/≥/g, '>='));
   assert.deepEqual(steps(ps, /\$Steps = @\(([^)]*\([^)]*\)[^)]*)\)/), steps(sh, /STEPS=\(([^)]*\([^)]*\)[^)]*)\)/)); // cùng 8 bước, cùng thứ tự
+});
+
+test('install.sh: --ai lạ thoát 2 trước khi cài gì', { skip }, () => {
+  const r = dryRun('22.22.3', { args: ['--ai', 'xyz'] });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /--ai phải là một trong: vercel anthropic/);
 });

@@ -220,12 +220,33 @@ export function e2eConfigHtml(c) {
       ${row('Reporter dashboard', c.reporter ? 'Đã gắn' : 'Chưa gắn: bấm Quick Setup', c.reporter ? 'good' : '')}
       ${row('Chọn trình duyệt khi chạy', c.browserEnv ? 'Có (E2E_BROWSER)' : 'Chưa: bấm Quick Setup', c.browserEnv ? 'good' : '')}
     </ul>
+    ${aiPanelHtml(c)}
     <form data-e2e-config>
       <div class="form-row"><span class="form-label">URL app đang test</span><input type="url" name="appUrl" value="${escapeHtml(c.appUrl ?? '')}" placeholder="http://localhost:3000" required aria-label="URL app đang test"><small class="fld-hint">${c.appUrlEnv ? `Biến <code>${escapeHtml(c.appUrlEnv)}</code> lúc chạy vẫn đè được giá trị này.` : 'Trang mà app.open() mở.'}</small></div>
       <div class="form-row"><span class="form-label">Lệnh khởi động app</span><input type="text" name="command" value="${escapeHtml(c.command ?? '')}" placeholder="npm run dev" spellcheck="false" aria-label="Lệnh khởi động app"><small class="fld-hint">Runner tự chạy lệnh này trước test và tắt sau đó. Để trống nếu bạn tự chạy app.</small></div>
       <p><button type="submit" class="primary">${icon('check', { size: 14 })}Lưu vào ${escapeHtml(c.file)}</button> <span class="muted small" data-e2e-config-msg></span></p>
     </form>
   </section>`;
+}
+
+// AI cho bước agent: provider (sửa e2e.config), API key vào .env; gói npm và đăng nhập chỉ báo việc cần làm
+function aiPanelHtml(c) {
+  const ai = c.ai;
+  if (!ai || !c.providers) return '';
+  const opts = c.providers.map((p) => `<option value="${escapeHtml(p.id)}"${p.id === ai.provider ? ' selected' : ''}>${escapeHtml(p.label)}</option>`).join('');
+  const status = [];
+  if (ai.packages.length) status.push(ai.missing.length ? `<span class="tone-warn">Thiếu gói ${escapeHtml(ai.missing.join(', '))}</span>: bấm Quick Setup ở trên để cài (<code>${escapeHtml(ai.installDisplay)}</code>)` : `<span class="tone-good">Đủ gói</span> ${escapeHtml(ai.packages.join(', '))}`);
+  if (ai.env && ai.kind === 'key') status.push(ai.keyState === 'set' ? `<span class="tone-good">${escapeHtml(ai.env)} đã có</span> (${escapeHtml(ai.keySource)})` : `<span class="tone-warn">Chưa có ${escapeHtml(ai.env)}</span>${ai.keyUrl ? `: tạo key ở <a href="${escapeHtml(ai.keyUrl)}" target="_blank" rel="noreferrer">${escapeHtml(ai.keyUrl)}</a>` : ''}`);
+  if (ai.kind === 'login') status.push(ai.loggedIn ? '<span class="tone-good">Đã đăng nhập</span> trên máy này' : `<span class="tone-warn">Chưa đăng nhập</span>: chạy trong terminal <code>${escapeHtml(ai.loginDisplay)}</code> <button type="button" class="icon-btn" data-copy-cmd="${escapeHtml(ai.loginDisplay)}" aria-label="Copy lệnh">${icon('copy', { size: 13 })}</button>`);
+  return `<form data-ai-config>
+      <div class="form-row"><span class="form-label">Model AI (bước agent)</span><select name="provider" aria-label="Model AI cho bước agent">${ai.provider === 'custom' ? '<option value="" selected>Model tuỳ chỉnh (giữ nguyên)</option>' : ''}${opts}</select>
+        <small class="fld-hint">Đổi thì dashboard sửa <code>agents</code> và import trong ${escapeHtml(c.file)}. Gói npm của model cài bằng Quick Setup.</small></div>
+      <div class="form-row" data-ai-key${ai.env && ai.kind === 'key' ? '' : ' hidden'}><span class="form-label">API key</span><input type="password" name="apiKey" autocomplete="off" placeholder="${escapeHtml(ai.keyState === 'set' ? 'Đã có: để trống để giữ nguyên' : `Dán ${ai.env ?? 'API key'}`)}" aria-label="API key">
+        <small class="fld-hint">Lưu vào <code>.env</code> (quyền 600, tự vào .gitignore); config được thêm dòng đọc .env.</small></div>
+      <div class="form-row" data-ai-local${ai.provider === 'openai-compatible' ? '' : ' hidden'}><span class="form-label">Server model</span><input type="url" name="baseURL" placeholder="http://127.0.0.1:11434/v1" aria-label="URL server model"><input type="text" name="modelId" placeholder="model id" aria-label="Model id" spellcheck="false"></div>
+      ${status.length ? `<p class="small">${status.join('<br>')}</p>` : ''}
+      <p><button type="submit">${icon('sparkles', { size: 14 })}Lưu model AI</button> <span class="muted small" data-ai-msg></span></p>
+    </form>`;
 }
 
 function setupHtml(items) {
@@ -454,6 +475,15 @@ export async function renderSystem(main) {
 
   main.addEventListener('change', async (e) => {
     const t = e.target;
+    if (t.name === 'provider' && t.closest('[data-ai-config]')) {
+      // hiện ô API key / server model theo loại provider vừa chọn
+      const p = e2eCfg?.providers?.find((x) => x.id === t.value);
+      const f = t.form;
+      f.querySelector('[data-ai-key]').hidden = p?.kind !== 'key';
+      f.querySelector('[data-ai-local]').hidden = p?.kind !== 'local';
+      if (p?.env) f.apiKey.placeholder = `Dán ${p.env}`;
+      return;
+    }
     if (t.name === 'junkCat') {
       main.querySelector('[data-junk-open]').disabled = !main.querySelector('[name=junkCat]:checked');
       return;
@@ -655,6 +685,19 @@ export async function renderSystem(main) {
   main.addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = e.target;
+    if (f.matches('[data-ai-config]')) {
+      const msg = f.querySelector('[data-ai-msg]');
+      if (!f.provider.value) return;
+      try {
+        const r = await postJson('/api/system/ai', { provider: f.provider.value, apiKey: f.apiKey.value.trim() || undefined, baseURL: f.baseURL.value.trim() || undefined, modelId: f.modelId.value.trim() || undefined });
+        toast(r.changed || r.keySaved ? `Đã lưu model AI${r.keySaved ? ' và API key' : ''}${r.missing.length ? ': bấm Quick Setup để cài gói' : ''}` : 'Không có gì thay đổi', 'good');
+        e2eCfg = await getJson('/api/system/e2e-config').catch(() => e2eCfg);
+        await reload();
+      } catch (x) {
+        msg.textContent = x.message.replace(/^\d{3}: /, '');
+      }
+      return;
+    }
     if (f.matches('[data-e2e-config]')) {
       const msg = f.querySelector('[data-e2e-config-msg]');
       try {

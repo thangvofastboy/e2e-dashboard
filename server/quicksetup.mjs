@@ -10,6 +10,7 @@ import { browsersDir } from './browsers.mjs';
 import { tools, resetTools, setupStatus } from './system.mjs';
 import { readSettings } from './settings.mjs';
 import { osInfo } from './osinfo.mjs';
+import { aiStatus } from './e2eai.mjs';
 
 // lệnh thoát mã 0 trong 3 giây: async để không chặn event loop của dashboard (SSE Live, request khác) khi sudo / which treo
 const exitsZero = (cmd, args) => new Promise((done) => {
@@ -136,6 +137,15 @@ export async function quickSetupPlan(root, opts = {}) {
   if (!needE2e.length && missingDeps.length) {
     add({ id: 'deps', label: depsLabel, ok: false, detail: `Thiếu ${missingDeps.length}: ${missingDeps.slice(0, 6).join(', ')}${missingDeps.length > 6 ? '…' : ''}`, cmd: [js.bin, ...js.install], display: show([js.name, ...js.install]) });
   } else add({ id: 'deps', label: depsLabel, ok: !missingDeps.length, detail: missingDeps.length ? 'Cài cùng bước e2e' : js.pnp ? 'Yarn PnP: không kiểm tra node_modules' : `Đủ ${Object.keys(declared).length} gói` });
+
+  // 2b. AI cho bước agent: gói của provider trong e2e.config (ai, @ai-sdk/…), API key / đăng nhập
+  const ai = opts.ai ?? (await aiStatus(root, { os }));
+  const aiLabel = `AI cho e2e: ${ai.label}`;
+  if (ai.provider === 'none' || ai.provider === 'custom') add({ id: 'ai', label: 'AI cho e2e (bước agent)', ok: true, optional: true, detail: ai.provider === 'none' ? 'Config chưa dùng model: chọn bằng /e2e-dashboard ai' : 'Model tuỳ chỉnh: tự kiểm tra gói npm', info: ai.provider === 'none' });
+  else if (ai.missing.length) add({ id: 'ai', label: aiLabel, ok: false, detail: `Thiếu gói ${ai.missing.join(', ')}`, cmd: ai.install, display: ai.installDisplay, ...(js.pnp ? { manual: true } : {}) });
+  else add({ id: 'ai', label: aiLabel, ok: true, detail: `Đủ gói: ${ai.packages.join(', ')}` });
+  if (ai.env && ai.kind === 'key') add({ id: 'ai-key', label: `API key ${ai.env}`, ok: ai.keyState === 'set', manual: true, detail: ai.keyState === 'set' ? `Đã có (${ai.keySource})${ai.loadsEnv || ai.keySource !== '.env' ? '' : ' · config chưa đọc .env: chọn lại provider để thêm'}` : 'Chưa có: điền vào .env (ở mục File .env bên dưới) hoặc /e2e-dashboard ai --api-key …', display: `${ai.env}=… trong .env${ai.keyUrl ? ` (lấy key ở ${ai.keyUrl})` : ''}` });
+  if (ai.kind === 'login') add({ id: 'ai-login', label: `Đăng nhập ${ai.label.replace(/ \(đăng nhập\)$/, '')}`, ok: ai.loggedIn, manual: true, detail: ai.loggedIn ? 'Đã đăng nhập trên máy này' : 'Chưa đăng nhập: chạy lệnh trong terminal (mở trình duyệt / mã thiết bị)', display: ai.loginDisplay });
 
   // 3. trình duyệt: chromium và chromium-headless-shell kiểm tra riêng (installedBrowsers gộp hai cái làm một)
   // ponytail: chỉ xem thư mục chromium-<rev>, không so revision với bản Playwright mà engine ghim

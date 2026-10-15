@@ -3,13 +3,20 @@
 #   irm https://raw.githubusercontent.com/thangvofastboy/e2e-dashboard/main/install.ps1 | iex
 #   & ([scriptblock]::Create((irm …/install.ps1))) -Project C:\code\my-app -AppUrl http://localhost:5173 -AppCommand "npm run dev"
 #
-# 8 bước, bước nào đã có thì bỏ qua (chạy lại bao nhiêu lần cũng được):
+# Chạy không tham số: hỏi trước thư mục project, URL app, lệnh khởi động, model AI + API key, rồi cài một mạch.
+# 9 bước, bước nào đã có thì bỏ qua (chạy lại bao nhiêu lần cũng được):
 #   1 hệ điều hành → 2 git → 3 Node (≥ 22.22.3 / ≥ 24.8) → 4 Claude Code CLI → 5 plugin → 6 e2e.config.ts
-#   → 7 Quick Setup (e2e + @e2e-dev/web, node_modules, Chromium, reporter, .env) → 8 mở dashboard.
+#   → 7 AI cho e2e (model, gói npm, API key / đăng nhập) → 8 Quick Setup (e2e, node_modules, Chromium, reporter, .env)
+#   → 9 mở dashboard.
 # e2e khuyên chạy trong WSL trên Windows: khi đó dùng install.sh bên trong WSL.
 param(
   [string]$Project = (Get-Location).Path,
   [switch]$Init,
+  [string]$Ai,
+  [string]$ApiKey,
+  [string]$AiBaseUrl,
+  [string]$AiModel,
+  [switch]$AiLogin,
   [string]$Gateway,
   [string]$AppUrl,
   [string]$AppCommand,
@@ -22,7 +29,23 @@ $ErrorActionPreference = 'Stop'
 
 $Repo = 'thangvofastboy/e2e-dashboard'
 $PluginId = 'e2e-dashboard@e2e-dashboard'
-$Steps = @('Phát hiện hệ điều hành', 'git', 'Node.js >= 22.22.3 (hoặc >= 24.8)', 'Claude Code CLI', 'Plugin e2e-dashboard', 'Cấu hình e2e.config.ts', 'Quick Setup: e2e, thư viện, trình duyệt, reporter', 'Mở dashboard')
+$Steps = @('Phát hiện hệ điều hành', 'git', 'Node.js >= 22.22.3 (hoặc >= 24.8)', 'Claude Code CLI', 'Plugin e2e-dashboard', 'Cấu hình e2e.config.ts', 'AI cho e2e: model, gói npm, API key / đăng nhập', 'Quick Setup: e2e, thư viện, trình duyệt, reporter', 'Mở dashboard')
+# model AI cho bước agent: giống AI_PROVIDERS của server/e2eai.mjs (test kiểm tra khớp)
+$AiProviders = [ordered]@{
+  'vercel' = @('key', 'AI_GATEWAY_API_KEY', 'Vercel AI Gateway (một key, nhiều model)')
+  'anthropic' = @('key', 'ANTHROPIC_API_KEY', 'Anthropic Claude (API key, kể cả credit API của gói Max/Team)')
+  'openrouter' = @('key', 'OPENROUTER_API_KEY', 'OpenRouter (API key)')
+  'openai' = @('key', 'OPENAI_API_KEY', 'OpenAI (API key)')
+  'chatgpt' = @('login', '', 'Gói ChatGPT Plus / Pro (đăng nhập)')
+  'copilot' = @('login', '', 'GitHub Copilot (đăng nhập)')
+  'opencode-console' = @('login', '', 'OpenCode Console (đăng nhập)')
+  'grok' = @('login', '', 'SuperGrok / X Premium+ (đăng nhập)')
+  'openai-compatible' = @('local', '', 'Model local / OpenAI-compatible (Ollama, LM Studio…)')
+  'none' = @('none', '', 'Không dùng AI (chỉ test bằng locator)')
+}
+if ($Gateway -and -not $Ai) { $Ai = $Gateway }
+if (-not $ApiKey -and $env:E2E_AI_API_KEY) { $ApiKey = $env:E2E_AI_API_KEY }
+if ($Ai -and -not $AiProviders.Contains($Ai)) { throw "-Ai phải là một trong: $($AiProviders.Keys -join ', ')" }
 $Result = @{}
 $script:Cur = 0
 $script:Started = Get-Date
@@ -101,6 +124,60 @@ function Plugin-Path {
 }
 
 Write-Host ("e2e-dashboard: cài môi trường" + $(if ($DryRun) { ' (dry-run: không cài gì)' } else { '' })) -ForegroundColor White
+
+# chạy không tham số: hỏi hết thông tin trước, cài sau (Enter = giá trị trong [ ])
+function Ask($q, $def = '') { $a = Read-Host $(if ($def) { "  $q [$def]" } else { "  $q" }); if ($a) { $a.Trim() } else { $def } }
+function Ask-YN($q, $def = $true) { $a = Read-Host "  $q $(if ($def) { '(Y/n)' } else { '(y/N)' })"; if (-not $a) { $def } else { $a -match '^(y|yes|c|có|co)$' } }
+if ($PSBoundParameters.Count -eq 0 -and (Can-Ask)) {
+  Write-Host "`nTrả lời vài câu trước khi cài (Enter = giá trị trong [ ])" -ForegroundColor White
+  $Project = Ask '1. Thư mục project e2e' $Project
+  $guess = Find-Project $Project
+  $curUrl = ''; $curCmd = ''; $curAi = ''
+  if ($guess) {
+    $cfg = Get-ChildItem $guess -File | Where-Object { $_.Name -match '^e2e\.config\.(ts|mts|js|mjs)$' } | Select-Object -First 1
+    $src = Get-Content $cfg.FullName -Raw
+    Write-Host "     Đã có $($cfg.FullName)" -ForegroundColor DarkGray
+    if ($src -match "url\s*:[^'`"]*['`"]([^'`"]*)['`"]") { $curUrl = $Matches[1] }
+    if ($src -match "(?m)^\s*command\s*:\s*\{\s*executable:\s*'([^']*)',\s*args:\s*\[([^\]]*)\]") { $curCmd = ("$($Matches[1]) " + ($Matches[2] -replace "[',]", '')).Trim() }
+    $curAi = if ($src -notmatch 'agents\s*:') { 'none' } elseif ($src -match 'e2e/oauth/chatgpt') { 'chatgpt' } elseif ($src -match 'e2e/oauth/copilot') { 'copilot' } elseif ($src -match 'e2e/oauth/opencode-console') { 'opencode-console' } elseif ($src -match 'e2e/oauth/grok') { 'grok' } elseif ($src -match '@openrouter/ai-sdk-provider') { 'openrouter' } elseif ($src -match 'createOpenAICompatible') { 'openai-compatible' } elseif ($src -match 'import \{ anthropic \}') { 'anthropic' } elseif ($src -match 'import \{ openai \}') { 'openai' } elseif ($src -match 'import \{ gateway \}') { 'vercel' } else { '' }
+  } elseif (Ask-YN "   Chưa có e2e.config.ts ở đó. Tạo mới bằng ``e2e init``?") { $Init = [switch]$true } else { $SkipProject = [switch]$true }
+  if (-not $SkipProject) {
+    $AppUrl = Ask '2. URL app đang test' $(if ($curUrl) { $curUrl } else { 'http://localhost:3000' })
+    $a = Ask '3. Lệnh khởi động app để runner tự chạy (vd. npm run dev; - = không dùng)' $(if ($curCmd) { $curCmd } else { '-' })
+    $AppCommand = if ($a -eq '-') { '' } else { $a }
+    $appCommandSet = $true
+    Write-Host '  4. Model AI cho bước agent của e2e:'
+    $ids = @($AiProviders.Keys)
+    $def = if ($curAi) { $curAi } else { 'vercel' }
+    for ($i = 0; $i -lt $ids.Count; $i++) { Write-Host ("     {0,2}) {1,-18} {2}{3}" -f ($i + 1), $ids[$i], $AiProviders[$ids[$i]][2], $(if ($ids[$i] -eq $def) { '  ← hiện tại / mặc định' } else { '' })) }
+    while ($true) {
+      $a = Ask '   Chọn số' $def
+      if ($a -match '^\d+$' -and [int]$a -ge 1 -and [int]$a -le $ids.Count) { $Ai = $ids[[int]$a - 1]; break }
+      if ($AiProviders.Contains($a)) { $Ai = $a; break }
+      Write-Host '     Chọn số trong danh sách.'
+    }
+    switch ($AiProviders[$Ai][0]) {
+      'key' {
+        Write-Host "     Cần $($AiProviders[$Ai][1]). Key lưu vào .env của project (quyền chỉ bạn đọc được, tự vào .gitignore)." -ForegroundColor DarkGray
+        $sec = Read-Host "     Dán $($AiProviders[$Ai][1]) (Enter để bỏ qua)" -AsSecureString
+        $ApiKey = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))
+      }
+      'login' { if (Ask-YN "   Đăng nhập $($AiProviders[$Ai][2] -replace ' \(đăng nhập\)$', '') ngay trong lúc cài?") { $AiLogin = [switch]$true } }
+      'local' { $AiBaseUrl = Ask '   URL server model' 'http://127.0.0.1:11434/v1'; $AiModel = Ask '   Model id' 'gpt-6-luna' }
+    }
+  }
+  $NoOpen = [switch](-not (Ask-YN '5. Cài xong mở dashboard luôn?'))
+  Write-Host "`nSẽ cài với:" -ForegroundColor White
+  Write-Host "  Project:          $Project$(if ($Init) { ' (tạo e2e.config.ts mới)' })"
+  if (-not $SkipProject) {
+    Write-Host "  URL app:          $AppUrl"
+    Write-Host "  Lệnh khởi động:   $(if ($AppCommand) { $AppCommand } else { 'không' })"
+    Write-Host "  Model AI:         $($AiProviders[$Ai][2])$(if ($ApiKey) { ' · có API key' })$(if ($AiLogin) { ' · đăng nhập khi cài' })"
+  }
+  Write-Host "  Mở dashboard:     $(if ($NoOpen) { 'không' } else { 'có' })"
+  if (-not (Ask-YN 'Bắt đầu cài?')) { Write-Host 'Đã huỷ.'; return }
+  $Yes = [switch]$true # đã có đủ câu trả lời: các bước sau không hỏi lại
+}
 Write-Host 'Các bước sẽ chạy theo thứ tự (bước nào đã có thì bỏ qua):' -ForegroundColor DarkGray
 for ($i = 1; $i -le $Steps.Count; $i++) { Write-Host "  $i. $($Steps[$i - 1])" }
 
@@ -201,9 +278,9 @@ $hasConfigCmd = $DryRun -or ((Test-Path $Dash) -and (Select-String -Path $Dash -
 Step 6
 $Root = $null
 $cfgArgs = @()
-if ($Gateway) { $cfgArgs += @('--gateway', $Gateway) }
+if ($Ai) { $cfgArgs += @('--gateway', $Ai) }
 if ($AppUrl) { $cfgArgs += @('--app-url', $AppUrl) }
-if ($PSBoundParameters.ContainsKey('AppCommand')) { $cfgArgs += @('--app-command', $AppCommand) }
+if ($PSBoundParameters.ContainsKey('AppCommand') -or $appCommandSet) { $cfgArgs += @('--app-command', $AppCommand) }
 if ($SkipProject) { Info 'Bỏ qua (-SkipProject)'; Finish 'skip' '-SkipProject' }
 elseif ($Root = Find-Project $Project) {
   Info "Đã có config ở $Root"
@@ -228,7 +305,7 @@ elseif ($Root = Find-Project $Project) {
     Push-Location $Project
     try {
       if ($hasConfigCmd) { $code = Run 'node' (@($Dash, 'config', '--init') + $(if (Can-Ask) { @() } else { @('--yes') }) + $cfgArgs) }
-      else { $code = Run 'npx.cmd' @('--yes', 'e2e', 'init', '--yes', '--engine', 'web', '--gateway', $(if ($Gateway) { $Gateway } else { 'vercel' }), '--skills', '.claude/skills', '--mcp', '.mcp.json', '--no-install') }
+      else { $code = Run 'npx.cmd' @('--yes', 'e2e', 'init', '--yes', '--engine', 'web', '--gateway', $(if ($Ai) { $Ai } else { 'vercel' }), '--skills', '.claude/skills', '--mcp', '.mcp.json', '--no-install') }
     } finally { Pop-Location }
     if ($code -ne 0) { Die 'Tạo e2e.config.ts lỗi (xem ở trên).' }
     if ($DryRun) { $Root = $Project; Finish 'plan' 'e2e init' }
@@ -240,8 +317,27 @@ elseif ($Root = Find-Project $Project) {
   }
 }
 
-# 7. Quick Setup
+# 7. AI cho e2e: model, gói npm của provider, API key (qua biến môi trường, không lên dòng lệnh) / đăng nhập
 Step 7
+if (-not $Root) { Info 'Bỏ qua: chưa có project e2e'; Finish 'skip' 'chưa có project' }
+elseif (-not $DryRun -and -not (Select-String -Path $Dash -Pattern 'aiCli' -Quiet)) { Warn 'Plugin bản này chưa có lệnh ai: chọn model theo https://e2e.tester.army/docs/models'; Finish 'manual' 'plugin cũ' }
+else {
+  $aiArgs = @($Dash, 'ai')
+  if (-not (Can-Ask)) { $aiArgs += '--yes' }
+  if ($Ai) { $aiArgs += @('--provider', $Ai) }
+  if ($AiBaseUrl) { $aiArgs += @('--base-url', $AiBaseUrl) }
+  if ($AiModel) { $aiArgs += @('--model', $AiModel) }
+  if ($AiLogin) { $aiArgs += '--login' }
+  Doing "cấu hình model AI$(if ($Ai) { " ($Ai)" }), cài gói npm của provider$(if ($ApiKey) { ', lưu API key vào .env' })$(if ($AiLogin) { ', đăng nhập' })"
+  $env:E2E_AI_API_KEY = $ApiKey
+  Push-Location $Root
+  try { $code = Run 'node' $aiArgs } finally { Pop-Location; Remove-Item Env:E2E_AI_API_KEY -ErrorAction SilentlyContinue }
+  if ($code -ne 0) { Warn "AI chưa sẵn sàng (xem 'Còn phải làm' ở trên): làm tiếp ở dashboard → Cài đặt hệ thống › Project."; Finish 'manual' "xem 'Còn phải làm' ở trên" }
+  else { Finish $(if ($DryRun) { 'plan' } else { 'done' }) $(if ($Ai) { $Ai } else { 'giữ model hiện tại' }) }
+}
+
+# 8. Quick Setup
+Step 8
 if (-not $Root) { Info 'Bỏ qua: chưa có project e2e'; Finish 'skip' 'chưa có project' }
 else {
   Doing 'kiểm tra và cài phần còn thiếu của project (từng bước in bên dưới)'
@@ -255,8 +351,8 @@ else {
   } finally { Pop-Location }
 }
 
-# 8. Mở dashboard
-Step 8
+# 9. Mở dashboard
+Step 9
 if (-not $DryRun) {
   & claude auth status --text *> $null
   if ($LASTEXITCODE -ne 0) { Warn 'Claude Code chưa đăng nhập: gõ `claude` một lần để đăng nhập (tính năng AI của dashboard dùng phiên này).' }
@@ -269,7 +365,7 @@ elseif (-not $NoOpen) {
   Finish $(if ($code -ne 0) { 'fail' } elseif ($DryRun) { 'plan' } else { 'done' })
 } else {
   Info "Mở sau: trong Claude Code gõ /e2e-dashboard (hoặc: cd `"$Root`"; node `"$Dash`")"
-  Finish 'skip' '-NoOpen'
+  Finish 'skip' 'không mở'
 }
 
 Summary
