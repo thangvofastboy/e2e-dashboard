@@ -8,7 +8,7 @@ import { icon } from '../icons.js';
 import { currentLang, setLang } from '../i18n.js';
 import { replaceParams } from '../router.js';
 import { fmtBytes } from './settings.js';
-import { FONT_SCALES, storedTheme, setTheme, storedFont, setFont } from '../prefs.js';
+import { FONT_SCALES, storedTheme, setTheme, storedFont, setFont, NAV_LOCKED, storedHiddenNav, setNavHidden } from '../prefs.js';
 import { storedIconOnly, setIconOnly } from '../icon-only.js';
 import { renderMarkdown } from '../markdown.js';
 import { GUIDE_MD } from '../guide.js';
@@ -110,6 +110,13 @@ function guideHtml() {
     <div class="md">${renderMarkdown(GUIDE_MD)}</div></div></section>`;
 }
 
+// Danh sách mục menu lấy từ menu trái đang hiển thị (tránh import vòng NAV từ app.js)
+function navPickHtml() {
+  const hidden = storedHiddenNav();
+  const items = [...document.querySelectorAll('.nav a[data-nav]')].filter((a) => !NAV_LOCKED.has(a.dataset.nav));
+  return `<div class="nav-pick">${items.map((a) => `<label><input type="checkbox" name="navShow" value="${escapeHtml(a.dataset.nav)}"${hidden.has(a.dataset.nav) ? '' : ' checked'}> ${escapeHtml(a.querySelector('.nl')?.textContent ?? a.dataset.nav)}</label>`).join('')}</div>`;
+}
+
 function appearanceHtml() {
   return `<section class="panel"><h2>${icon('sun', { size: 18 })} Giao diện</h2>
     <p class="muted">Lưu trên trình duyệt này, không ảnh hưởng người khác.</p>
@@ -117,6 +124,9 @@ function appearanceHtml() {
     ${setRow('Cỡ chữ', 'Áp dụng cho toàn bộ dashboard', seg('font', FONT_SCALES, storedFont(), 'Cỡ chữ'))}
     ${setRow('Ngôn ngữ', 'Giao diện tiếng Anh còn ở bản beta', seg('lang', [['vi', 'Tiếng Việt'], ['en', 'English']], currentLang(), 'Ngôn ngữ'))}
     ${setRow('Nút chỉ hiện icon', 'Ẩn chữ trên nút có icon, rê chuột hoặc Tab tới để xem tên. Mặc định bật', `<label class="switch"><input type="checkbox" name="iconOnly"${storedIconOnly() ? ' checked' : ''}><span class="track"></span><span class="sr-only">Nút chỉ hiện icon</span></label>`)}
+    <h3>Menu hiển thị</h3>
+    <p class="muted small">Bỏ tick để ẩn trang ít dùng khỏi menu trái (vẫn mở được bằng Tìm kiếm). Overview và Cài đặt hệ thống luôn hiện.</p>
+    ${navPickHtml()}
   </section>`;
 }
 
@@ -454,6 +464,7 @@ export async function renderSystem(main) {
       return;
     }
     if (t.name === 'iconOnly') return setIconOnly(t.checked);
+    if (t.name === 'navShow') return setNavHidden(t.value, !t.checked);
     if (t.name === 'theme') setTheme(t.value === 'system' ? null : t.value);
     else if (t.name === 'font') setFont(t.value);
     else if (t.name === 'lang') setLang(t.value);

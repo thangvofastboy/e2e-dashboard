@@ -41,3 +41,26 @@ export function applyPrefs() {
   applyTheme(storedTheme());
   applyFont(storedFont());
 }
+
+// Mục menu bị ẩn (Cài đặt hệ thống → Giao diện): Overview và Cài đặt hệ thống luôn hiện để còn đường bật lại.
+export const NAV_LOCKED = new Set(['overview', 'system']);
+export function storedHiddenNav() {
+  try {
+    const v = JSON.parse(get('e2ed-nav-hidden') ?? '[]');
+    return new Set(Array.isArray(v) ? v.filter((x) => typeof x === 'string' && !NAV_LOCKED.has(x)) : []);
+  } catch {
+    return new Set();
+  }
+}
+export function applyHiddenNav(root = document) {
+  const hidden = storedHiddenNav();
+  root.querySelectorAll('.nav a[data-nav]').forEach((a) => { a.hidden = hidden.has(a.dataset.nav); });
+  root.querySelectorAll('.nav .nav-sec').forEach((s) => { s.hidden = !s.querySelector('a[data-nav]:not([hidden])'); }); // nhóm ẩn hết thì ẩn cả tiêu đề
+}
+export function setNavHidden(view, hide) {
+  const hidden = storedHiddenNav();
+  if (hide) hidden.add(view);
+  else hidden.delete(view);
+  set('e2ed-nav-hidden', hidden.size ? JSON.stringify([...hidden]) : null);
+  applyHiddenNav();
+}

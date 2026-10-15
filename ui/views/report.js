@@ -35,6 +35,10 @@ export async function renderReport(main) {
     btn.disabled = false;
     if (r.error) return toast(r.error, 'bad');
     toast(`Đã xuất trang tĩnh (${r.runs} run): ${r.index}`, 'good', 8000);
+    const a = Object.assign(document.createElement('a'), { href: '/api/publish/site.zip', download: 'e2e-report.zip' }); // trình duyệt hiện hộp tải về
+    document.body.append(a);
+    a.click();
+    a.remove();
   });
   main.querySelector('[data-days]').addEventListener('change', (e) => {
     reportDays = Number(e.target.value) || 30;

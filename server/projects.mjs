@@ -28,8 +28,10 @@ export async function readRegistry(env = process.env) {
 export function registerProject(root, env = process.env) {
   return serial(`registry:${registryPath(env)}`, async () => {
     await mkdir(homeDir(env), { recursive: true });
-    const list = (await readRegistry(env)).filter((p) => resolve(p.root) !== resolve(root));
-    list.unshift({ root: resolve(root), name: basename(root), lastOpenedAt: new Date().toISOString() });
+    const all = await readRegistry(env);
+    const prev = all.find((p) => resolve(p.root) === resolve(root));
+    const list = all.filter((p) => p !== prev);
+    list.unshift({ root: resolve(root), name: prev?.name ?? basename(root), lastOpenedAt: new Date().toISOString() }); // giữ tên đã sửa
     const tmp = `${registryPath(env)}.tmp-${randomBytes(6).toString('hex')}`;
     await writeFile(tmp, JSON.stringify(list.slice(0, MAX_PROJECTS), null, 2), { mode: 0o600 });
     await rename(tmp, registryPath(env));
@@ -55,6 +57,30 @@ export async function addProject(root, env = process.env) {
   if ((await readRegistry(env)).some((p) => resolve(p.root) === abs)) return { added: false, root: abs };
   await registerProject(abs, env);
   return { added: true, root: abs };
+}
+
+// Sửa project (nút Sửa ở trang Projects): đổi tên hiển thị và / hoặc trỏ sang thư mục mới (project đã chuyển chỗ).
+export function updateProject(root, { name, newRoot } = {}, env = process.env) {
+  return serial(`registry:${registryPath(env)}`, async () => {
+    const list = await readRegistry(env);
+    const entry = list.find((p) => resolve(p.root) === resolve(root));
+    if (!entry) throw new Error('Không có project này trong danh sách');
+    if (name !== undefined) {
+      const n = typeof name === 'string' ? name.trim() : '';
+      if (!n || n.length > 80) throw new Error('Tên project 1–80 ký tự');
+      entry.name = n;
+    }
+    if (newRoot !== undefined && resolve(newRoot) !== resolve(entry.root)) {
+      const abs = resolve(newRoot);
+      if (!(await stat(abs).catch(() => null))?.isDirectory()) throw new Error(`Không phải thư mục: ${abs}`);
+      if (list.some((p) => resolve(p.root) === abs)) throw new Error(`Thư mục đã là một project khác: ${abs}`);
+      entry.root = abs;
+    }
+    const tmp = `${registryPath(env)}.tmp-${randomBytes(6).toString('hex')}`;
+    await writeFile(tmp, JSON.stringify(list, null, 2), { mode: 0o600 });
+    await rename(tmp, registryPath(env));
+    return { root: entry.root, name: entry.name };
+  });
 }
 
 // Thư mục con (bỏ thư mục ẩn) cho hộp chọn thư mục: trình duyệt không lộ đường dẫn tuyệt đối nên server liệt kê.

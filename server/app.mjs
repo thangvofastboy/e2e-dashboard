@@ -17,7 +17,7 @@ import { listRuns, getRun, findRunDir, setFlag, testHistory, getAi, writeAi, lis
 import { resetPreview, resetAll } from './reset.mjs';
 import { scanJunk, cleanJunk } from './junk.mjs';
 import { flakyTests, compareRuns, groupErrors, costStats, slowSteps, routeMap, branchStats, compareBranches, locatorCandidates, traceToCode, testKey, resultError } from './analytics.mjs';
-import { projectSummaries, forgetProject, addProject, listDirs, readRegistry } from './projects.mjs';
+import { projectSummaries, forgetProject, addProject, updateProject, listDirs, readRegistry } from './projects.mjs';
 import { acceptDescription, acceptTitle, issueMeta, metaLine, placeImages, issueDraft, claudePrompt, linearConfig, readIssueLinks, saveIssueLink, parseIssueRef, removeIssueLink, fingerprint as issueFingerprint } from './linear.mjs';
 import { healthScore } from '../ui/health.js';
 import { search, anomalies, lintAgentSteps, agentScan, LINT_RULES, modelStats, bisectPlan, flakyEvidence, testDetail, appErrors, setupTiming } from './insights.mjs';
@@ -63,7 +63,7 @@ import { ciConfig, readCiState, writeCiConfig } from './cisync.mjs';
 import { readSchedules, saveSchedule, deleteSchedule, nextFire } from './schedules.mjs';
 import { buildReport, reportSchedule, readReportState, lastOccurrence, emailConfig } from './reports.mjs';
 import { reportHtml } from './report-html.mjs';
-import { siteDir } from './site.mjs';
+import { siteDir, siteZip } from './site.mjs';
 
 const MAX_BODY = 1024 * 1024;
 const FILE_TYPES = {
@@ -604,6 +604,12 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         const data = await buildReport(projectRoot, { kind: rep[1] });
         if (rep[2] === 'json') return send(res, 200, data);
         return send(res, 200, reportHtml(data), { 'content-type': 'text/html; charset=utf-8', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; img-src data:", 'x-content-type-options': 'nosniff' });
+      }
+      if (p === '/api/publish/site.zip') {
+        const zip = await siteZip(projectRoot);
+        if (!zip) return send(res, 404, { error: 'Chưa xuất trang tĩnh' });
+        res.writeHead(200, { 'content-type': 'application/zip', 'content-disposition': 'attachment; filename="e2e-report.zip"', 'content-length': zip.length, 'referrer-policy': 'no-referrer' });
+        return res.end(zip);
       }
       const csv = /^\/api\/export\/(runs|tests|flaky)\.csv$/.exec(p);
       if (csv) {
@@ -1271,6 +1277,17 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         if (typeof root !== 'string' || !root.trim()) return send(res, 400, { error: 'invalid root' });
         try {
           return send(res, 200, await addProject(root.trim(), env));
+        } catch (e) {
+          return send(res, 400, { error: e.message });
+        }
+      }
+      if (p === '/api/projects/update') {
+        const { root, name, newRoot } = await readBody(req);
+        if (typeof root !== 'string' || (name !== undefined && typeof name !== 'string') || (newRoot !== undefined && (typeof newRoot !== 'string' || !newRoot.trim()))) return send(res, 400, { error: 'invalid body' });
+        // server đang phục vụ project này: đổi thư mục sẽ làm dashboard trỏ sai, chỉ cho đổi tên
+        if (newRoot !== undefined && resolve(newRoot.trim()) !== resolve(root) && resolve(root) === resolve(projectRoot)) return send(res, 400, { error: 'Không đổi thư mục của project đang mở' });
+        try {
+          return send(res, 200, await updateProject(root, { name, newRoot: newRoot?.trim() }, env));
         } catch (e) {
           return send(res, 400, { error: e.message });
         }

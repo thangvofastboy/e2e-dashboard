@@ -5,7 +5,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { healthScore } from '../ui/health.js';
-import { registerProject, readRegistry, forgetProject, projectSummaries, addProject, listDirs } from '../server/projects.mjs';
+import { registerProject, readRegistry, forgetProject, projectSummaries, addProject, updateProject, listDirs } from '../server/projects.mjs';
 import { fingerprint, issueDraft, claudePrompt, createLinear, linearConfig, saveIssueLink, readIssueLinks } from '../server/linear.mjs';
 import { notifyMode, notifyCommand, runMessage, createNotifier } from '../server/notify.mjs';
 import { statusText } from '../bin/statusline.mjs';
@@ -58,6 +58,22 @@ test('addProject: adds a folder once, reports a duplicate, rejects a non-folder'
   await assert.rejects(addProject(join(a, 'missing'), env), /Không phải thư mục/);
   writeFileSync(join(a, 'f.txt'), 'x');
   await assert.rejects(addProject(join(a, 'f.txt'), env), /Không phải thư mục/);
+});
+
+test('updateProject: đổi tên, chuyển thư mục; tên giữ khi mở lại; từ chối thư mục trùng / không tồn tại', async () => {
+  const env = { E2E_DASHBOARD_HOME: tmp('e2ed-home-') };
+  const [a, b, c] = [tmp(), tmp(), tmp()];
+  await addProject(a, env);
+  await addProject(b, env);
+  assert.deepEqual(await updateProject(a, { name: '  CRM web  ' }, env), { root: a, name: 'CRM web' });
+  await registerProject(a, env); // dashboard mở lại không ghi đè tên đã sửa
+  assert.equal((await readRegistry(env)).find((p) => p.root === a).name, 'CRM web');
+  assert.deepEqual(await updateProject(a, { newRoot: c }, env), { root: c, name: 'CRM web' });
+  assert.deepEqual((await readRegistry(env)).map((p) => p.root).sort(), [b, c].sort());
+  await assert.rejects(updateProject(c, { newRoot: b }, env), /project khác/);
+  await assert.rejects(updateProject(c, { newRoot: join(c, 'missing') }, env), /Không phải thư mục/);
+  await assert.rejects(updateProject(c, { name: ' ' }, env), /1–80/);
+  await assert.rejects(updateProject(a, { name: 'x' }, env), /Không có project/);
 });
 
 test('listDirs: sorted visible subfolders, files and dot-folders left out', async () => {

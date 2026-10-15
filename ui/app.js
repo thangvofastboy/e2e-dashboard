@@ -46,7 +46,7 @@ import { renderMarkdown } from './markdown.js';
 import { getJson, postJson, isExport, liveStream } from './api.js';
 import { attachTooltips } from './charts.js';
 import { escapeHtml } from './format.js';
-import { applyPrefs, setTheme } from './prefs.js';
+import { applyPrefs, setTheme, applyHiddenNav } from './prefs.js';
 import { iconOnly, storedIconOnly } from './icon-only.js';
 import { parseRoute } from './router.js';
 import { icon, ICON_SPRITE } from './icons.js';
@@ -119,6 +119,7 @@ function shell() {
       </div>
     </aside>
     <main id="main" tabindex="-1"></main>`;
+  applyHiddenNav(); // mục menu đã ẩn ở Cài đặt hệ thống → Giao diện
   document.querySelector('.theme-toggle').addEventListener('click', toggleTheme);
   // thu gọn menu trái (desktop): chỉ còn icon; nhớ lựa chọn trên trình duyệt này
   const collapse = document.querySelector('.nav-collapse');

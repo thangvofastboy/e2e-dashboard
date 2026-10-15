@@ -449,7 +449,7 @@ dialog#run-dialog::backdrop { background: rgba(15, 23, 42, 0.5); }
 .project footer, .loc footer { display: flex; gap: 8px; align-items: center; margin-top: auto; flex-wrap: wrap; }
 .loc-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 pre.code { margin: 0; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; overflow: auto; }
-.digest { max-width: 860px; line-height: 1.6; }
+.digest { line-height: 1.6; }
 .digest h1 { font-size: calc(18px * var(--fs)); } .digest h2 { margin: 16px 0 6px; font-size: calc(15px * var(--fs)); }
 dialog#linear-dialog { border: 1px solid var(--border); border-radius: 14px; padding: 0; width: min(640px, calc(100vw - 32px)); background: var(--surface); color: var(--text-primary); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35); }
 dialog#linear-dialog::backdrop { background: rgba(15, 23, 42, 0.5); }
@@ -756,7 +756,7 @@ td[class*="v-"] .meter-val { color: inherit; font-weight: 700; }
 /* UX pass 3 — trang vừa một màn hình (desktop): <main> cao đúng màn hình, khối .fill (đánh dấu ở app.js) lấp phần còn lại
    và cuộn bên trong; trang nhiều phần thì <main> tự cuộn. Mobile giữ cuộn cả trang. */
 @media (min-width: 901px) {
-  #main { height: 100vh; overflow: auto; display: flex; flex-direction: column; }
+  #main { position: relative; height: 100vh; overflow: auto; display: flex; flex-direction: column; } /* relative: phần tử absolute (nhãn ẩn của nút icon-only, sr-only) nằm trong vùng cuộn của main, không kéo dài cả trang */
   #main > * { flex-shrink: 0; }
   #main > .fill { flex: 1 1 0; min-height: 220px; max-height: none; overflow: auto; }
   #main > .table-wrap.fill { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
@@ -811,7 +811,7 @@ button:where(:not(.primary, .icon-btn, .pill, .block, [aria-pressed="true"])):ho
 
 /* Ô nhập đủ dài để đọc hết giá trị (lọc theo tên test, URL, nhánh…) */
 /* Ô nhập trong form cài đặt giãn đủ rộng cho đường dẫn, URL, key (ô số giữ kích thước) */
-.form-row input:not([type="checkbox"]):not([type="radio"]):not([type="number"]) { flex: 1 1 280px; min-width: min(280px, 100%); }
+.form-row input:where(:not([type="checkbox"], [type="radio"], [type="number"], [type="date"], [type="time"], [type="datetime-local"], [type="month"])) { flex: 1 1 280px; min-width: min(280px, 100%); max-width: 560px; } /* max-width: ô lọc / mã issue không kéo hết hàng */
 /* công tắc bật/tắt: ô checkbox thật vẫn giữ (focus, form, data-*), chỉ đổi cách vẽ */
 .switch { position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
 .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
@@ -1067,7 +1067,7 @@ figure:fullscreen figcaption { font-size: calc(17px * var(--fs)); }
 .icon:where(.ic-check, .ic-play, .ic-upload, .ic-unlock, .ic-heart) { color: var(--good); }
 .icon:where(.ic-x, .ic-close, .ic-stop, .ic-ban, .ic-square, .ic-pin, .ic-ticket) { color: var(--bad); }
 .icon:where(.ic-alert, .ic-timer, .ic-clock, .ic-skip, .ic-bolt, .ic-zap, .ic-bulb, .ic-star, .ic-lock, .ic-coins, .ic-sun) { color: var(--warn); }
-.icon:where(.ic-info, .ic-search, .ic-eye, .ic-file, .ic-table, .ic-list, .ic-columns, .ic-copy, .ic-external, .ic-download, .ic-arrow, .ic-send, .ic-loader, .ic-settings) { color: var(--info); }
+.icon:where(.ic-info, .ic-search, .ic-eye, .ic-file, .ic-table, .ic-list, .ic-columns, .ic-copy, .ic-edit, .ic-external, .ic-download, .ic-arrow, .ic-send, .ic-loader, .ic-settings) { color: var(--info); }
 .icon:where(.ic-sparkles, .ic-flask, .ic-layers, .ic-code, .ic-terminal, .ic-cpu, .ic-lint, .ic-crosshair, .ic-moon) { color: var(--violet); }
 .icon:where(.ic-route, .ic-branch, .ic-commit, .ic-folder, .ic-grid, .ic-filter, .ic-shuffle, .ic-recycle, .ic-rerun, .ic-activity, .ic-gauge, .ic-image, .ic-video, .ic-newspaper, .ic-users) { color: var(--teal); }
 .icon:where(.ic-up, .ic-down) { color: var(--muted); }
@@ -1319,3 +1319,46 @@ body:has(#ai-panel) .ai-fab { display: none; }
 .hist-meta { display: flex; align-items: center; gap: 4px; font-size: calc(11.5px * var(--fs)); color: var(--muted); }
 .hist-meta .icon { color: #a855f7; }
 .hist-del { align-self: center; }
+
+/* ô lọc trong popup chọn test: không ăn flex-basis 280px của .form-row (popup xếp dọc → ô cao 280px) */
+.tpick-pop .tpick-q { flex: none; width: 100%; max-width: none; min-width: 0; }
+.sched-pick-head input[type="search"] { max-width: 420px; }
+/* form Issue Linear (Cài đặt → Tích hợp): nhãn trên, ô dưới */
+form[data-linear-issues] { display: grid; gap: 12px; max-width: 560px; }
+form[data-linear-issues] label { display: grid; gap: 6px; }
+form[data-linear-issues] textarea { width: 100%; resize: vertical; }
+form[data-linear-issues] button { justify-self: start; }
+/* form Mẫu prompt QC: các khối cách nhau, ô tên / loại không kéo hết hàng */
+.tpl-form { display: grid; gap: 14px; }
+.tpl-form .fb-field:has(> input), .tpl-form .fb-field:has(> select) { max-width: 560px; }
+/* ẩn mục menu (Cài đặt hệ thống → Giao diện): .nav a có display riêng nên phải ép [hidden] */
+.nav a[data-nav][hidden], .nav .nav-sec[hidden] { display: none; }
+.nav-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px 14px; }
+.nav-pick label { display: flex; align-items: center; gap: 8px; font-weight: 400; }
+/* Live: tiêu đề + dải tài nguyên gọn + nút Dừng trên một hàng; ô đếm nhỏ gọn */
+.live-top { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 10px; }
+.live-top .run-bar { margin: 0; flex-wrap: nowrap; }
+.live-top .run-meta { margin: 0; font-size: calc(13px * var(--fs)); }
+.live-top [data-part="actions"] { margin-left: auto; }
+.live-top [data-part="actions"] .run-stop { margin: 0; }
+.live-top .res-strip { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
+.live-top .res-card { display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-top-width: 1px; border-left: 3px solid var(--hue); border-radius: 8px; }
+.live-top .res-ic { padding: 2px; }
+.live-top .res-name { font-size: calc(11px * var(--fs)); white-space: nowrap; }
+.live-top .res-val { margin-left: 2px; font-size: calc(12.5px * var(--fs)); }
+.live-top .res-sub { display: none; }
+.live-top .res-card .spark { width: 46px; height: 16px; margin: 0; }
+.live-top .res-bar { width: 46px; height: 5px; margin: 0; }
+.kpi-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.kpi-live { gap: 6px; padding: 4px 10px; border-left-width: 3px; border-radius: 8px; }
+.kpi-live .kpi-ic { padding: 3px; border-radius: 6px; }
+.kpi-live .kpi-num { font-size: calc(16px * var(--fs)); }
+.kpi-live .kpi-lbl { font-size: calc(12px * var(--fs)); }
+.live-cols > .live-running:empty { display: none; }
+.live-cols:has(> .live-running:empty) { grid-template-columns: minmax(0, 1fr); }
+.live-top > [data-part="title"] { flex: 0 1 auto; min-width: 0; }
+.live-top .page-head.run-bar { width: auto; margin: 0; }
+.kpi-live .kpi-ic { width: auto; height: auto; }
+.live-top .res-card { gap: 4px; padding: 3px 7px; }
+.live-top .res-card .spark, .live-top .res-bar { width: 38px; }
+@media (max-width: 1700px) { .live-top .res-name { display: none; } } /* màn hẹp: chỉ icon + số (tên ở tooltip) để vẫn cùng hàng tiêu đề */

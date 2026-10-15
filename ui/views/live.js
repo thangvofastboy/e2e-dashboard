@@ -52,10 +52,11 @@ export function tickClocks(root, now = Date.now()) {
   }
 }
 
-export function kpiHtml(c) {
-  const tile = (tone, ic, label, value, extra = '') => `<div class="kpi-live kpi-${tone}"><span class="kpi-ic">${icon(ic, { size: 18 })}</span><div><div class="kpi-num">${value}</div><div class="kpi-lbl">${label}${extra}</div></div></div>`;
+// ô đếm gọn trên một hàng; run xong thì bỏ "Đang chạy", "Còn lại" thành "Không chạy" (chỉ khi > 0)
+export function kpiHtml(c, running = true) {
+  const tile = (tone, ic, label, value, extra = '') => `<div class="kpi-live kpi-${tone}"><span class="kpi-ic">${icon(ic, { size: 14 })}</span><span class="kpi-num">${value}</span><span class="kpi-lbl">${label}${extra}</span></div>`;
   const more = [c.flaky ? `${c.flaky} flaky` : '', c.skipped ? `${c.skipped} skip` : ''].filter(Boolean).join(' · ');
-  return `<div class="kpi-row">${tile('good', 'check', 'Pass', c.passed, more ? ` <span class="muted">· ${more}</span>` : '')}${tile('bad', 'x', 'Fail', c.failed)}${tile(c.running ? 'info' : 'muted', 'loader', 'Đang chạy', c.running)}${tile('muted', 'clock', 'Còn lại', c.remaining)}</div>`;
+  return `<div class="kpi-row">${tile('good', 'check', 'Pass', c.passed, more ? ` <span class="muted">· ${more}</span>` : '')}${tile('bad', 'x', 'Fail', c.failed)}${running ? tile(c.running ? 'info' : 'muted', 'loader', 'Đang chạy', c.running) : ''}${running ? tile('muted', 'clock', 'Còn lại', c.remaining) : c.remaining ? tile('muted', 'skip', 'Không chạy', c.remaining) : ''}</div>`;
 }
 
 // thanh tiến độ chia đoạn theo kết quả (tính trên tổng số test của run); đoạn 0% không vẽ
@@ -190,7 +191,7 @@ const spark = (values) => {
   const pts = sparkPoints(values);
   return pts ? `<svg class="spark" viewBox="0 0 ${SPARK_W} ${SPARK_H}" preserveAspectRatio="none" aria-hidden="true"><polygon points="${pts.split(' ')[0].split(',')[0]},${SPARK_H} ${pts} ${SPARK_W},${SPARK_H}"/><polyline points="${pts}"/></svg>` : '';
 };
-const card = ({ hue, ic, name, value, pct, sub, values, bar }) => `<div class="res-card" style="--hue:var(${hue})" role="group" aria-label="${escapeHtml(name)}: ${escapeHtml(value)}">
+const card = ({ hue, ic, name, value, pct, sub, values, bar }) => `<div class="res-card" style="--hue:var(${hue})" role="group" aria-label="${escapeHtml(name)}: ${escapeHtml(value)}" title="${escapeHtml(name)}: ${escapeHtml(value)}${sub ? ` · ${escapeHtml(sub)}` : ''}">
     <div class="res-top"><span class="res-ic">${icon(ic, { size: 14 })}</span><span class="res-name">${escapeHtml(name)}</span><span class="res-val${pct == null ? '' : ` tone-${toneOf(pct)}`}">${escapeHtml(value)}</span></div>
     ${bar ? `<div class="res-bar" aria-hidden="true"><span style="width:${Math.round(Math.min(100, pct ?? 0))}%"></span></div>` : spark(values ?? [])}
     <div class="res-sub">${escapeHtml(sub ?? '')}</div></div>`;
@@ -262,7 +263,7 @@ export async function renderLive(main) {
   let resHtml = '';
   let resHist = [];
   const setRes = () => {
-    const el = main.querySelector(':scope > [data-res]');
+    const el = main.querySelector('[data-res]'); // trang trống: con trực tiếp của main; đang có run: trong .live-top
     if (el && el._html !== resHtml) {
       el.innerHTML = resHtml;
       el._html = resHtml;
@@ -390,17 +391,19 @@ export async function renderLive(main) {
     // Trang chia phần: phần nào HTML không đổi thì giữ nguyên DOM (hover, focus, vị trí cuộn, chọn chữ trong log);
     // gantt cập nhật từng block theo key. Trước đây mỗi snapshot (≤ 4 lần/giây) dựng lại cả trang.
     if (!main.querySelector(':scope > [data-part="head"]')) {
-      main.innerHTML = '<div data-part="title"></div><div data-part="res" data-res></div><div data-part="head"></div><section class="panel ai-summary" data-part="ai"></section><div class="live-cols"><section class="panel live-running" data-part="running"></section><section class="panel live-failed" data-part="failed"></section></div><section class="panel gantt" data-part="gantt"></section><section class="panel live-steps" data-part="steps"></section><details class="panel live-out" data-part="out"></details>';
+      main.innerHTML = '<div class="live-top"><div data-part="title"></div><div data-part="res" data-res></div><div data-part="actions"></div></div><div data-part="head"></div><section class="panel ai-summary" data-part="ai"></section><div class="live-cols"><section class="panel live-running" data-part="running"></section><section class="panel live-failed" data-part="failed"></section></div><section class="panel gantt" data-part="gantt"></section><section class="panel live-steps" data-part="steps"></section><details class="panel live-out" data-part="out"></details>';
     }
     const parts = {
       // thanh trạng thái: tiêu đề + đồng hồ + ETA + nút Dừng trên một hàng; .page-head p để app.js không chèn mô tả trang
-      // (mô tả vẫn mở được ở nút ⓘ cạnh tiêu đề). Dải tài nguyên ([data-res]) nằm ngay dưới, giống lúc chưa có run
+      // (mô tả vẫn mở được ở nút ⓘ cạnh tiêu đề). Dải tài nguyên ([data-res]) gọn, cùng hàng (.live-top)
       title: `<div class="page-head run-bar"><h1>Live ${beat}${statusBadge(snap.status === 'finished' ? snap.runStatus ?? 'finished' : snap.status)}</h1>
         <p class="run-meta">${icon('timer', { size: 15 })}<span data-elapsed="${escapeHtml(snap.startedAt)}"${snap.finishedAt ? ` data-until="${escapeHtml(snap.finishedAt)}"` : ''}></span>${isRunning && snap.etaMs != null ? `<span class="muted">· còn khoảng ${escapeHtml(fmtDuration(snap.etaMs))}</span>` : ''}${snap.lanes ? `<span class="muted">· tối đa ${escapeHtml(snap.lanes)} worker</span>` : ''}</p>
-        ${isRunning && !snap.disconnected ? `<p class="run-stop"><span class="muted small" data-stop-note>${escapeHtml(stopNote)}</span><button type="button" class="btn-stop" data-stop${stopping ? ' disabled' : ''}>${icon('square', { size: 14 })}Dừng run</button></p>` : ''}
-        ${!isRunning ? `<p class="run-stop"><a class="button" href="${runsHref(snap.runId)}">${icon('list', { size: 14 })}Xem ở Runs</a><button type="button" data-run-all>${icon('play', { size: 14 })}Chạy lại toàn bộ suite</button></p>` : ''}</div>`,
+        </div>`,
+      // nút Dừng / Xem ở Runs tách khỏi title để dải tài nguyên nằm giữa (sau "tối đa x worker")
+      actions: `${isRunning && !snap.disconnected ? `<p class="run-stop"><span class="muted small" data-stop-note>${escapeHtml(stopNote)}</span><button type="button" class="btn-stop" data-stop${stopping ? ' disabled' : ''}>${icon('square', { size: 14 })}Dừng run</button></p>` : ''}
+        ${!isRunning ? `<p class="run-stop"><a class="button" href="${runsHref(snap.runId)}">${icon('list', { size: 14 })}Xem ở Runs</a><button type="button" data-run-all>${icon('play', { size: 14 })}Chạy lại toàn bộ suite</button></p>` : ''}`,
       head: `${snap.disconnected ? LOST_BANNER : ''}
-        ${kpiHtml(counts)}
+        ${kpiHtml(counts, isRunning)}
         ${progressHtml(counts, isRunning)}
         ${snap.error ? `<div class="err">${escapeHtml(snap.error.message ?? '')}</div>` : ''}
         ${snap.stopped ? `<div class="banner tone-warn">${icon('alert', { size: 14 })}Run dừng sớm: đã chạm <code>--max-failures</code> (${escapeHtml(snap.stopped.failures)}/${escapeHtml(snap.stopped.limit)} test fail), các test còn lại không chạy.</div>` : ''}
@@ -410,7 +413,7 @@ export async function renderLive(main) {
         ? `<h2>${icon('sparkles', { size: 15 })} Tóm tắt AI</h2><div class="md">${renderMarkdown(aiSum.md)}</div>`
         : aiSum.runId === snap.runId && aiSum.state === 'pending' ? `<p class="muted small">${icon('sparkles', { size: 13 })} AI đang tóm tắt run…</p>` : '',
       res: resHtml,
-      running: runningHtml(snap.tests),
+      running: isRunning ? runningHtml(snap.tests) : '', // run xong: bỏ cột, cột fail rộng hết hàng
       failed: failedHtml(snap.tests, { runId: snap.runId, finished: !isRunning, results: rep.runId === snap.runId ? rep.results : {} }) || `<h2>${icon('x', { size: 15 })} Test fail <strong>0</strong></h2><p class="muted small tone-good">${icon('check', { size: 13 })} Chưa có test nào fail.</p>`,
       steps,
       // thu gọn mặc định; trạng thái mở/đóng giữ qua các lần vẽ (outOpen, sự kiện toggle)

@@ -53,6 +53,10 @@ test('kpiHtml + progressHtml: 4 ô số liệu, thanh chia đoạn theo kết qu
   const k = kpiHtml(c);
   for (const label of ['Pass', 'Fail', 'Đang chạy', 'Còn lại']) assert.match(k, new RegExp(label));
   assert.match(k, /kpi-bad[^]*>1</);
+  const done = kpiHtml(c, false); // run xong: không còn "Đang chạy 0", phần chưa chạy là "Không chạy"
+  assert.doesNotMatch(done, /Đang chạy|Còn lại/);
+  assert.match(done, /Không chạy/);
+  assert.doesNotMatch(kpiHtml(liveCounts({ total: 1, done: 1, tests: [{ status: 'passed' }] }), false), /Không chạy/);
   const p = progressHtml(c, true);
   assert.match(p, /seg-passed" style="width:20%"/);
   assert.match(p, /seg-failed" style="width:10%"/);

@@ -2,7 +2,8 @@
 // self-contained HTML, in a folder you can push to GitHub Pages or a shared drive. The folder is
 // .e2e-dashboard/site unless the user passes one (CLI) or sets "publish": { "dir" } in their own
 // ~/.e2e-dashboard/config.json — never from the repo's config, which a clone controls.
-import { mkdir, writeFile, rename, rm, lstat, readFile } from 'node:fs/promises';
+import { mkdir, writeFile, rename, rm, lstat, readFile, readdir } from 'node:fs/promises';
+import { deflateRawSync } from 'node:zlib';
 import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { DATA_DIR, ensureDataDir } from '../reporter/e2e-dashboard.reporter.mjs';
@@ -54,4 +55,35 @@ export async function publishSite(root, { dir = null, runs = 10, env = process.e
   await put(out, 'index.html', reportHtml(data, { runs: links }));
   await put(out, '.nojekyll', '');
   return { dir: out, runs: links.length, index: join(out, 'index.html') };
+}
+
+const CRC = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+const crc32 = (b) => { let c = ~0; for (const x of b) c = CRC[(c ^ x) & 0xff] ^ (c >>> 8); return ~c >>> 0; };
+
+// Zip (deflate) từ danh sách { name, data }: đủ cho vài chục file HTML, không cần ZIP64.
+export function zipFiles(files) {
+  const local = []; const central = []; let off = 0;
+  for (const f of files) {
+    const name = Buffer.from(f.name); const raw = Buffer.from(f.data); const z = deflateRawSync(raw); const crc = crc32(raw);
+    const h = Buffer.alloc(30); h.writeUInt32LE(0x04034b50, 0); h.writeUInt16LE(20, 4); h.writeUInt16LE(0x0800, 6); h.writeUInt16LE(8, 8);
+    h.writeUInt32LE(crc, 14); h.writeUInt32LE(z.length, 18); h.writeUInt32LE(raw.length, 22); h.writeUInt16LE(name.length, 26);
+    const c = Buffer.alloc(46); c.writeUInt32LE(0x02014b50, 0); c.writeUInt16LE(20, 4); c.writeUInt16LE(20, 6); c.writeUInt16LE(0x0800, 8); c.writeUInt16LE(8, 10);
+    c.writeUInt32LE(crc, 16); c.writeUInt32LE(z.length, 20); c.writeUInt32LE(raw.length, 24); c.writeUInt16LE(name.length, 28); c.writeUInt32LE(off, 42);
+    local.push(h, name, z); central.push(c, name); off += 30 + name.length + z.length;
+  }
+  const cd = Buffer.concat(central); const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(files.length, 8); end.writeUInt16LE(files.length, 10); end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(off, 16);
+  return Buffer.concat([...local, cd, end]);
+}
+
+// Trang tĩnh đã xuất, gói thành zip để tải về (chỉ file thường, bỏ symlink và file tạm)
+export async function siteZip(root, env = process.env) {
+  const out = await siteDir(root, null, env);
+  const files = [];
+  for (const rel of ['index.html', '.nojekyll', ...(await readdir(join(out, 'runs')).catch(() => [])).map((n) => `runs/${n}`)]) {
+    const st = await lstat(join(out, rel)).catch(() => null);
+    if (!st?.isFile() || rel.includes('.tmp-')) continue;
+    files.push({ name: `e2e-report/${rel}`, data: await readFile(join(out, rel)) });
+  }
+  return files.some((f) => f.name.endsWith('/index.html')) ? zipFiles(files) : null;
 }

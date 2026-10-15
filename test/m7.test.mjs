@@ -17,7 +17,8 @@ import { alertRules, evaluateAlerts, recordAlerts, DEFAULT_ALERTS } from '../ser
 import { ciConfig, syncCi } from '../server/cisync.mjs';
 import { lastOccurrence, dueReports, reportSchedule, mimeMessage, buildReport, sendReport, createReportScheduler } from '../server/reports.mjs';
 import { reportHtml, reportMarkdown, calendarSvg, trendSvg } from '../server/report-html.mjs';
-import { publishSite } from '../server/site.mjs';
+import { publishSite, siteZip } from '../server/site.mjs';
+import { inflateRawSync } from 'node:zlib';
 import { releaseReport } from '../server/release.mjs';
 import { readState, writeState } from '../server/jsonstate.mjs';
 import { createApp } from '../server/app.mjs';
@@ -331,6 +332,18 @@ test('static site: index + runs, never through a symlinked folder', async () => 
   const index = readFileSync(out.index, 'utf8');
   assert.match(index, /href="runs\/[0-9a-f-]+\.html"/);
   assert.ok(existsSync(join(out.dir, '.nojekyll')));
+  // zip tải về: đủ index + 2 run, nội dung giải nén khớp file
+  const zip = await siteZip(root);
+  const names = [];
+  for (let o = zip.indexOf(Buffer.from([0x50, 0x4b, 0x03, 0x04])); o >= 0 && zip.readUInt32LE(o) === 0x04034b50;) {
+    const len = zip.readUInt32LE(o + 18); const n = zip.readUInt16LE(o + 26); const name = zip.toString('utf8', o + 30, o + 30 + n);
+    names.push(name);
+    if (name.endsWith('/index.html')) assert.equal(inflateRawSync(zip.subarray(o + 30 + n, o + 30 + n + len)).toString('utf8'), index);
+    o += 30 + n + len;
+  }
+  assert.equal(names.length, 4);
+  assert.ok(names.includes('e2e-report/index.html') && names.includes('e2e-report/.nojekyll'));
+  assert.equal(await siteZip(tmp()), null); // chưa xuất thì không có zip
   const root2 = await project(series('p'));
   mkdirSync(join(root2, '.e2e-dashboard'), { recursive: true });
   symlinkSync(tmp(), join(root2, '.e2e-dashboard/site'));

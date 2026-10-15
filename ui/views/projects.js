@@ -19,7 +19,7 @@ export function projectCardHtml(p) {
     <div class="muted small"><code>${escapeHtml(p.root)}</code>${p.exists ? '' : ' · <span class="tone-bad">thư mục không còn</span>'}</div>
     ${p.latest ? `<div class="project-latest">${statusBadge(p.latest.status)} ${countChips(p.latest.summary)} <span class="muted small">${escapeHtml(fmtRelative(p.latest.startedAt))}${p.latest.branch ? ` · ${escapeHtml(p.latest.branch)}` : ''}</span></div>
       <div class="small">Pass rate run gần nhất: <span class="tone-${toneFor(p.passRate)} delta">${fmtPct(p.passRate)}</span> · ${escapeHtml(p.runs)} run đã lưu</div>` : '<p class="muted">Chưa có run nào.</p>'}
-    <footer>${open}${p.current ? '' : `<button type="button" class="icon-btn" data-forget="${escapeHtml(p.root)}" aria-label="Bỏ khỏi danh sách" title="Bỏ khỏi danh sách">${icon('close', { size: 14 })}</button>`}</footer>
+    <footer>${open}<button type="button" class="icon-btn" data-edit="${escapeHtml(p.root)}" data-name="${escapeHtml(p.name)}"${p.current ? ' data-current' : ''} aria-label="Sửa project" title="Sửa project">${icon('edit', { size: 14 })}</button>${p.current ? '' : `<button type="button" class="icon-btn" data-forget="${escapeHtml(p.root)}" aria-label="Bỏ khỏi danh sách" title="Bỏ khỏi danh sách">${icon('close', { size: 14 })}</button>`}</footer>
   </article>`;
 }
 
@@ -29,7 +29,7 @@ export async function renderProjects(main) {
   const head = pageHead('Projects', 'folder', 'Mọi project đã mở dashboard trên máy này (lưu ở <code>~/.e2e-dashboard/projects.json</code>). Project đang chạy server có nút mở thẳng.', add);
   main.innerHTML = projects.length ? `${head}<section class="projects">${projects.map(projectCardHtml).join('')}</section>` : `${head}${emptyBox('Chưa có project nào')}`;
   main.querySelector('[data-add-project]').addEventListener('click', async () => {
-    const root = await pickFolder();
+    const root = (await pickFolder())?.path;
     if (!root) return;
     const r = await postJson('/api/projects/add', { root }).catch((x) => toast(x.message, 'bad'));
     if (!r) return;
@@ -37,6 +37,17 @@ export async function renderProjects(main) {
     toast(`Đã thêm project: ${r.root}`);
     renderProjects(main);
   });
+  main.querySelectorAll('[data-edit]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      const cur = 'current' in b.dataset;
+      const v = await pickFolder({ title: 'Sửa project', start: b.dataset.edit, name: b.dataset.name, lockPath: cur, okLabel: 'Lưu' });
+      if (!v) return;
+      const body = { root: b.dataset.edit, name: v.name, ...(cur ? {} : { newRoot: v.path }) };
+      const r = await postJson('/api/projects/update', body).catch((x) => toast(x.message, 'bad'));
+      if (!r) return;
+      toast(`Đã lưu project: ${r.name}`);
+      renderProjects(main);
+    }));
   main.querySelectorAll('[data-copy-cmd]').forEach((b) => b.addEventListener('click', () => copyToClipboard(b.dataset.copyCmd, b)));
   main.querySelectorAll('[data-forget]').forEach((b) =>
     b.addEventListener('click', async () => {
@@ -48,8 +59,8 @@ export async function renderProjects(main) {
 }
 
 // Hộp chọn thư mục: duyệt cây thư mục phía server (trình duyệt không trả đường dẫn tuyệt đối), hoặc gõ thẳng đường dẫn.
-// Trả về đường dẫn đã chọn, hoặc null khi Huỷ.
-function pickFolder() {
+// Trả về { path, name } (name khi mở để sửa), hoặc null khi Huỷ. lockPath: chỉ sửa tên (project đang mở).
+function pickFolder({ title = 'Chọn thư mục project', start = '', name = null, lockPath = false, okLabel = 'Chọn thư mục này' } = {}) {
   document.getElementById('folder-dialog')?.remove();
   return new Promise((resolve) => {
     const dlg = document.createElement('dialog');
@@ -57,11 +68,12 @@ function pickFolder() {
     dlg.className = 'confirm-dialog folder-dialog';
     dlg.setAttribute('aria-labelledby', 'folder-title');
     dlg.innerHTML = `<form method="dialog" class="run-form confirm-form">
-      <header><h2 id="folder-title">${icon('folder', { size: 18 })}<span>Chọn thư mục project</span></h2></header>
-      <label class="fb-field"><span>Đường dẫn</span><input data-path autocomplete="off" spellcheck="false"></label>
-      <ul class="folder-list" data-list role="listbox" aria-label="Thư mục con"></ul>
+      <header><h2 id="folder-title">${icon('folder', { size: 18 })}<span>${escapeHtml(title)}</span></h2></header>
+      ${name === null ? '' : `<label class="fb-field"><span>Tên hiển thị</span><input data-name maxlength="80" required value="${escapeHtml(name)}"></label>`}
+      <label class="fb-field"><span>Đường dẫn${lockPath ? ' (project đang mở, không đổi được)' : ''}</span><input data-path autocomplete="off" spellcheck="false"${lockPath ? ' readonly' : ''}></label>
+      <ul class="folder-list" data-list role="listbox" aria-label="Thư mục con"${lockPath ? ' hidden' : ''}></ul>
       <p class="muted small" data-err hidden></p>
-      <footer><button type="submit" value="cancel">Huỷ</button><button type="submit" value="ok" class="primary">Chọn thư mục này</button></footer></form>`;
+      <footer><button type="submit" value="cancel" formnovalidate>Huỷ</button><button type="submit" value="ok" class="primary">${escapeHtml(okLabel)}</button></footer></form>`;
     const input = dlg.querySelector('[data-path]');
     const list = dlg.querySelector('[data-list]');
     const err = dlg.querySelector('[data-err]');
@@ -84,11 +96,13 @@ function pickFolder() {
     dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close('cancel'); });
     dlg.addEventListener('close', () => {
       const path = dlg.returnValue === 'ok' ? input.value.trim() : '';
+      const nm = dlg.querySelector('[data-name]')?.value.trim();
       dlg.remove();
-      resolve(path || null);
+      resolve(path ? { path, ...(name === null ? {} : { name: nm }) } : null);
     });
     document.body.append(dlg);
     dlg.showModal();
-    go('');
+    input.value = start; // thư mục cũ không còn thì vẫn thấy đường dẫn để sửa
+    if (!lockPath) go(start);
   });
 }
