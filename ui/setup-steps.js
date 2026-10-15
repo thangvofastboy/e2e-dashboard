@@ -17,7 +17,7 @@ function stepRow(x, n, total) {
   return `<li class="sp-step" data-step="${escapeHtml(x.id)}" data-state="wait">
     <span class="sp-state" aria-hidden="true">${icon('clock', { size: 15 })}</span>
     <span><span class="chip">Bước ${n}/${total}</span> <strong>${escapeHtml(x.label)}</strong><br>
-      <span class="muted small">${escapeHtml(x.detail ?? '')}</span><br><code>${escapeHtml(x.display ?? '')}</code></span>
+      <span class="muted small">${escapeHtml(x.detail ?? '')}</span><br><code>${escapeHtml(x.display ?? '')}</code>${x.display ? `<button type="button" class="icon-btn" data-copy-text="${escapeHtml(x.display)}" aria-label="Copy lệnh" title="Copy lệnh">${icon('copy', { size: 13 })}</button>` : ''}</span>
     <span class="sp-label small" data-label>Chờ</span></li>`;
 }
 
@@ -37,7 +37,7 @@ function manualRow(x) {
 
 function okRow(x) {
   return `<li class="sp-step" data-state="${x.ok ? 'ok' : 'optional'}"><span class="sp-state" aria-hidden="true">${icon(x.ok ? 'check' : 'info', { size: 15 })}</span>
-    <span><strong>${escapeHtml(x.label)}</strong>${x.optional && !x.ok ? ' <span class="muted small">(tuỳ chọn)</span>' : ''}<br><span class="muted small">${escapeHtml(x.detail ?? '')}</span>${!x.ok && x.display ? `<br><code>${escapeHtml(x.display)}</code>` : ''}</span>
+    <span><strong>${escapeHtml(x.label)}</strong>${x.optional && !x.ok ? ' <span class="muted small">(tuỳ chọn)</span>' : ''}<br><span class="muted small">${escapeHtml(x.detail ?? '')}</span>${!x.ok && x.display ? `<br><code>${escapeHtml(x.display)}</code><button type="button" class="icon-btn" data-copy-text="${escapeHtml(x.display)}" aria-label="Copy lệnh" title="Copy lệnh">${icon('copy', { size: 13 })}</button>` : ''}</span>
     <span class="sp-label small">${x.ok ? 'Đã có' : 'Tuỳ chọn'}</span></li>`;
 }
 
@@ -47,7 +47,7 @@ export function stepsHtml(plan, { showOk = false, runLabel = 'Cài tất cả' }
   const rest = plan.items.filter((x) => !x.info && !auto.includes(x) && !manual.includes(x));
   return `${auto.length ? `<ol class="sp-steps">${auto.map((x, i) => stepRow(x, i + 1, auto.length)).join('')}</ol>` : ''}
     ${manual.length ? `<h3 class="small sp-h">Cần làm tay</h3><ul class="sp-steps">${manual.map(manualRow).join('')}</ul>` : ''}
-    ${!plan.canSudo && auto.some((x) => /^sudo /.test(x.display ?? '')) ? '<p class="small muted">Bước cần mật khẩu sudo không chạy được từ trình duyệt: chạy <code>/e2e-dashboard setup --quick</code> trong terminal.</p>' : ''}
+    ${!plan.canSudo && auto.some((x) => /^sudo /.test(x.display ?? '')) ? '<p class="small muted">Bước cần mật khẩu sudo không chạy được từ trình duyệt: chạy <code>/e2e-dashboard 1-setup</code><button type="button" class="icon-btn" data-copy-text="/e2e-dashboard 1-setup" aria-label="Copy lệnh" title="Copy lệnh">' + icon('copy', { size: 13 }) + '</button> trong terminal.</p>' : ''}
     ${showOk && rest.length ? `<details class="sp-ok"><summary class="small">Đã có / tuỳ chọn (${rest.length})</summary><ul class="sp-steps">${rest.map(okRow).join('')}</ul></details>` : ''}
     <p class="small" data-progress role="status" aria-live="polite"></p>
     <details class="sp-log" hidden><summary class="small">Log cài đặt</summary><pre class="log" data-log></pre></details>

@@ -1,4 +1,5 @@
 import { escapeHtml } from './format.js';
+import { icon } from './icons.js';
 
 function safeHref(url) {
   if (/[\u0000-\u001f\u007f]/.test(url)) return null; // browsers strip these, revealing a hidden scheme
@@ -69,7 +70,7 @@ export function renderMarkdown(src) {
       const code = [];
       const indent = fence[1].length; // fences inside list items come indented
       while (++i < lines.length && !/^\s*```/.test(lines[i])) code.push(lines[i].slice(Math.min(indent, lines[i].length - lines[i].trimStart().length)));
-      out.push(`<pre><code${fence[2] ? ` class="language-${escapeHtml(fence[2].toLowerCase())}"` : ''}>${escapeHtml(code.join('\n'))}\n</code></pre>`);
+      out.push(`<div class="code-wrap"><button type="button" class="icon-btn code-copy" data-copy-text="${escapeHtml(code.join('\n'))}" aria-label="Copy" title="Copy">${icon('copy', { size: 13 })}</button><pre><code${fence[2] ? ` class="language-${escapeHtml(fence[2].toLowerCase())}"` : ''}>${escapeHtml(code.join('\n'))}\n</code></pre></div>`);
       continue;
     }
     // bảng pipe: dòng đầu là tiêu đề, dòng sau phải là |---|:-:|; `\|` là ký tự | trong ô

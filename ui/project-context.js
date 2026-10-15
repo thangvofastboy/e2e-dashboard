@@ -7,6 +7,7 @@ import { icon } from './icons.js';
 import { renderMarkdown } from './markdown.js';
 
 export const CTX_SRC_MAX = 20;
+export const CTX_PROMPT_MAX = 8000; // = PROMPT_MAX của server/settings.mjs
 export const CTX_DESC_MAX = 500;
 
 // đường dẫn chọn từ hộp thư mục (tuyệt đối) → tương đối với project khi nằm trong project
@@ -33,10 +34,12 @@ export function contextFieldsHtml(ctx) {
       <small class="muted">Để trống: dashboard tự đoán${t?.testDirDetected ? ` (đang dùng <code>${escapeHtml(t.testDir)}</code>)` : ''}.</small></label>
     <div class="fb-field"><span>Thư mục khác của hệ thống <span class="muted small">(tuỳ chọn, tối đa ${CTX_SRC_MAX}; vd. backend, frontend, tài liệu; đường dẫn tương đối với project hoặc tuyệt đối)</span></span>
       <ul class="src-list" data-ctx-list>${sources.map(ctxRowHtml).join('')}</ul>
-      <p><button type="button" data-ctx-add${sources.length >= CTX_SRC_MAX ? ' disabled' : ''}>${icon('plus', { size: 14 })}Thêm thư mục</button></p></div>`;
+      <p><button type="button" data-ctx-add${sources.length >= CTX_SRC_MAX ? ' disabled' : ''}>${icon('plus', { size: 14 })}Thêm thư mục</button></p></div>
+    <label class="fb-field"><span>Prompt: quy tắc, rule cho AI <span class="muted small">(tuỳ chọn, tối đa ${CTX_PROMPT_MAX} ký tự; gửi kèm mọi lần gọi AI của project)</span></span>
+      <textarea class="proj-prompt" name="ctxPrompt" rows="6" maxlength="${CTX_PROMPT_MAX}" placeholder="Quy ước đặt tên test… Luồng nghiệp vụ chính… Rule: không xoá dữ liệu thật, tài khoản test là…" aria-label="Prompt quy tắc cho AI">${escapeHtml(ctx?.prompt ?? '')}</textarea></label>`;
 }
 
-// đọc form; trả { testDir, sources } hoặc { error }
+// đọc form; trả { testDir, sources, prompt } hoặc { error }
 export function readContextFields(root, f) {
   const sources = [...f.querySelectorAll('[data-ctx-row]')].map((r) => ({ path: relTo(root, r.querySelector('[name=ctxPath]').value), description: r.querySelector('[name=ctxDesc]').value.trim() }));
   if (sources.length > CTX_SRC_MAX) return { error: `Tối đa ${CTX_SRC_MAX} thư mục.` };
@@ -44,7 +47,9 @@ export function readContextFields(root, f) {
   if (i >= 0) return { error: `Thư mục khác, dòng ${i + 1}: chưa nhập đường dẫn.` };
   const j = sources.findIndex((s) => s.description.length > CTX_DESC_MAX);
   if (j >= 0) return { error: `Thư mục khác, dòng ${j + 1}: mô tả dài quá ${CTX_DESC_MAX} ký tự.` };
-  return { testDir: relTo(root, f.querySelector('[name=ctxTestDir]').value), sources };
+  const prompt = f.querySelector('[name=ctxPrompt]')?.value ?? '';
+  if (prompt.length > CTX_PROMPT_MAX) return { error: `Prompt dài quá ${CTX_PROMPT_MAX} ký tự.` };
+  return { testDir: relTo(root, f.querySelector('[name=ctxTestDir]').value), sources, prompt };
 }
 
 // thêm / xoá dòng, nút Chọn… (pick(start) → đường dẫn tuyệt đối hoặc null)

@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.18.0 — 2026-10-15
+
+- **AI hỗ trợ QC** (trang mới, menu *Theo dõi*): **Độ phủ theo yêu cầu** đối chiếu acceptance criteria của ticket với test hiện có và chỉ ra tiêu chí còn thiếu; **Charter test khám phá** soạn mục tiêu, vùng rủi ro và checklist edge case từ thay đổi code so với nhánh gốc; **Sinh dữ liệu test** đề xuất giá trị hợp lệ / biên / không hợp lệ cho form, field, API; **Kiểm tra bug trùng** so bug định log với các nhóm lỗi đã gặp.
+- **Prompt quy tắc cho AI trong Projects**: hộp Thêm / Sửa project có ô *Prompt* (quy ước, luồng nghiệp vụ, rule); prompt gửi kèm mọi lần gọi AI của project.
+- **Chọn project để chạy**: trang *Projects* gọn hơn, project đang chọn có viền và chip *Đang chọn để chạy*; nút **Chọn để chạy** chuyển dashboard sang project khác (tự khởi động server của project đó), Run chạy e2e trong thư mục của nó. Nút copy lệnh mở trong terminal.
+- **Tests**: ô lọc theo tên test; thanh nút và bộ lọc dính trên cùng khi cuộn cây thư mục.
+- **Giao diện**: nút AI dùng icon âm dương; icon trong nút có màu theo ý nghĩa (chạy, xoá, copy, sửa, thêm); các bước trong *Hướng dẫn* có màu; danh sách *Menu hiển thị* dùng switch; khối code trong Markdown và lệnh ở 1 Click Setup có nút copy.
+- **Menu gọn mặc định**: *Chi phí & cache*, *Model & ngân sách*, *Gợi ý locator*, *Lint agent* ẩn mặc định; bật lại ở *Cài đặt hệ thống › Giao diện › Menu hiển thị*.
+- **Chỉ báo đang chạy**: AI và các bước cài chạy dạng stream giờ cũng hiện spinner trên nút đã bấm và thanh tiến độ đầu trang.
+- **Lệnh mới**: `/e2e-dashboard 1-setup` (= `setup --quick`), `/e2e-dashboard setting` / `settings` (= `config`).
+- **Gỡ** máy Ubuntu thử nghiệm `docker/test-desktop`.
+- **Sửa lỗi**: test `main reports a missing e2e project` không còn tự chạy `npx e2e init` và để lại server chạy nền.
+
 ## v0.17.1 — 2026-10-15
 
 - **Máy Ubuntu có giao diện để thử 1 Click Setup** (`docker/test-desktop`): `docker compose up -d` rồi mở http://localhost:3000 để có desktop XFCE trong trình duyệt, mã repo mount sẵn ở `/opt/e2e-dashboard` và app mẫu ở `~/sample-app`. Thử `install.sh` từ marketplace hoặc bản đang phát triển (`E2E_DASHBOARD_PLUGIN_DIR`).

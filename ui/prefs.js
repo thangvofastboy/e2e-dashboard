@@ -44,9 +44,13 @@ export function applyPrefs() {
 
 // Mục menu bị ẩn (Cài đặt hệ thống → Giao diện): Overview và Cài đặt hệ thống luôn hiện để còn đường bật lại.
 export const NAV_LOCKED = new Set(['overview', 'system', 'setup']); // 1 Click Setup: không ẩn được, luôn có đường cài khi project thiếu
+// Mặc định ẩn các trang phân tích ít dùng; chưa lưu gì thì dùng mặc định, đã lưu [] nghĩa là người dùng chọn hiện hết
+export const DEFAULT_HIDDEN_NAV = ['cost', 'models', 'locators', 'lint'];
 export function storedHiddenNav() {
+  const raw = get('e2ed-nav-hidden');
+  if (raw == null) return new Set(DEFAULT_HIDDEN_NAV.filter((x) => !NAV_LOCKED.has(x)));
   try {
-    const v = JSON.parse(get('e2ed-nav-hidden') ?? '[]');
+    const v = JSON.parse(raw);
     return new Set(Array.isArray(v) ? v.filter((x) => typeof x === 'string' && !NAV_LOCKED.has(x)) : []);
   } catch {
     return new Set();
@@ -61,6 +65,6 @@ export function setNavHidden(view, hide) {
   const hidden = storedHiddenNav();
   if (hide) hidden.add(view);
   else hidden.delete(view);
-  set('e2ed-nav-hidden', hidden.size ? JSON.stringify([...hidden]) : null);
+  set('e2ed-nav-hidden', JSON.stringify([...hidden])); // [] (không bỏ key) để không quay lại mặc định
   applyHiddenNav();
 }

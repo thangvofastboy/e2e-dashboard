@@ -111,7 +111,8 @@ test('stale server.json (dead pid) is replaced', async () => {
 });
 
 test('main reports a missing e2e project', async () => {
-  const r = await main([], mkdtempSync(join(tmpdir(), 'e2ed-')));
+  // --no-init: không chạy `npx e2e init` (nếu e2e có sẵn trong cache npx, init thành công và để lại server chạy nền)
+  const r = await main(['start', '--no-init'], mkdtempSync(join(tmpdir(), 'e2ed-')));
   assert.equal(r.code, 1);
   assert.match(r.out, /e2e\.config/);
 });

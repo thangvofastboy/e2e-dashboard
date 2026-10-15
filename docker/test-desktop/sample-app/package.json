@@ -1,8 +1,0 @@
-{
-  "name": "sample-app",
-  "private": true,
-  "version": "0.0.0",
-  "scripts": {
-    "start": "node server.mjs"
-  }
-}

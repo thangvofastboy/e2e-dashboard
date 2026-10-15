@@ -20,7 +20,7 @@ function liIssuesTable(items) {
       return `<tr><td>${liIssueLink(i)}</td><td>${escapeHtml(i.title)}</td><td>${escapeHtml(i.state)}</td><td class="muted small">${escapeHtml(i.assignee)}</td>
         <td><span class="chip tone-${LI_TONE[s]}">${s}</span></td>
         <td><button type="button" class="small-btn" data-open="${escapeHtml(i.identifier)}"${i.testcases?.length ? '' : ' hidden'}>${icon('ticket', { size: 13 })}Mở testcase</button>
-          <button type="button" class="small-btn" data-analyze="${escapeHtml(i.identifier)}">${icon('sparkles', { size: 13 })}Phân tích</button></td></tr>`;
+          <button type="button" class="small-btn" data-analyze="${escapeHtml(i.identifier)}">${icon('yinyang', { size: 13 })}Phân tích</button></td></tr>`;
     }).join('')}</tbody></table></div></section>`;
 }
 

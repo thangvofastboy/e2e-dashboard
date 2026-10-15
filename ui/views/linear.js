@@ -94,9 +94,9 @@ export async function openLinearDialog({ runId, resultId }) {
     <p class="muted small">Chống trùng: mô tả mang mã <code>${escapeHtml(d.draft.fingerprint)}</code> (tên test + dạng lỗi). Cùng lỗi ở run khác sẽ thành comment trên issue đang mở.${d.team ? ` Team: <code>${escapeHtml(d.team)}</code>.` : ''}</p>
     <div data-status hidden></div>
     <footer>
-      <button type="button" class="btn-ai" data-rewrite title="AI viết lại cho giống người viết, giữ đủ dữ kiện">${icon('sparkles', { size: 14 })}Viết lại cho tự nhiên (AI)</button>
+      <button type="button" class="btn-ai" data-rewrite title="AI viết lại cho giống người viết, giữ đủ dữ kiện">${icon('yinyang', { size: 14 })}Viết lại cho tự nhiên (AI)</button>
       <select data-qc-tpl aria-label="Mẫu QC" class="linear-tpl"></select>
-      <button type="button" class="btn-ai" data-qc-linear title="AI viết nội dung theo mẫu QC đã chọn, giữ dòng fingerprint">${icon('sparkles', { size: 14 })}Viết bằng mẫu QC</button>
+      <button type="button" class="btn-ai" data-qc-linear title="AI viết nội dung theo mẫu QC đã chọn, giữ dòng fingerprint">${icon('yinyang', { size: 14 })}Viết bằng mẫu QC</button>
       <button type="button" data-copy-claude title="Dán vào Claude Code có Linear MCP">${icon('copy', { size: 14 })}Copy cho Claude (Linear MCP)</button>
       ${d.configured ? `<button type="button" class="primary" data-send title="${d.mode === 'mcp' ? 'Gửi qua MCP Linear của Claude CLI (có thể mất vài chục giây)' : 'Gửi bằng Linear API key'}">${icon('send', { size: 14 })}Gửi lên Linear${d.mode === 'mcp' ? ' (qua MCP)' : ''}</button>` : '<span class="muted small">Chưa gửi trực tiếp được: nhập Linear API key ở <a href="#/system?tab=integrations">Cài đặt hệ thống</a>, hoặc đăng nhập MCP Linear cho Claude CLI (<code>claude</code> → <code>/mcp</code>).</span>'}
     </footer>`;

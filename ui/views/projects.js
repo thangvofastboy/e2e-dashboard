@@ -9,28 +9,29 @@ import { contextFieldsHtml, readContextFields, bindContextFields, memoryHtml, po
 const HEALTH_ICON = { good: 'check', warn: 'alert', bad: 'x' };
 const AI_STATE = { ready: 'đã ghi nhớ', stale: 'cần đọc lại', learning: 'đang đọc dự án…', none: 'chưa ghi nhớ', error: 'lỗi khi đọc' };
 
+// Thẻ project gọn: tên + trạng thái, đường dẫn, run gần nhất; một nút chính "Chọn để chạy" (project đang chọn: viền + chip),
+// còn lại là icon: copy lệnh terminal, sửa, gỡ
 export function projectCardHtml(p) {
   const h = p.health;
-  const open = p.current
-    ? '<span class="chip tone-info">Đang xem</span>'
-    : p.url
-      ? `<a class="button" href="${escapeHtml(p.url)}" target="_blank" rel="noopener">${icon('external', { size: 14 })}Mở dashboard</a>`
-      : `<button type="button" data-copy-cmd="${escapeHtml(`cd '${p.root.replace(/'/g, "'\\''")}' && claude /e2e-dashboard`)}">${icon('copy', { size: 14 })}Lệnh mở</button>`;
+  const cmd = `cd '${p.root.replace(/'/g, "'\\''")}' && claude /e2e-dashboard`;
+  const main = p.current
+    ? `<span class="chip tone-good project-sel">${icon('check', { size: 13 })}Đang chọn để chạy</span>`
+    : `<button type="button" class="primary small-btn" data-select="${escapeHtml(p.root)}"${p.exists ? '' : ' disabled'} title="Chuyển dashboard sang project này; Run sẽ chạy e2e trong thư mục của nó">${icon('play', { size: 13 })}Chọn để chạy</button>`;
   return `<article class="panel project${p.current ? ' current' : ''}">
-    <header><h2>${icon('folder', { size: 16 })} ${escapeHtml(p.name)}</h2>${h ? `<span class="chip tone-${h.health}" title="Health score">${icon(HEALTH_ICON[h.health], { size: 12 })}${escapeHtml(h.score)}/100</span>` : ''}</header>
-    <div class="muted small"><code>${escapeHtml(p.root)}</code>${p.exists ? '' : ' · <span class="tone-bad">thư mục không còn</span>'}</div>
-    ${p.latest ? `<div class="project-latest">${statusBadge(p.latest.status)} ${countChips(p.latest.summary)} <span class="muted small">${escapeHtml(fmtRelative(p.latest.startedAt))}${p.latest.branch ? ` · ${escapeHtml(p.latest.branch)}` : ''}</span></div>
-      <div class="small">Pass rate run gần nhất: <span class="tone-${toneFor(p.passRate)} delta">${fmtPct(p.passRate)}</span> · ${escapeHtml(p.runs)} run đã lưu</div>` : '<p class="muted">Chưa có run nào.</p>'}
+    <header><h2>${icon('folder', { size: 16 })} ${escapeHtml(p.name)}</h2>
+      <span class="project-chips">${p.url && !p.current ? `<span class="chip tone-info" title="Dashboard của project này đang chạy">${icon('activity', { size: 12 })}Đang mở</span>` : ''}${h ? `<span class="chip tone-${h.health}" title="Health score">${icon(HEALTH_ICON[h.health], { size: 12 })}${escapeHtml(h.score)}/100</span>` : ''}</span></header>
+    <div class="muted small project-path"><code>${escapeHtml(p.root)}</code>${p.exists ? '' : ' · <span class="tone-bad">thư mục không còn</span>'}</div>
+    ${p.latest ? `<div class="project-latest small">${statusBadge(p.latest.status)} ${countChips(p.latest.summary)} <span class="muted">${escapeHtml(fmtRelative(p.latest.startedAt))}${p.latest.branch ? ` · ${escapeHtml(p.latest.branch)}` : ''} · pass <span class="tone-${toneFor(p.passRate)}">${fmtPct(p.passRate)}</span> · ${escapeHtml(p.runs)} run</span></div>` : '<p class="muted small">Chưa có run nào.</p>'}
     ${p.ai ? `<div class="small muted project-ai">${icon('sparkles', { size: 12 })} AI: ${escapeHtml(AI_STATE[p.ai.state] ?? p.ai.state)} · test: <code>${escapeHtml(p.ai.testDir || '?')}</code> · ${escapeHtml(p.ai.sources)} thư mục khác</div>` : ''}
-    <footer>${open}<button type="button" class="icon-btn" data-edit="${escapeHtml(p.root)}" data-name="${escapeHtml(p.name)}"${p.current ? ' data-current' : ''} aria-label="Sửa project" title="Sửa project">${icon('edit', { size: 14 })}</button>${p.current ? '' : `<button type="button" class="icon-btn" data-forget="${escapeHtml(p.root)}" aria-label="Bỏ khỏi danh sách" title="Bỏ khỏi danh sách">${icon('close', { size: 14 })}</button>`}</footer>
+    <footer>${main}<span class="project-tools"><button type="button" class="icon-btn" data-copy-cmd="${escapeHtml(cmd)}" aria-label="Copy lệnh mở trong terminal" title="Copy lệnh mở trong terminal">${icon('copy', { size: 14 })}</button><button type="button" class="icon-btn" data-edit="${escapeHtml(p.root)}" data-name="${escapeHtml(p.name)}"${p.current ? ' data-current' : ''} aria-label="Sửa project (prompt, thư mục)" title="Sửa project (prompt, thư mục)">${icon('edit', { size: 14 })}</button>${p.current ? '' : `<button type="button" class="icon-btn" data-forget="${escapeHtml(p.root)}" aria-label="Bỏ khỏi danh sách" title="Bỏ khỏi danh sách">${icon('close', { size: 14 })}</button>`}</span></footer>
   </article>`;
 }
 
 export async function renderProjects(main) {
   const { projects } = await getJson('/api/projects');
   const add = `<button type="button" class="primary" data-add-project>${icon('plus', { size: 14 })}Thêm project</button>`;
-  const head = pageHead('Projects', 'folder', 'Mọi project đã mở dashboard trên máy này (lưu ở <code>~/.e2e-dashboard/projects.json</code>). Project đang chạy server có nút mở thẳng.', add);
-  main.innerHTML = projects.length ? `${head}<section class="projects">${projects.map(projectCardHtml).join('')}</section>` : `${head}${emptyBox('Chưa có project nào')}`;
+  const head = pageHead('Projects', 'folder', 'Mọi project đã mở dashboard trên máy này (lưu ở <code>~/.e2e-dashboard/projects.json</code>). Bấm <strong>Chọn để chạy</strong> để chuyển sang project đó: Run sẽ chạy e2e trong thư mục của project đang chọn.', add);
+  main.innerHTML = projects.length ? `${head}<section class="projects">${[...projects].sort((a, b) => b.current - a.current).map(projectCardHtml).join('')}</section>` : `${head}${emptyBox('Chưa có project nào')}`;
   main.querySelector('[data-add-project]').addEventListener('click', async () => {
     const root = (await pickFolder())?.path;
     if (!root) return;
@@ -45,6 +46,13 @@ export async function renderProjects(main) {
   main.querySelectorAll('[data-edit]').forEach((b) =>
     b.addEventListener('click', async () => {
       if (await projectDialog({ root: b.dataset.edit, name: b.dataset.name, current: 'current' in b.dataset })) renderProjects(main);
+    }));
+  main.querySelectorAll('[data-select]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      const r = await postJson('/api/projects/select', { root: b.dataset.select }).catch((x) => toast(x.message.replace(/^\d{3}: /, ''), 'bad', 6000));
+      if (r?.url) location.href = `${r.url}#/projects`; // dashboard của project đã chọn: Run chạy e2e trong project đó
+      else b.disabled = false;
     }));
   main.querySelectorAll('[data-copy-cmd]').forEach((b) => b.addEventListener('click', () => copyToClipboard(b.dataset.copyCmd, b)));
   main.querySelectorAll('[data-forget]').forEach((b) =>
@@ -121,7 +129,7 @@ async function projectDialog({ root, name, current = false, isNew = false }) {
       try {
         // đổi tên / chuyển thư mục trước: bối cảnh lưu trong thư mục project (mới)
         if (!isNew || f.name.value.trim() !== name) await postJson('/api/projects/update', { root, name: f.name.value.trim(), ...(current || isNew ? {} : { newRoot }) });
-        const r = await postJson('/api/project-context', { root: current || isNew ? root : newRoot, testDir: v.testDir, sources: v.sources });
+        const r = await postJson('/api/project-context', { root: current || isNew ? root : newRoot, testDir: v.testDir, sources: v.sources, prompt: v.prompt });
         saved = true;
         showMem(r.memory);
         toast(r.memory.state === 'learning' ? 'Đã lưu. AI đang đọc dự án để ghi nhớ (chạy nền, xem tiến độ ở thẻ project)' : 'Đã lưu project');

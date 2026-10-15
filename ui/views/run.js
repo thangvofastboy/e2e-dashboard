@@ -95,8 +95,8 @@ function header(meta, report) {
   const git = meta.git?.commit ? `<span class="m-git">${icon('branch', { size: 14 })}${escapeHtml(meta.git.branch ?? '?')}@${escapeHtml(String(meta.git.commit).slice(0, 7))}${meta.git.dirty ? ' (dirty)' : ''}</span>` : '';
   const savedRun = ui.saved.find((e) => e.action === 'analyze-run');
   const actions = isExport()
-    ? savedRun ? `<button class="btn-ai" data-ai="analyze-run">${icon('sparkles', { size: 15 })}Xem phân tích AI</button>` : ''
-    : `<button class="btn-ai" data-ai="analyze-run">${icon('sparkles', { size: 15 })}Phân tích run</button>
+    ? savedRun ? `<button class="btn-ai" data-ai="analyze-run">${icon('yinyang', { size: 15 })}Xem phân tích AI</button>` : ''
+    : `<button class="btn-ai" data-ai="analyze-run">${icon('yinyang', { size: 15 })}Phân tích run</button>
        ${flattenResults(report).filter((r) => isFailure(r.status)).length >= 2 ? `<button class="btn-ai" data-ai="dedupe-failures" title="AI gom các test fail cùng nguyên nhân để chỉ tạo một issue cho mỗi nhóm">${icon('layers', { size: 15 })}Gom bug trùng</button>` : ''}
        <button class="btn-ai" data-ai="why-slow" title="So thời gian / token với lịch sử của chính từng test">${icon('timer', { size: 15 })}Vì sao chậm / tốn token?</button>
        ${ui.compareWith ? `<a class="button" href="${compareHref(ui.compareWith.runId, meta.runId)}" title="So với ${ui.compareWith.baseline ? 'baseline' : 'run trước'}">${icon('columns', { size: 15 })}So với ${ui.compareWith.baseline ? 'baseline' : 'run trước'}</a>` : ''}
@@ -128,7 +128,7 @@ function explorePanel(report) {
   const findings = [...(e.findings ?? [])].sort((a, b) => (b.severity ?? 0) - (a.severity ?? 0));
   const sev = (n) => (n >= 4 ? 'bad' : n >= 3 ? 'warn' : 'info');
   return `<section class="panel explore"><div class="section-head"><h2>${icon('route', { size: 15 })} Explore: ${escapeHtml(e.goal)}</h2>
-      ${isExport() ? '' : `<button type="button" class="btn-ai" data-explore-test>${icon('sparkles', { size: 14 })}Viết test từ explore</button>`}</div>
+      ${isExport() ? '' : `<button type="button" class="btn-ai" data-explore-test>${icon('yinyang', { size: 14 })}Viết test từ explore</button>`}</div>
     <p class="muted small">Kết thúc: ${escapeHtml(e.ended)} · ${escapeHtml((e.steps ?? []).length)} bước · ${escapeHtml(findings.length)} finding</p>
     ${e.summary ? `<div class="md">${renderMarkdown(e.summary)}</div>` : ''}
     ${findings.length ? `<ul class="findings">${findings.map((f) => `<li><span class="chip tone-${sev(f.severity)}">${escapeHtml(f.kind)} · ${escapeHtml(f.severity)}</span> <strong>${escapeHtml(f.title)}</strong>${f.path ? ` <code>${escapeHtml(f.path)}</code>` : ''}
@@ -227,7 +227,7 @@ function mediaTab(row, attempt, runId) {
     })
     .join('');
   const visual = screenshotTriplets(screenshots)
-    .map((t) => `${visualCompareHtml({ left: mediaSrc(runId, t.expected), right: mediaSrc(runId, t.actual), diff: t.diff ? mediaSrc(runId, t.diff) : null, leftLabel: 'Ảnh mẫu (expected)', rightLabel: 'Thực tế (actual)', title: `toHaveScreenshot · ${t.name}` })}${isExport() ? '' : `<p class="visual-ai"><button type="button" class="btn-ai" data-ai-visual="${escapeHtml(row.id)}" data-name="${escapeHtml(t.name)}">${icon('sparkles', { size: 14 })}AI giải thích khác biệt</button> <button type="button" data-update-snapshot="${escapeHtml(row.id)}" title="Chạy lại test này với -u: ảnh mẫu được ghi đè bằng ảnh thực tế (commit file *-snapshots/ sau đó)">${icon('check', { size: 14 })}Chấp nhận ảnh mới (-u)</button> <span class="muted small">Lỗi thật hay thay đổi có chủ đích</span></p>`}`)
+    .map((t) => `${visualCompareHtml({ left: mediaSrc(runId, t.expected), right: mediaSrc(runId, t.actual), diff: t.diff ? mediaSrc(runId, t.diff) : null, leftLabel: 'Ảnh mẫu (expected)', rightLabel: 'Thực tế (actual)', title: `toHaveScreenshot · ${t.name}` })}${isExport() ? '' : `<p class="visual-ai"><button type="button" class="btn-ai" data-ai-visual="${escapeHtml(row.id)}" data-name="${escapeHtml(t.name)}">${icon('yinyang', { size: 14 })}AI giải thích khác biệt</button> <button type="button" data-update-snapshot="${escapeHtml(row.id)}" title="Chạy lại test này với -u: ảnh mẫu được ghi đè bằng ảnh thực tế (commit file *-snapshots/ sau đó)">${icon('check', { size: 14 })}Chấp nhận ảnh mới (-u)</button> <span class="muted small">Lỗi thật hay thay đổi có chủ đích</span></p>`}`)
     .join('');
   return `${visual}${vid}${shots ? `<div class="shots">${shots}</div>` : ''}`;
 }
@@ -265,7 +265,7 @@ function detail(row, meta, runId) {
   const body = { media: () => mediaTab(row, attempt, runId), log: () => logTab(attempt), trace: () => '<div id="trace" class="md">Đang tải trace…</div>', model: () => '<div id="aitrace" class="ai-trace">Đang tải…</div>', source: () => sourceTab(row, attempt) }[ui.tab]();
   const savedFail = ui.saved.find((e) => e.action === 'analyze-failure' && e.resultId === row.id);
   const aiBtn = isFailure(row.status) && (!isExport() || savedFail)
-    ? `<button type="button" class="btn-ai" data-ai="analyze-failure" data-result="${escapeHtml(row.id)}">${icon('sparkles', { size: 14 })}${isExport() ? 'Xem phân tích lỗi' : 'Phân tích lỗi'}</button>${isExport() ? '' : `<button type="button" class="btn-ai" data-ai="repro-steps" data-result="${escapeHtml(row.id)}" title="AI viết các bước tái hiện cho người không biết code">${icon('list', { size: 14 })}Bước tái hiện</button><button type="button" class="btn-ai" data-ai="severity" data-result="${escapeHtml(row.id)}" title="AI đề xuất mức độ nghiêm trọng để bạn duyệt">${icon('alert', { size: 14 })}Mức độ nghiêm trọng</button>`}`
+    ? `<button type="button" class="btn-ai" data-ai="analyze-failure" data-result="${escapeHtml(row.id)}">${icon('yinyang', { size: 14 })}${isExport() ? 'Xem phân tích lỗi' : 'Phân tích lỗi'}</button>${isExport() ? '' : `<button type="button" class="btn-ai" data-ai="repro-steps" data-result="${escapeHtml(row.id)}" title="AI viết các bước tái hiện cho người không biết code">${icon('list', { size: 14 })}Bước tái hiện</button><button type="button" class="btn-ai" data-ai="severity" data-result="${escapeHtml(row.id)}" title="AI đề xuất mức độ nghiêm trọng để bạn duyệt">${icon('alert', { size: 14 })}Mức độ nghiêm trọng</button>`}`
     : '';
   const linearBtn = isFailure(row.status) && !isExport()
     ? `<button type="button" data-linear="${escapeHtml(row.id)}">${icon('ticket', { size: 14 })}Gửi Linear</button><button type="button" data-bisect="${escapeHtml(row.id)}">${icon('commit', { size: 14 })}Tìm commit gây lỗi</button><button type="button" data-fix="${escapeHtml(row.id)}" title="Copy lệnh để Claude Code đọc lỗi, sửa và chạy lại test">${icon('bolt', { size: 14 })}Sửa bằng Claude Code</button>`
@@ -276,7 +276,7 @@ function detail(row, meta, runId) {
       <label class="fb-field"><span>Known bug (mã ticket)</span><input data-qc-known maxlength="40" placeholder="LIN-123"></label>
       <div class="form-row"><button type="button" data-qc-save>${icon('check', { size: 14 })}Lưu ghi chú</button><button type="button" data-qc-bug title="Chép nội dung bug report (Markdown) của attempt này">${icon('copy', { size: 14 })}Copy bug report</button></div>
       <div class="form-row"><input data-qc-attach maxlength="200" placeholder="Gắn issue Linear có sẵn: ENG-123 hoặc link" aria-label="Issue Linear có sẵn"><button type="button" data-qc-attach-go>${icon('ticket', { size: 14 })}Gắn issue</button><button type="button" data-qc-detach hidden title="Gỡ liên kết với issue Linear (issue trên Linear không bị xoá)">${icon('close', { size: 14 })}Gỡ issue</button><button type="button" data-qc-comment hidden title="Lỗi khác lỗi đã biết: comment nội dung lỗi này vào issue của known bug">${icon('send', { size: 14 })}Comment lỗi mới vào issue</button></div>
-      <div class="form-row"><select data-qc-tpl aria-label="Mẫu prompt"></select><button type="button" data-qc-prompt title="Chép prompt đã điền dữ liệu để dán vào Claude">${icon('copy', { size: 14 })}Copy prompt</button><button type="button" class="btn-ai" data-qc-ai>${icon('sparkles', { size: 14 })}Để AI viết</button></div>
+      <div class="form-row"><select data-qc-tpl aria-label="Mẫu prompt"></select><button type="button" data-qc-prompt title="Chép prompt đã điền dữ liệu để dán vào Claude">${icon('copy', { size: 14 })}Copy prompt</button><button type="button" class="btn-ai" data-qc-ai>${icon('yinyang', { size: 14 })}Để AI viết</button></div>
       <pre class="tpl-out" data-qc-out hidden></pre></section>`;
   return `${head}${pills}${skip}${errorBox(attempt.error)}${aiBtn}${linearBtn}${qc}
     <ol class="timeline">${steps || '<li class="muted">Không có step.</li>'}</ol>

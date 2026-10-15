@@ -254,3 +254,15 @@ export function visualEvidence(report, resultId, runDirRel, name = null) {
   const [k, v] = pick;
   return [`Test: ${tTitle(r)} [${r.targetId}] · ảnh ${k.split('/').pop()}`, `Ảnh mẫu (expected): ${v.expected}`, `Ảnh thực tế (actual): ${v.actual}`, v.diff ? `Ảnh diff: ${v.diff}` : 'Không có ảnh diff', `Lỗi: ${firstLine(resultAttempts(report, r).at(-1)?.error) || '—'}`];
 }
+
+// ---------------------------------------------------------------- AI hỗ trợ QC: độ phủ yêu cầu, charter khám phá, dữ liệu test, bug trùng
+export const reqCoverageEvidence = (ticket, tests) => [
+  'Yêu cầu / acceptance criteria:', String(ticket).slice(0, 8000),
+  'Test e2e hiện có (key · tiêu đề · file):', ...tests.slice(0, 400).map((t) => `- ${t.key} · ${t.title} · ${t.file ?? '?'}`),
+];
+export const charterEvidence = (base, files) => [`So với nhánh ${base}, ${files.length} file đổi:`, ...files.slice(0, 200).map((f) => `- ${f}`)];
+export const testDataEvidence = (spec) => ['Mô tả form / field / API cần dữ liệu test:', String(spec).slice(0, 8000)];
+export const bugDupeEvidence = (bug, groups) => [
+  'Bug định log:', String(bug).slice(0, 8000),
+  'Lỗi đã gặp trong lịch sử test (nhóm lỗi):', ...(groups.length ? groups.slice(0, 40).map((g) => `- ${g.code}: ${String(g.message).slice(0, 200)} (${g.tests.length} test, ${g.count} lần, gần nhất ${g.lastSeen})`) : ['(chưa có)']),
+];

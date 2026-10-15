@@ -75,10 +75,16 @@ test('M2 rows and cards escape report text', () => {
   assert.doesNotMatch(meter(0.5, 'good', evil), /<img/);
 });
 
-test('project card: link only for a running dashboard, shell-quoted command otherwise', () => {
+test('project card: nút Chọn để chạy, project đang chọn có đánh dấu, lệnh copy được shell-quote', () => {
   const p = { name: 'p', root: "/tmp/it's", exists: true, current: false, runs: 0, latest: null, passRate: null, health: null };
-  assert.match(projectCardHtml({ ...p, url: 'http://127.0.0.1:4478/?token=abc' }), /href="http:\/\/127\.0\.0\.1:4478\/\?token=abc"/);
+  const other = projectCardHtml({ ...p, url: 'http://127.0.0.1:4478/?token=abc' });
+  assert.match(other, /data-select="\/tmp\/it&#39;s"/);
+  assert.match(other, /Đang mở/);
+  assert.doesNotMatch(other, /token=abc/); // không lộ token trong thẻ
   assert.match(projectCardHtml({ ...p, url: null }), /data-copy-cmd="cd &#39;\/tmp\/it&#39;\\&#39;&#39;s&#39; &amp;&amp; claude \/e2e-dashboard"/);
+  const cur = projectCardHtml({ ...p, current: true });
+  assert.match(cur, /Đang chọn để chạy/);
+  assert.doesNotMatch(cur, /data-select=/);
 });
 
 test('health panel and run table selection', () => {

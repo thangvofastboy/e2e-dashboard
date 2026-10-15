@@ -39,6 +39,7 @@ const PATHS = {
   bolt: '<path d="M13 2 3 14h9l-1 8 10-12h-9z"/>',
   arrow: '<path d="M5 12h14M12 5l7 7-7 7"/>',
   eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+  yinyang: '<circle cx="12" cy="12" r="10"/><path d="M12 2a5 5 0 0 1 0 10 5 5 0 0 0 0 10"/><circle cx="12" cy="7" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="17" r="1.6"/>',
   sparkles: '<path d="M9.94 14.06 4 20M12 2l1.6 4.4L18 8l-4.4 1.6L12 14l-1.6-4.4L6 8l4.4-1.6z"/><path d="M20 15l.8 2.2L23 18l-2.2.8L20 21l-.8-2.2L17 18l2.2-.8z"/>',
   play: '<path d="M6 3l14 9-14 9V3z"/>',
   square: '<rect x="5" y="5" width="14" height="14" rx="2"/>',

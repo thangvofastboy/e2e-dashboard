@@ -20,7 +20,7 @@ export function flakyRowHtml(t, locked = null) {
     <td class="num">${fmtPct(t.failRate)}</td>
     <td>${historyCells(t.history, 12)}</td>
     <td><div class="actions-cell">${t.last ? `<a href="${runHref(t.last.runId, t.last.resultId)}">Lần gần nhất</a>` : ''}
-      ${t.last ? `<button type="button" class="btn-ai" data-why="${escapeHtml(t.last.runId)}|${escapeHtml(t.last.resultId)}" title="Hỏi AI vì sao test này flaky">${icon('sparkles', { size: 13 })}Vì sao?</button>` : ''}
+      ${t.last ? `<button type="button" class="btn-ai" data-why="${escapeHtml(t.last.runId)}|${escapeHtml(t.last.resultId)}" title="Hỏi AI vì sao test này flaky">${icon('yinyang', { size: 13 })}Vì sao?</button>` : ''}
       ${locked ? `<button type="button" data-unlock="${escapeHtml(t.key)}">${icon('unlock', { size: 13 })}Gỡ</button>` : `<button type="button" data-lock="${escapeHtml(t.key)}" title="Bỏ test khỏi các run trong 14 ngày">${icon('lock', { size: 13 })}Cách ly</button>`}
       <button type="button" data-repeat="${escapeHtml(test)}" data-target="${escapeHtml(t.target)}" data-agent="${escapeHtml(t.agent)}" title="Chạy lặp để xác nhận">${icon('rerun', { size: 13 })}Chạy ×5</button></div></td>
   </tr>`;
