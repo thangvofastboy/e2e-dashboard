@@ -1,7 +1,8 @@
 // Popup 1 click setup: mở dashboard mà project còn thiếu phần cài đặt thì hỏi; đủ rồi thì không.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { setupNeeds, maybePromptSetup } from '../ui/setup-prompt.js';
+import { maybePromptSetup } from '../ui/setup-prompt.js';
+import { setupNeeds } from '../ui/setup-steps.js';
 
 const plan = (items, steps) => ({ items, steps, canSudo: false });
 

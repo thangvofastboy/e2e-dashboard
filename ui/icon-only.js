@@ -27,7 +27,7 @@ function wrapButtonLabel(inner) {
 }
 
 // chip / badge / tag dựng bằng <button> (để có tooltip) là nhãn trạng thái, không phải nút: giữ chữ
-const LABEL_CLASS = /\b(chip|badge|tag)\b/;
+const LABEL_CLASS = /\b(chip|badge|tag|keep-label)\b/; // keep-label: nút chính luôn hiện chữ (vd. Cài tất cả)
 const attrOf = (attrs, name) => new RegExp(`\\s${name}="([^"]*)"`).exec(attrs)?.[1] ?? '';
 const tipFor = (label, extra) => [label, extra].filter((x, i, a) => x && a.indexOf(x) === i).join(' · ');
 

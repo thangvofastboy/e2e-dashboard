@@ -99,19 +99,20 @@ test('spawnStep: lệnh không tồn tại trả 127, abort giết tiến trình
   assert.notEqual(await p, 0);
 });
 
-test('quickPlanHtml: mục tự cài có nút Cài tất cả, mục chạy tay có nút copy, không gửi lệnh lên server', async () => {
-  const { quickPlanHtml } = await import('../ui/views/system.js');
+test('stepsHtml (trang 1 Click Setup / popup): bước tự cài đánh số, nút Cài tất cả, mục làm tay có copy, mục đã có thu gọn', async () => {
+  const { stepsHtml } = await import('../ui/setup-steps.js');
   const plan = { canSudo: false, steps: ['browsers'], items: [
     { id: 'git', label: 'Git', ok: false, detail: 'Chưa cài', display: 'sudo apt-get install -y git', manual: true },
     { id: 'browsers', label: 'Trình duyệt', ok: false, detail: 'Thiếu headless shell', display: 'npx @e2e-dev/web install chromium' },
     { id: 'node', label: 'Node', ok: true, detail: 'v22' },
   ] };
-  const html = quickPlanHtml(plan);
-  assert.match(html, /data-quick-run="browsers"/);
-  assert.match(html, /data-copy-cmd="sudo apt-get install -y git"/);
-  assert.match(html, /setup --quick/);
-  assert.doesNotMatch(html, /Node/);
-  assert.match(quickPlanHtml({ steps: [], items: [{ id: 'x', ok: true }] }), /không cần cài/);
+  const html = stepsHtml(plan, { showOk: true });
+  assert.match(html, /data-step="browsers"[\s\S]*Bước 1\/1/);
+  assert.match(html, /data-run>[\s\S]*Cài tất cả \(1\)/);
+  assert.match(html, /data-copy="sudo apt-get install -y git"/);
+  assert.match(html, /Đã có \/ tuỳ chọn \(1\)[\s\S]*Node/);
+  assert.doesNotMatch(stepsHtml(plan), /Đã có \/ tuỳ chọn/); // popup: không liệt kê mục đã có
+  assert.doesNotMatch(stepsHtml({ steps: [], items: [{ id: 'x', ok: true }] }), /data-run/);
 });
 
 test('jsPm theo lockfile: pnpm / yarn / bun dùng đúng lệnh, Yarn PnP không đòi node_modules', async () => {
@@ -214,4 +215,22 @@ test('AI cho e2e: thiếu gói của provider → bước cài; thiếu API key 
   assert.equal(item(sub, 'ai-login').ok, false);
   assert.equal(item(sub, 'ai-login').display, 'npx e2e login github-copilot');
   assert.equal((await quickSetupPlan(root, base)).items.find((x) => x.id === 'ai').ok, true); // không có config / không dùng AI: không bắt cài gì
+});
+
+test('setup không hứa việc nó không làm được: thiếu .env mà không có .env.example thì không thành bước tự cài', async () => {
+  const { setupStatus, ensureEnvFile } = await import('../server/system.mjs');
+  const { execFileSync } = await import('node:child_process');
+  const root = project({});
+  execFileSync('git', ['init', '-q'], { cwd: root });
+  let items = await setupStatus(root, { reporter: { installed: true, version: '1', latest: '1' } });
+  const env = items.find((x) => x.id === 'env');
+  assert.equal(env.fix, null);
+  assert.equal(env.optional, true);
+  assert.equal(items.find((x) => x.id === 'ignore').ok, true); // chưa có .env: không có gì để lộ
+  writeFileSync(join(root, '.env'), 'A=1\n');
+  items = await setupStatus(root, { reporter: { installed: true, version: '1', latest: '1' } });
+  assert.equal(items.find((x) => x.id === 'ignore').fix, 'setup');
+  assert.deepEqual(await ensureEnvFile(root), ['Đã thêm .env vào .gitignore.']);
+  items = await setupStatus(root, { reporter: { installed: true, version: '1', latest: '1' } });
+  assert.equal(items.find((x) => x.id === 'ignore').ok, true);
 });

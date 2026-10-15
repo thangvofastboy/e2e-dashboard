@@ -344,7 +344,7 @@ else {
   $env:E2E_AI_API_KEY = $ApiKey
   Push-Location $Root
   try { $code = Run 'node' $aiArgs } finally { Pop-Location; Remove-Item Env:E2E_AI_API_KEY -ErrorAction SilentlyContinue }
-  if ($code -ne 0) { Warn "AI chưa sẵn sàng (xem 'Còn phải làm' ở trên): làm tiếp ở dashboard → Cài đặt hệ thống › Project."; Finish 'manual' "xem 'Còn phải làm' ở trên" }
+  if ($code -ne 0) { Warn "AI chưa sẵn sàng (xem 'Còn phải làm' ở trên): làm tiếp ở dashboard → trang 1 Click Setup."; Finish 'manual' "xem 'Còn phải làm' ở trên" }
   else { Finish $(if ($DryRun) { 'plan' } else { 'done' }) $(if ($Ai) { $Ai } else { 'giữ model hiện tại' }) }
 }
 
@@ -355,9 +355,9 @@ else {
   Doing 'kiểm tra và cài phần còn thiếu của project (từng bước in bên dưới)'
   Push-Location $Root
   try {
-    # bước lỗi (vd. gh tuỳ chọn) không chặn việc mở dashboard: Cài đặt hệ thống › Quick Setup làm tiếp được
+    # bước lỗi (vd. gh tuỳ chọn) không chặn việc mở dashboard: trang 1 Click Setup làm tiếp được
     if ((Run 'node' @($Dash, 'setup', '--quick', '--yes')) -ne 0) {
-      Warn 'Quick Setup còn mục lỗi hoặc cần làm tay (xem ở trên); mở dashboard → Cài đặt hệ thống › Quick Setup để làm tiếp.'
+      Warn 'Quick Setup còn mục lỗi hoặc cần làm tay (xem ở trên); mở dashboard → trang 1 Click Setup để làm tiếp.'
       Finish 'manual' 'xem log ở trên'
     } else { Finish $(if ($DryRun) { 'plan' } else { 'done' }) }
   } finally { Pop-Location }

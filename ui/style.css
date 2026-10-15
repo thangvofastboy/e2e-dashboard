@@ -1409,7 +1409,7 @@ form[data-linear-issues] button { justify-self: start; }
 /* chừa chỗ cho nút Hỏi AI nổi: cuộn hết trang thì nút cuối (Lưu, Gửi…) không bị che */
 body:has(.ai-fab) #main { padding-bottom: 88px; }
 
-/* Model AI (Cài đặt hệ thống › Project): dòng trạng thái tô theo tone, cảnh báo dạng banner; màu lấy từ biến theme nên đúng cả sáng / tối */
+/* Model AI (trang 1 Click Setup): dòng trạng thái tô theo tone, cảnh báo dạng banner; màu lấy từ biến theme nên đúng cả sáng / tối */
 .ai-model-status { list-style: none; margin: 6px 0 10px; padding: 0; display: grid; gap: 4px; }
 .ai-model-status .tone-good, .ai-model-status .tone-warn, .ai-model-status .tone-bad { color: var(--tone-ink); font-weight: 600; }
 .ai-warn { align-items: flex-start; flex-wrap: nowrap; }
@@ -1440,3 +1440,6 @@ p.tone-good, p.tone-warn, p.tone-bad { color: var(--tone-ink); }
 .setup-prompt .run-form > p { margin: 0; }
 .sp-key { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
 .sp-key input { flex: 1 1 220px; font: inherit; padding: 6px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-primary); }
+/* trang 1 Click Setup: các khung xếp dọc, không kéo giãn khung cuối cho đầy màn hình */
+.setup-page { display: flex; flex-direction: column; gap: 16px; }
+.setup-page > .panel { margin: 0; }

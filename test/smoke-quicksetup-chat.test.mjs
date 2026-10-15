@@ -73,7 +73,8 @@ test('Hỏi AI dạng chat: câu đầu /ask mở session, câu sau /followup re
 test('bundle UI (/app.js) và CSS có khung chat + Quick Setup', async () => {
   const js = await (await fetch(`${base}/app.js`, { headers: auth })).text();
   assert.match(js, /chat-log/);
-  assert.match(js, /data-quick-run/);
+  assert.match(js, /1 Click Setup/);
+  assert.match(js, /quick-setup\/run/);
   const css = await (await fetch(`${base}/style.css`, { headers: auth })).text();
   assert.match(css, /\.chat-input/);
 });

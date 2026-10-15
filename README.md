@@ -98,6 +98,7 @@
 | 📍 | **Sự kiện trên biểu đồ** | Deploy, release, sự cố đánh dấu trên biểu đồ xu hướng |
 | 🌱 | **Vòng đời test** | Test mới, bị bỏ, đổi tên, luôn fail, commit sửa gần nhất |
 | 🌐 | **Trang báo cáo tĩnh** | Xuất cả lịch sử thành thư mục HTML cho GitHub Pages / thư mục chung |
+| ⚡ | **1 Click Setup** | Trang riêng (menu *Tích hợp*): hệ điều hành, các bước cài theo thứ tự với nút **Cài tất cả** (thư viện, gói AI, Chromium, reporter, `.env`), trạng thái từng bước và log, API key nhập tại chỗ, chọn model AI, sửa URL app / lệnh khởi động trong `e2e.config.ts`. Mở dashboard mà project còn thiếu thì hiện popup cùng nội dung |
 | ⚙️ | **Cài đặt hệ thống** | Theme, cỡ chữ, ngôn ngữ; xem và sửa trực tiếp `.env` / `.env.local` (lưu thẳng vào file, file có secret tự vào `.gitignore`); Linear key, webhook, setup và doctor |
 | 🌐 | **Chọn trình duyệt** | Chromium mặc định, đổi trong Cài đặt: chạy test bằng Firefox hoặc WebKit, kể cả lịch chạy |
 | 🛠️ | **Tự sửa lỗi dashboard (có duyệt)** | Lỗi của chính dashboard được AI phân tích và sửa trên branch riêng. **Dừng chờ bạn duyệt diff**; chỉ khi bấm *Chạy test & tạo PR* mới chạy `npm test`, push và mở PR draft |
@@ -306,7 +307,7 @@ Truyền qua pipe: `curl … | bash -s -- --init --app-url http://localhost:5173
 /reload-plugins
 ```
 
-**2️⃣ Mở dashboard** ở thư mục project e2e. Project còn thiếu gì (thư viện, gói AI, reporter, `.env`, API key…) thì dashboard hiện popup **Thiết lập project**: liệt kê các bước theo thứ tự, bấm **Cài tất cả** là cài ngay trong popup (từng bước có trạng thái Chờ / Đang cài / Xong / Lỗi, kèm log), API key nhập luôn trong popup. Mở một project khác từ trang *Projects* cũng được hỏi như vậy. *Để sau* thì không hỏi lại trong phiên trình duyệt đó; *Không hỏi lại cho project này* thì nhớ hẳn (vẫn cài được ở *Cài đặt hệ thống › Project › Quick Setup*).
+**2️⃣ Mở dashboard** ở thư mục project e2e. Project còn thiếu gì (thư viện, gói AI, reporter, `.env`, API key…) thì dashboard hiện popup **Thiết lập project**: liệt kê các bước theo thứ tự, bấm **Cài tất cả** là cài ngay trong popup (từng bước có trạng thái Chờ / Đang cài / Xong / Lỗi, kèm log), API key nhập luôn trong popup. Mở một project khác từ trang *Projects* cũng được hỏi như vậy. *Để sau* thì không hỏi lại trong phiên trình duyệt đó; *Không hỏi lại cho project này* thì nhớ hẳn (vẫn cài được ở *trang 1 Click Setup*).
 
 ```text
 /e2e-dashboard
@@ -413,10 +414,10 @@ Lệnh này copy `e2e-dashboard.reporter.mjs` (kèm `.d.mts`) vào project và t
 |---|:-:|---|
 | `/e2e-dashboard` | 🖥️ | Bật server nền nếu chưa chạy, mở trình duyệt, in URL |
 | `/e2e-dashboard setup` | 🔌 | Gắn reporter vào `e2e.config.ts` để xem live; chọn trình duyệt mặc định (`E2E_BROWSER`) |
-| `/e2e-dashboard config [--init] [--app-url URL] [--app-command "npm run dev"\|--no-command] [--yes]` | 🧩 | Cấu hình `e2e.config.ts`: chưa có thì tạo bằng `e2e init` (`--gateway`, `--engine`); sửa URL app và lệnh khởi động app (hỏi khi có terminal, Enter giữ nguyên); in engine, model, reporter. Trong dashboard: *Cài đặt hệ thống › Project › Cấu hình e2e.config.ts* |
-| `/e2e-dashboard ai [--provider ID] [--api-key KEY] [--base-url URL] [--model ID] [--login] [--no-install] [--yes]` | 🤖 | AI cho bước agent của e2e: chọn model (sửa `agents` + import trong config), cài gói npm của provider, lưu API key vào `.env`, đăng nhập gói subscription. Có terminal thì hỏi (key nhập ẩn). Trong dashboard: *Cài đặt hệ thống › Project › Cấu hình e2e.config.ts › Model AI* |
+| `/e2e-dashboard config [--init] [--app-url URL] [--app-command "npm run dev"\|--no-command] [--yes]` | 🧩 | Cấu hình `e2e.config.ts`: chưa có thì tạo bằng `e2e init` (`--gateway`, `--engine`); sửa URL app và lệnh khởi động app (hỏi khi có terminal, Enter giữ nguyên); in engine, model, reporter. Trong dashboard: *trang 1 Click Setup* |
+| `/e2e-dashboard ai [--provider ID] [--api-key KEY] [--base-url URL] [--model ID] [--login] [--no-install] [--yes]` | 🤖 | AI cho bước agent của e2e: chọn model (sửa `agents` + import trong config), cài gói npm của provider, lưu API key vào `.env`, đăng nhập gói subscription. Có terminal thì hỏi (key nhập ẩn). Trong dashboard: *trang 1 Click Setup (menu Tích hợp)* |
 | `/e2e-dashboard os` | 🖥️ | Hệ điều hành đang chạy (distro, phiên bản, CPU, WSL) và trình quản lý gói Quick Setup sẽ dùng |
-| `/e2e-dashboard setup --quick [--yes]` | ⚡ | Quick Setup: kiểm tra Git, gh, Node, e2e ([tester-army/e2e](https://github.com/tester-army/e2e)) + `@e2e-dev/web`, `node_modules`, Chromium + headless shell, Claude CLI, reporter/.env; hiện lệnh rồi cài phần thiếu (sudo hỏi mật khẩu trong terminal). Trong dashboard: *Cài đặt hệ thống › Project › Quick Setup* |
+| `/e2e-dashboard setup --quick [--yes]` | ⚡ | Quick Setup: kiểm tra Git, gh, Node, e2e ([tester-army/e2e](https://github.com/tester-army/e2e)) + `@e2e-dev/web`, `node_modules`, Chromium + headless shell, Claude CLI, reporter/.env; hiện lệnh rồi cài phần thiếu (sudo hỏi mật khẩu trong terminal). Trong dashboard: *trang 1 Click Setup* |
 | `/e2e-dashboard doctor [--dry-run]` | 🩺 | Chuyển dữ liệu theo bố cục cũ sang bố cục mới (runs theo ngày, `state/`, `runtime/`), dựng lại chỉ mục SQLite nếu đã bật. `--dry-run` chỉ liệt kê, không ghi |
 | `/e2e-dashboard export [runId]` | 📤 | Xuất một run (mặc định là run mới nhất) thành HTML tự chứa |
 | `/e2e-dashboard status` | ℹ️ | Xem server có đang chạy không |

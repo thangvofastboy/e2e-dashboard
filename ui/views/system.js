@@ -1,7 +1,7 @@
 import { AI_MODELS } from '../ai-models.js';
-import { getJson, postJson, postStream } from '../api.js';
+import { getJson, postJson } from '../api.js';
 import { confirmDialog } from '../confirm.js';
-import { pageHead, copyToClipboard } from '../analysis.js';
+import { pageHead } from '../analysis.js';
 import { toast } from '../toast.js';
 import { escapeHtml, cap } from '../format.js';
 import { icon } from '../icons.js';
@@ -189,69 +189,6 @@ function userHtml(u, linear = null) {
   </section>`;
 }
 
-// kế hoạch Quick Setup: mục thiếu, lệnh sẽ chạy (tự cài) hoặc lệnh để copy (chạy tay: cần mật khẩu sudo, Node…)
-export function quickPlanHtml(plan) {
-  const osLine = plan.os ? `<p class="small">${icon('cpu', { size: 14 })} <strong>Hệ điều hành:</strong> ${escapeHtml(plan.os.label)} <span class="muted">· cách cài chọn theo hệ điều hành này</span></p>` : '';
-  const todo = plan.items.filter((x) => !x.ok);
-  if (!todo.length) return `${osLine}<p class="tone-good">${icon('check', { size: 14 })} Máy đã đủ mọi thứ, không cần cài gì.</p>`;
-  // thứ tự: các bước tự cài chạy lần lượt theo đúng số này
-  const order = new Map(plan.steps.map((id, i) => [id, i + 1]));
-  const rows = todo.map((x) => {
-    const auto = plan.steps.includes(x.id);
-    return `<li class="setup-item"><span class="tone-${auto ? 'warn' : 'muted'}">${icon(auto ? 'download' : 'terminal', { size: 15 })}</span>
-      <span>${auto ? `<span class="chip">Bước ${order.get(x.id)}/${plan.steps.length}</span> ` : ''}<strong>${escapeHtml(x.label)}</strong>${x.optional ? ' <span class="muted small">(tuỳ chọn)</span>' : ''}<br><span class="muted small">${escapeHtml(x.detail)}</span><br>
-      <code>${escapeHtml(x.display ?? '')}</code> <span class="chip tone-${auto ? 'warn' : 'muted'}">${auto ? 'Tự cài' : 'Chạy tay'}</span>${auto ? '' : ` <button type="button" class="icon-btn" data-copy-cmd="${escapeHtml(x.display ?? '')}" aria-label="Copy lệnh">${icon('copy', { size: 13 })}</button>`}</span></li>`;
-  }).join('');
-  const sudoNote = !plan.canSudo && todo.some((x) => !plan.steps.includes(x.id) && /^sudo /.test(x.display ?? '')) ? '<p class="muted small">Lệnh cần mật khẩu sudo không chạy được từ trình duyệt: copy chạy trong terminal, hoặc chạy <code>/e2e-dashboard setup --quick</code> để cài hết (sudo sẽ hỏi mật khẩu).</p>' : '';
-  return `${osLine}<ul class="setup-list">${rows}</ul>${sudoNote}
-    ${plan.steps.length ? `<p><button type="button" class="primary" data-quick-run="${escapeHtml(plan.steps.join(','))}">${icon('download', { size: 14 })}Cài tất cả (${plan.steps.length})</button></p>` : ''}
-    <pre class="log" data-quick-log hidden></pre>`;
-}
-
-// e2e.config.ts: xem nhanh và sửa URL app / lệnh khởi động (server chỉ sửa đúng hai giá trị này)
-export function e2eConfigHtml(c) {
-  if (!c) return '';
-  if (!c.exists) return `<section class="panel"><h2>${icon('file', { size: 18 })} e2e.config.ts</h2><p class="muted">Không tìm thấy e2e.config.*. Tạo bằng <code>/e2e-dashboard config --init</code> trong terminal.</p></section>`;
-  const row = (k, v, tone = '') => `<li class="setup-item"><span class="tone-${tone || 'muted'}">${icon(tone === 'good' ? 'check' : 'info', { size: 15 })}</span><span><strong>${escapeHtml(k)}</strong><br><span class="muted small">${escapeHtml(v)}</span></span></li>`;
-  return `<section class="panel"><h2>${icon('file', { size: 18 })} Cấu hình ${escapeHtml(c.file)}</h2>
-    <ul class="setup-list">
-      ${row('Engine', `${c.engine ?? 'không rõ'} · ${c.targets} target`)}
-      ${row('Model cho bước agent', c.model ?? 'Không (chỉ test bằng locator)', c.model ? 'good' : '')}
-      ${row('Reporter dashboard', c.reporter ? 'Đã gắn' : 'Chưa gắn: bấm Quick Setup', c.reporter ? 'good' : '')}
-      ${row('Chọn trình duyệt khi chạy', c.browserEnv ? 'Có (E2E_BROWSER)' : 'Chưa: bấm Quick Setup', c.browserEnv ? 'good' : '')}
-    </ul>
-    ${aiPanelHtml(c)}
-    <form data-e2e-config>
-      <div class="form-row"><span class="form-label">URL app đang test</span><input type="url" name="appUrl" value="${escapeHtml(c.appUrl ?? '')}" placeholder="http://localhost:3000" required aria-label="URL app đang test"><small class="fld-hint">${c.appUrlEnv ? `Biến <code>${escapeHtml(c.appUrlEnv)}</code> lúc chạy vẫn đè được giá trị này.` : 'Trang mà app.open() mở.'}</small></div>
-      <div class="form-row"><span class="form-label">Lệnh khởi động app</span><input type="text" name="command" value="${escapeHtml(c.command ?? '')}" placeholder="npm run dev" spellcheck="false" aria-label="Lệnh khởi động app"><small class="fld-hint">Runner tự chạy lệnh này trước test và tắt sau đó. Để trống nếu bạn tự chạy app.</small></div>
-      <p><button type="submit" class="primary">${icon('check', { size: 14 })}Lưu vào ${escapeHtml(c.file)}</button> <span class="muted small" data-e2e-config-msg></span></p>
-    </form>
-  </section>`;
-}
-
-// AI cho bước agent: provider (sửa e2e.config), API key vào .env; gói npm và đăng nhập chỉ báo việc cần làm
-function aiPanelHtml(c) {
-  const ai = c.ai;
-  if (!ai || !c.providers) return '';
-  const opts = c.providers.map((p) => `<option value="${escapeHtml(p.id)}"${p.id === ai.provider ? ' selected' : ''}>${escapeHtml(p.label)}</option>`).join('');
-  const status = [];
-  if (ai.packages.length) status.push(ai.missing.length ? `<span class="tone-warn">Thiếu gói ${escapeHtml(ai.missing.join(', '))}</span>: bấm Quick Setup ở trên để cài (<code>${escapeHtml(ai.installDisplay)}</code>)` : `<span class="tone-good">Đủ gói</span> ${escapeHtml(ai.packages.join(', '))}`);
-  if (ai.env && ai.kind === 'key') status.push(ai.keyState === 'set' ? `<span class="tone-good">${escapeHtml(ai.env)} đã có</span> (${escapeHtml(ai.keySource)})` : `<span class="tone-warn">Chưa có ${escapeHtml(ai.env)}</span>${ai.keyUrl ? `: tạo key ở <a href="${escapeHtml(ai.keyUrl)}" target="_blank" rel="noreferrer">${escapeHtml(ai.keyUrl)}</a>` : ''}`);
-  if (ai.kind === 'cli') status.push(`${ai.claude ? '<span class="tone-good">Có lệnh claude</span>' : '<span class="tone-warn">Không thấy lệnh claude</span>'}: đăng nhập một lần bằng <code>claude</code>${ai.adapterMissing ? ' · <span class="tone-warn">thiếu e2e-dashboard.claude-code.mjs</span>: bấm Quick Setup' : ''}`);
-  // cảnh báo của model thử nghiệm: khung banner theo màu theme (sáng / tối)
-  const warn = ai.warning?.length ? `<div class="banner tone-warn ai-warn" role="note" data-nums>${icon('alert', { size: 15 })}<ul>${ai.warning.map((w) => `<li>${escapeHtml(w)}</li>`).join('')}</ul></div>` : '';
-  if (ai.kind === 'login') status.push(ai.loggedIn ? '<span class="tone-good">Đã đăng nhập</span> trên máy này' : `<span class="tone-warn">Chưa đăng nhập</span>: chạy trong terminal <code>${escapeHtml(ai.loginDisplay)}</code> <button type="button" class="icon-btn" data-copy-cmd="${escapeHtml(ai.loginDisplay)}" aria-label="Copy lệnh">${icon('copy', { size: 13 })}</button>`);
-  return `<form data-ai-config>
-      <div class="form-row"><span class="form-label">Model AI (bước agent)</span><select name="provider" aria-label="Model AI cho bước agent">${ai.provider === 'custom' ? '<option value="" selected>Model tuỳ chỉnh (giữ nguyên)</option>' : ''}${opts}</select>
-        <small class="fld-hint">Đổi thì dashboard sửa <code>agents</code> và import trong ${escapeHtml(c.file)}. Gói npm của model cài bằng Quick Setup.</small></div>
-      <div class="form-row" data-ai-key${ai.env && ai.kind === 'key' ? '' : ' hidden'}><span class="form-label">API key</span><input type="password" name="apiKey" autocomplete="off" placeholder="${escapeHtml(ai.keyState === 'set' ? 'Đã có: để trống để giữ nguyên' : `Dán ${ai.env ?? 'API key'}`)}" aria-label="API key">
-        <small class="fld-hint">Lưu vào <code>.env</code> (quyền 600, tự vào .gitignore); config được thêm dòng đọc .env.</small></div>
-      <div class="form-row" data-ai-local${ai.provider === 'openai-compatible' ? '' : ' hidden'}><span class="form-label">Server model</span><input type="url" name="baseURL" placeholder="http://127.0.0.1:11434/v1" aria-label="URL server model"><input type="text" name="modelId" placeholder="model id" aria-label="Model id" spellcheck="false"></div>
-      ${status.length ? `<ul class="ai-model-status small">${status.map((x) => `<li>${x}</li>`).join('')}</ul>` : ''}${warn}
-      <p><button type="submit">${icon('sparkles', { size: 14 })}Lưu model AI</button> <span class="muted small" data-ai-msg></span></p>
-    </form>`;
-}
-
 function setupHtml(items) {
   const rows = items.map((x) => `<li class="setup-item"><span class="tone-${x.ok ? 'good' : x.optional ? 'muted' : 'bad'}">${icon(x.ok ? 'check' : x.optional ? 'info' : 'x', { size: 15 })}</span>
       <span><strong>${escapeHtml(x.label)}</strong><br><span class="muted small">${escapeHtml(x.detail)}</span></span></li>`).join('');
@@ -260,8 +197,7 @@ function setupHtml(items) {
   return `<section class="panel"><h2>${icon('flask', { size: 18 })} Thiết lập project</h2>
     ${sysStats(sysStat('Mục đạt', `${ok}/${items.length}`, ok === items.length ? 'good' : 'warn'), sysStat('Cần sửa', items.filter((x) => !x.ok && !x.optional).length, items.some((x) => !x.ok && !x.optional) ? 'bad' : 'good'), sysStat('Tuỳ chọn chưa bật', items.filter((x) => !x.ok && x.optional).length, 'muted'))}
     <ul class="setup-list">${rows}</ul>
-    <p><button type="button" class="${needs ? 'primary' : ''}" data-quick>${icon('zap', { size: 14 })}Quick Setup</button> <span class="muted small">Kiểm tra máy và thư viện (Git, Node, e2e, node_modules, Chromium + headless shell, Claude CLI, reporter, .env), xem lệnh sẽ chạy rồi cài phần còn thiếu.</span></p>
-    <div data-quick-box hidden></div>
+    <p><a class="button keep-label${needs ? ' primary' : ''}" href="#/setup">${icon('zap', { size: 14 })}Mở 1 Click Setup</a> <span class="muted small">Trang riêng: cài mọi thứ còn thiếu bằng một nút (thư viện, gói AI, trình duyệt, reporter, .env), chọn model AI và sửa e2e.config.ts.</span></p>
     <p><button type="button" data-doctor>${icon('recycle', { size: 14 })}Chạy doctor</button> <span class="muted small">Chuyển dữ liệu cũ sang bố cục mới (runs/YYYY/MM/DD, state/, runtime/) và dựng lại chỉ mục SQLite.</span></p>
     <pre class="log" data-setup-out hidden></pre>
   </section>`;
@@ -411,7 +347,6 @@ export async function renderSystem(main) {
     getJson('/api/settings').catch(() => null),
     getJson('/api/resources').catch(() => null), // chưa có endpoint (404) → "không đo được"
   ]);
-  let e2eCfg = await getJson('/api/system/e2e-config').catch(() => null);
   let editing = null; // file env đang mở
   const urlTab = () => new URLSearchParams(location.hash.split('?')[1] ?? '').get('tab');
   let tab = SYS_TABS.some(([k]) => k === urlTab()) ? urlTab() : 'appearance';
@@ -420,7 +355,7 @@ export async function renderSystem(main) {
     return todo ? `<span class="sys-badge" title="Cần xem">${todo}</span>` : '';
   };
   const draw = () => {
-    const panes = { appearance: appearanceHtml(), project: setupHtml(d.setup) + e2eConfigHtml(e2eCfg) + envHtml(d.env), integrations: userHtml(d.user, linearInfo) + linearIssuesFormHtml(prefs?.linear ?? { emails: [], statuses: [] }), ai: healHtml(heal, d.user.selfHeal, d.user.ai), about: infoHtml(d, resources, prefs?.browsers?.installed), reset: junkHtml(junkInfo) + resetHtml(resetInfo), sources: projectSourcesHtml(prefs), guide: guideHtml() };
+    const panes = { appearance: appearanceHtml(), project: setupHtml(d.setup) + envHtml(d.env), integrations: userHtml(d.user, linearInfo) + linearIssuesFormHtml(prefs?.linear ?? { emails: [], statuses: [] }), ai: healHtml(heal, d.user.selfHeal, d.user.ai), about: infoHtml(d, resources, prefs?.browsers?.installed), reset: junkHtml(junkInfo) + resetHtml(resetInfo), sources: projectSourcesHtml(prefs), guide: guideHtml() };
     main.innerHTML = `${pageHead('Cài đặt hệ thống', 'settings', 'Giao diện, biến môi trường của project, key của dashboard và tình trạng setup.')}
       <div class="sys">
         <div class="sys-nav" role="tablist" aria-orientation="vertical" aria-label="Nhóm cài đặt">${SYS_TABS.map(([k, label, ic, sub]) => `<button type="button" role="tab" id="sys-tab-${k}" data-sys-tab="${k}" aria-selected="${k === tab}" aria-controls="sys-pane-${k}" tabindex="${k === tab ? 0 : -1}"><span class="sys-nav-ic">${icon(ic, { size: 20 })}</span><span class="sys-nav-t"><strong>${label}</strong><span class="small">${sub}</span></span>${badge(k)}</button>`).join('')}</div>
@@ -438,7 +373,7 @@ export async function renderSystem(main) {
     replaceParams({ tab: k === 'appearance' ? '' : k });
   };
   const reload = async () => {
-    [d, heal, junkInfo, e2eCfg] = await Promise.all([getJson('/api/system'), getJson('/api/selfheal').catch(() => heal), getJson('/api/junk').catch(() => junkInfo), getJson('/api/system/e2e-config').catch(() => e2eCfg)]);
+    [d, heal, junkInfo] = await Promise.all([getJson('/api/system'), getJson('/api/selfheal').catch(() => heal), getJson('/api/junk').catch(() => junkInfo)]);
     const ta = main.querySelector('.env-text');
     const keep = editing && ta ? { name: editing, value: ta.value, saved: ta.dataset.saved } : null;
     draw();
@@ -478,15 +413,6 @@ export async function renderSystem(main) {
 
   main.addEventListener('change', async (e) => {
     const t = e.target;
-    if (t.name === 'provider' && t.closest('[data-ai-config]')) {
-      // hiện ô API key / server model theo loại provider vừa chọn
-      const p = e2eCfg?.providers?.find((x) => x.id === t.value);
-      const f = t.form;
-      f.querySelector('[data-ai-key]').hidden = p?.kind !== 'key';
-      f.querySelector('[data-ai-local]').hidden = p?.kind !== 'local';
-      if (p?.env) f.apiKey.placeholder = `Dán ${p.env}`;
-      return;
-    }
     if (t.name === 'junkCat') {
       main.querySelector('[data-junk-open]').disabled = !main.querySelector('[name=junkCat]:checked');
       return;
@@ -639,85 +565,16 @@ export async function renderSystem(main) {
         const out = main.querySelector('[data-setup-out]');
         out.hidden = false;
         out.textContent = [...r.lines, ...r.warn.map((w) => `Lưu ý: ${w}`)].join('\n');
-      } else if ('quick' in b.dataset) {
-        b.setAttribute('aria-busy', 'true');
-        const box = main.querySelector('[data-quick-box]');
-        box.innerHTML = quickPlanHtml(await getJson('/api/system/quick-setup'));
-        box.hidden = false;
-        b.removeAttribute('aria-busy');
-      } else if ('copyCmd' in b.dataset) {
-        copyToClipboard(b.dataset.copyCmd, b);
-      } else if ('quickRun' in b.dataset) {
-        b.setAttribute('aria-busy', 'true');
-        b.disabled = true;
-        const out = main.querySelector('[data-quick-log]');
-        out.hidden = false;
-        const lines = [];
-        const push = (t) => {
-          lines.push(t);
-          out.textContent = lines.slice(-400).join('\n');
-          out.scrollTop = out.scrollHeight;
-        };
-        let failed = 0;
-        const ids = b.dataset.quickRun.split(',');
-        await postStream('/api/system/quick-setup/run', { ids }, (e) => {
-          if (e.type === 'step') push(`\n▶ [${ids.indexOf(e.id) + 1}/${ids.length}] Đang cài: ${e.label}\n$ ${e.display}`);
-          if (e.type === 'log') push(e.text);
-          if (e.type === 'step-done') {
-            if (!e.ok) failed++;
-            push(e.ok ? '✓ Xong' : `✗ Lỗi (mã ${e.code})`);
-          }
-          if (e.type === 'error') {
-            failed++;
-            push(`✗ ${e.message}`);
-          }
-        });
-        toast(failed ? `Quick Setup: ${failed} bước lỗi, xem log` : 'Quick Setup xong', failed ? 'bad' : 'good');
-        const log = lines.join('\n');
-        await reload();
-        const keep = main.querySelector('[data-setup-out]');
-        keep.hidden = false;
-        keep.textContent = log.trim();
       }
     } catch (x) {
       b.removeAttribute('aria-busy');
-      b.disabled = false; // nút Cài tất cả bị khoá khi bắt đầu: 409 / lỗi mạng thì mở lại để bấm lần nữa
+      b.disabled = false; // nút bị khoá khi bắt đầu: lỗi thì mở lại để bấm lần nữa
       toast(x.message, 'bad');
     }
   });
   main.addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = e.target;
-    if (f.matches('[data-ai-config]')) {
-      const msg = f.querySelector('[data-ai-msg]');
-      if (!f.provider.value) return;
-      const chosen = e2eCfg?.providers?.find((x) => x.id === f.provider.value);
-      if (chosen?.experimental && f.provider.value !== e2eCfg?.ai?.provider && !(await confirmDialog({ title: 'Dùng Claude Code CLI cho bước agent (thử nghiệm)?', message: 'Chạy agent.act / agent.assert bằng đăng nhập của Claude Code CLI thay cho API key. Lưu ý:', items: chosen.warning, confirmLabel: 'Vẫn dùng claude-code' }))) return;
-      try {
-        const r = await postJson('/api/system/ai', { provider: f.provider.value, apiKey: f.apiKey.value.trim() || undefined, baseURL: f.baseURL.value.trim() || undefined, modelId: f.modelId.value.trim() || undefined });
-        toast(r.changed || r.keySaved ? `Đã lưu model AI${r.keySaved ? ' và API key' : ''}${r.missing.length ? ': bấm Quick Setup để cài gói' : ''}` : 'Không có gì thay đổi', 'good');
-        e2eCfg = await getJson('/api/system/e2e-config').catch(() => e2eCfg);
-        await reload();
-      } catch (x) {
-        msg.textContent = x.message.replace(/^\d{3}: /, '');
-      }
-      return;
-    }
-    if (f.matches('[data-e2e-config]')) {
-      const msg = f.querySelector('[data-e2e-config-msg]');
-      try {
-        const r = await postJson('/api/system/e2e-config', { appUrl: f.appUrl.value.trim(), command: f.command.value.trim() });
-        msg.textContent = r.problems.join(' · ');
-        toast(r.problems.length ? 'Có mục chưa lưu được, xem lưu ý' : r.changed.length ? `Đã lưu: ${r.changed.join(', ')}` : 'Không có gì thay đổi', r.problems.length ? 'bad' : 'good');
-        if (!r.problems.length) {
-          e2eCfg = r;
-          await reload();
-        }
-      } catch (x) {
-        msg.textContent = x.message.replace(/^\d{3}: /, '');
-      }
-      return;
-    }
     if (f.matches('[data-sources-form]')) {
       const err = f.querySelector('[data-sources-err]');
       const v = readSourcesForm(f);
