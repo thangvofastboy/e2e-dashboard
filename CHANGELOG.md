@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.17.1 — 2026-10-15
+
+- **Máy Ubuntu có giao diện để thử 1 Click Setup** (`docker/test-desktop`): `docker compose up -d` rồi mở http://localhost:3000 để có desktop XFCE trong trình duyệt, mã repo mount sẵn ở `/opt/e2e-dashboard` và app mẫu ở `~/sample-app`. Thử `install.sh` từ marketplace hoặc bản đang phát triển (`E2E_DASHBOARD_PLUGIN_DIR`).
+
 ## v0.17.0 — 2026-10-15
 
 - **Cài toàn bộ môi trường bằng một lệnh** (`install.sh` cho macOS / Linux / WSL, `install.ps1` cho Windows): phát hiện hệ điều hành (distro Linux, WSL, Alpine, phiên bản macOS / Windows) để cài đúng cách → git → Node ≥ 22.22.3 (nvm, không cần sudo) → Claude Code CLI → plugin → `e2e.config.ts` → AI cho e2e → Quick Setup → mở dashboard. In trước 9 bước, chạy với `[n/9]`, cuối cùng có bảng tổng kết. Chạy không tham số thì hỏi trước thư mục project, URL app, lệnh khởi động, model AI và API key (nhập ẩn), rồi cài một mạch.

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { quickSetupPlan, runQuickSetup, pickPm, spawnStep, jsPm, quickSetupRunning, nodeOkForE2e } from '../server/quicksetup.mjs';
@@ -150,7 +150,11 @@ test('spawnStep huỷ thì giết cả nhóm tiến trình (cháu không sống 
   ac.abort();
   await p;
   await new Promise((r) => setTimeout(r, 100));
-  assert.throws(() => process.kill(Number(out[0]), 0)); // tiến trình cháu đã chết
+  // tiến trình cháu đã chết; zombie (đã chết, chờ PID 1 thu dọn — gặp trong container) cũng tính là chết
+  const pid = Number(out[0]);
+  let zombie = false;
+  try { zombie = readFileSync(`/proc/${pid}/stat`, 'utf8').replace(/^.*\) /, '').startsWith('Z'); } catch {}
+  if (!zombie) assert.throws(() => process.kill(pid, 0));
 });
 
 test('runQuickSetup: bước project dùng hàm setup được truyền vào (CLI không import lại chính bin/dashboard.mjs)', async () => {

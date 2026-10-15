@@ -1,0 +1,29 @@
+# Máy Ubuntu có giao diện (XFCE, mở trong trình duyệt) để thử 1 Click Setup từ đầu trên máy "sạch".
+#   docker compose up -d   →   mở http://localhost:3000
+# Xem README.md cùng thư mục.
+services:
+  desktop:
+    image: lscr.io/linuxserver/webtop:ubuntu-xfce
+    container_name: e2e-dashboard-desktop
+    security_opt:
+      - seccomp:unconfined # Chromium / Electron trong desktop cần
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Ho_Chi_Minh
+      - TITLE=e2e-dashboard test
+    volumes:
+      # mã nguồn repo (chỉ đọc): chạy install.sh của nhánh đang test, hoặc dùng làm plugin dev
+      - ../..:/opt/e2e-dashboard:ro
+      # script khởi tạo: chép app mẫu vào ~/sample-app
+      - ./init:/custom-cont-init.d:ro
+      # home của người dùng "abc" (/config): giữ lại giữa các lần chạy; xoá volume để thử lại từ đầu
+      - home:/config
+    ports:
+      - "3000:3000" # giao diện desktop (HTTP)
+      - "3001:3001" # giao diện desktop (HTTPS)
+    shm_size: "2gb"
+    restart: unless-stopped
+
+volumes:
+  home:
