@@ -1,9 +1,10 @@
 # Máy Ubuntu có giao diện (XFCE, mở trong trình duyệt) để thử 1 Click Setup từ đầu trên máy "sạch".
-#   docker compose up -d   →   mở http://localhost:3000
-# Xem README.md cùng thư mục.
+#   docker compose up -d --build   →   mở http://localhost:3300
+# Đổi cổng: DESKTOP_PORT=4000 docker compose up -d --build. Xem README.md cùng thư mục.
 services:
   desktop:
-    image: lscr.io/linuxserver/webtop:ubuntu-xfce
+    build: .
+    image: e2e-dashboard-test-desktop
     container_name: e2e-dashboard-desktop
     security_opt:
       - seccomp:unconfined # Chromium / Electron trong desktop cần
@@ -15,13 +16,12 @@ services:
     volumes:
       # mã nguồn repo (chỉ đọc): chạy install.sh của nhánh đang test, hoặc dùng làm plugin dev
       - ../..:/opt/e2e-dashboard:ro
-      # script khởi tạo: chép app mẫu vào ~/sample-app
-      - ./init:/custom-cont-init.d:ro
-      # home của người dùng "abc" (/config): giữ lại giữa các lần chạy; xoá volume để thử lại từ đầu
+      # home của người dùng "abc" (/config): giữ lại giữa các lần chạy; `docker compose down -v` để thử lại từ đầu
       - home:/config
     ports:
-      - "3000:3000" # giao diện desktop (HTTP)
-      - "3001:3001" # giao diện desktop (HTTPS)
+      # không dùng 3000 / 3001 ở máy host: hay bị app khác (dev server, Grafana…) chiếm → mở ra trang 404 của app đó
+      - "${DESKTOP_PORT:-3300}:3000"        # giao diện desktop (HTTP)
+      - "${DESKTOP_HTTPS_PORT:-3301}:3001"  # giao diện desktop (HTTPS, chứng chỉ tự ký)
     shm_size: "2gb"
     restart: unless-stopped
 

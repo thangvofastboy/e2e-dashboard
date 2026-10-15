@@ -6,14 +6,16 @@ Desktop Ubuntu XFCE chạy trong Docker, mở bằng trình duyệt. Dùng để
 
 ```bash
 cd docker/test-desktop
-docker compose up -d
+docker compose up -d --build
 ```
 
-Mở **http://localhost:3000** (hoặc https://localhost:3001). Bạn đăng nhập sẵn với người dùng `abc`, có `sudo` không cần mật khẩu.
+Lần đầu phải tải image (khoảng 1,5 GB) và khởi động desktop, mất vài phút. Xong thì mở **http://localhost:3300** (hoặc https://localhost:3301, chấp nhận chứng chỉ tự ký). Bạn đăng nhập sẵn với người dùng `abc`, có `sudo` không cần mật khẩu.
+
+Muốn dùng cổng khác: `DESKTOP_PORT=4000 DESKTOP_HTTPS_PORT=4001 docker compose up -d --build`.
 
 Bên trong máy:
 - `/opt/e2e-dashboard` là mã nguồn repo, chỉ đọc.
-- `~/sample-app` là một app mẫu: `npm start` chạy nó ở http://localhost:5173.
+- `~/sample-app` là một app mẫu, được chép vào lần đầu container chạy. `npm start` chạy nó ở http://localhost:5173. Nếu không thấy thư mục này, chạy `cp -r /opt/e2e-dashboard/docker/test-desktop/sample-app ~/`.
 
 ## Thử 1 Click Setup
 
@@ -55,6 +57,29 @@ Cài xong, dashboard mở trong Firefox của desktop. Các việc cần kiểm 
 - Sửa project: thư mục test, các thư mục khác, AI ghi nhớ.
 
 Đăng nhập Claude Code bằng `claude`, rồi `/login` trong terminal của desktop. Nếu dùng API key, đặt `E2E_AI_API_KEY` trước khi chạy, đừng gõ key trên dòng lệnh.
+
+## Mở trang báo 404 hoặc không vào được
+
+1. Kiểm tra container đã chạy và đang dùng cổng nào:
+   ```bash
+   docker compose ps
+   ```
+   Cột `PORTS` phải có `0.0.0.0:3300->3000`.
+2. Desktop đã khởi động xong chưa:
+   ```bash
+   docker compose logs -f desktop
+   ```
+   Chờ tới khi log báo dịch vụ đã sẵn sàng.
+3. Xem app nào đang chiếm cổng:
+   ```bash
+   lsof -i :3300        # macOS / Linux
+   netstat -ano | findstr :3300   # Windows
+   ```
+   Nếu cổng đã có app khác, trình duyệt sẽ mở trang (thường là 404) của app đó. Đổi cổng bằng `DESKTOP_PORT`.
+4. Bản cũ của thư mục này dùng cổng 3000, rất hay trùng với dev server hoặc Grafana. Chạy lại để dùng cổng mới:
+   ```bash
+   docker compose down && docker compose up -d --build
+   ```
 
 ## Lưu ý
 
