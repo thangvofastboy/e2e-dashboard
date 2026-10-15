@@ -12,6 +12,8 @@ export async function bundleUi(uiDir, entry = 'app.js') {
     seen.add(file);
     const src = await readFile(file, 'utf8');
     if (/^\s*export\s+default\b/m.test(src)) throw new Error(`export default is not supported: ${file}`);
+    // `export { a }` / `export { a } from './x.js'` lọt qua sẽ thành lỗi cú pháp trong bundle (cả trang trắng)
+    if (/^\s*export\s*\{/m.test(src)) throw new Error(`export { … } is not supported (export the declaration instead): ${file}`);
     for (const [, spec] of src.matchAll(IMPORT)) await visit(resolve(dirname(file), spec));
     const body = src.replace(IMPORT, '').replace(/^(\s*)export\s+(?=(async\s+)?function|const|let|class)/gm, '$1');
     parts.push(`// ${relative(uiDir, file)}\n${body}`);

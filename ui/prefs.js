@@ -43,7 +43,7 @@ export function applyPrefs() {
 }
 
 // Mục menu bị ẩn (Cài đặt hệ thống → Giao diện): Overview và Cài đặt hệ thống luôn hiện để còn đường bật lại.
-export const NAV_LOCKED = new Set(['overview', 'system']);
+export const NAV_LOCKED = new Set(['overview', 'system', 'setup']); // 1 Click Setup: không ẩn được, luôn có đường cài khi project thiếu
 export function storedHiddenNav() {
   try {
     const v = JSON.parse(get('e2ed-nav-hidden') ?? '[]');

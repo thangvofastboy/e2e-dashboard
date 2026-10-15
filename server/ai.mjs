@@ -31,12 +31,21 @@ export function cacheKey(action, runId, resultId = '', variant = '') {
 
 // Bối cảnh dự án do người dùng viết (Cài đặt › Dự án): gửi kèm mọi lần gọi qua --append-system-prompt.
 // Không nằm trong khối dữ liệu không tin cậy; vẫn cắt để lời nhắc không phình.
+// memory: bản ghi nhớ AI tự viết sau khi đọc dự án (server/aimemory.mjs), testDir: thư mục chứa test
 export function projectBlock(project) {
   const sources = (Array.isArray(project?.sources) ? project.sources : []).slice(0, 20);
   const prompt = String(project?.prompt ?? '').trim().slice(0, 8000);
-  if (!sources.length && !prompt) return '';
+  const testDir = String(project?.testDir ?? '').trim().slice(0, 300);
+  const memory = String(project?.memory ?? '').trim().slice(0, 6000);
+  if (!sources.length && !prompt && !testDir && !memory) return '';
   const dirs = sources.map((s) => `- ${String(s.path).slice(0, 300)}${s.description ? `: ${String(s.description).slice(0, 500)}` : ''}`).join('\n');
-  return ['Bối cảnh dự án (người dùng viết):', dirs && `Thư mục nguồn của hệ thống:\n${dirs}`, prompt && `Hướng dẫn của người dùng:\n${prompt}`].filter(Boolean).join('\n\n');
+  return [
+    'Bối cảnh dự án (người dùng viết):',
+    testDir && `Thư mục chứa test e2e: ${testDir}`,
+    dirs && `Thư mục nguồn của hệ thống:\n${dirs}`,
+    prompt && `Hướng dẫn của người dùng:\n${prompt}`,
+    memory && `Ghi nhớ về hệ thống (AI đã đọc dự án và tóm tắt; mã nguồn có thể đã đổi, kiểm lại khi cần):\n${memory}`,
+  ].filter(Boolean).join('\n\n');
 }
 
 // Điểm chất lượng (server/quality.mjs) thành các dòng bằng chứng cho action quality-review: test tệ nhất trước
@@ -558,7 +567,8 @@ export function createAi({ projectRoot, spawnImpl = nodeSpawn, maxConcurrent = 2
     // settings của dự án đọc lỗi thì vẫn chạy, chỉ thiếu bối cảnh
     const proj = await Promise.resolve().then(project).catch(() => null);
     const block = projectBlock(proj);
-    const dirs = (Array.isArray(proj?.sources) ? proj.sources : []).slice(0, 20).map((s) => resolve(projectRoot, String(s.path))).filter((d) => isAbsolute(d) && !d.startsWith('-'));
+    const paths = [...(Array.isArray(proj?.sources) ? proj.sources : []).slice(0, 20).map((s) => String(s.path)), ...(proj?.testDir ? [String(proj.testDir)] : [])];
+    const dirs = [...new Set(paths.map((p) => resolve(projectRoot, p)))].filter((d) => isAbsolute(d) && !d.startsWith('-'));
     return new Promise((done) => {
       // model / effort của riêng lần gọi đè Settings; giá trị sai bị bỏ qua
       const pick = { model, ...settings(), ...(validModel(oneModel) ? { model: oneModel } : {}), ...(AI_EFFORTS.includes(oneEffort) ? { effort: oneEffort } : {}) };

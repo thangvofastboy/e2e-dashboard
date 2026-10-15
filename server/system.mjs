@@ -59,7 +59,8 @@ export async function ensureIgnored(root, name) {
 export async function ensureEnvFile(root) {
   const env = join(root, '.env');
   const example = join(root, '.env.example');
-  if (existsSync(env)) return [];
+  // .env đã có mà git chưa bỏ qua: thêm vào .gitignore (mục ".env không bị commit" hứa setup sẽ làm việc này)
+  if (existsSync(env)) return (await ensureIgnored(root, '.env')) ? ['Đã thêm .env vào .gitignore.'] : [];
   if (!existsSync(example)) return ['Project chưa có .env (và không có .env.example để tạo) — test cần biến môi trường sẽ fail.'];
   await refuseSymlink(env);
   // .env.example của repo là symlink (vd. tới ~/.aws/credentials): copyFile sẽ chép file bí mật đó vào project
@@ -275,6 +276,7 @@ export async function setupStatus(root, { reporter, summary: given } = {}) {
   const summary = given ?? (await envSummary(root));
   const missing = summary.keys.filter((k) => k.state !== 'set').length;
   const env = summary.files.find((f) => f.name === '.env');
+  const hasExample = summary.files.some((f) => f.name === '.env.example' && f.exists);
   const t = tools();
   const nodeMajor = Number(process.versions.node.split('.')[0]);
   const nodeOk = nodeMajor >= 22;
@@ -282,8 +284,10 @@ export async function setupStatus(root, { reporter, summary: given } = {}) {
   const e2e = existsSync(join(root, 'node_modules', 'e2e', 'package.json'));
   return [
     { id: 'reporter', ok: Boolean(reporter?.installed), label: 'Reporter e2e-dashboard', detail: reporter?.installed ? `v${reporter.version}${reporter.version !== reporter.latest ? ` (mới nhất v${reporter.latest})` : ''}` : 'Chưa cài: bấm Chạy setup', fix: 'setup' },
-    { id: 'env', ok: env.exists && !missing, label: 'File .env', detail: !env.exists ? 'Chưa có: Chạy setup sẽ tạo từ .env.example' : missing ? `${missing} key chưa điền giá trị thật` : 'Đủ key', fix: env.exists ? null : 'setup' },
-    { id: 'ignore', ok: env.ignored !== false && !env.tracked, label: '.env không bị commit', detail: env.tracked ? 'Đang bị git track (secret đã vào lịch sử): chạy git rm --cached .env rồi commit, và đổi các secret đã lộ' : env.ignored === false ? 'Git chưa bỏ qua .env: Chạy setup để thêm vào .gitignore' : 'Đã có trong .gitignore', fix: env.tracked ? null : 'setup' },
+    // không có .env.example thì setup không tạo được .env: đừng hứa "tự cài" (Quick Setup sẽ đòi chạy lại mãi)
+    { id: 'env', ok: env.exists && !missing, label: 'File .env', detail: !env.exists ? (hasExample ? 'Chưa có: Chạy setup sẽ tạo từ .env.example' : 'Chưa có (project không có .env.example): tạo .env khi test cần biến môi trường') : missing ? `${missing} key chưa điền giá trị thật` : 'Đủ key', fix: env.exists || !hasExample ? null : 'setup', optional: !env.exists && !hasExample },
+    // chưa có .env thì chưa có gì để lộ; setup chỉ thêm .env vào .gitignore khi tạo .env (không thì Quick Setup đòi chạy mãi)
+    { id: 'ignore', ok: (!env.exists && !env.tracked) || (env.ignored !== false && !env.tracked), label: '.env không bị commit', detail: env.tracked ? 'Đang bị git track (secret đã vào lịch sử): chạy git rm --cached .env rồi commit, và đổi các secret đã lộ' : !env.exists ? 'Chưa có .env' : env.ignored === false ? 'Git chưa bỏ qua .env: Chạy setup để thêm vào .gitignore' : 'Đã có trong .gitignore', fix: env.tracked ? null : 'setup' },
     { id: 'e2e', ok: e2e, label: 'e2e CLI trong node_modules', detail: e2e ? 'Đã cài' : 'Chưa cài: chạy npm install', fix: null },
     { id: 'node', ok: nodeOk, label: 'Node.js', detail: `${process.version}${nodeOk ? '' : ': cần Node ≥ 22'}`, fix: null },
     { id: 'index', ok: sqliteOn, label: 'Chỉ mục SQLite', detail: sqliteOn ? 'Đang bật: .e2e-dashboard/cache/index.sqlite' : sqliteSupport().ok ? 'Đang tắt (bật ở mục Hệ thống bên dưới để nhanh hơn với lịch sử lớn)' : `Đang tắt. ${sqliteSupport().reason}`, fix: null, optional: true },

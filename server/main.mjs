@@ -32,6 +32,7 @@ import { ciConfig, createCiSync, syncCi } from './cisync.mjs';
 import { reportSchedule, createReportScheduler, sendReport } from './reports.mjs';
 import { publishSite } from './site.mjs';
 import { readSettings } from './settings.mjs';
+import { createLearner, effectiveTestDir, readMemory } from './aimemory.mjs';
 import { quickSetupRunning } from './quicksetup.mjs';
 
 const UI_DIR = fileURLToPath(new URL('../ui', import.meta.url));
@@ -138,10 +139,29 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
   let last = null; // shown in /api/info so a skipped report (bad schema, unsafe path) is not silent
   // a report written after this server started is a finished run: tell the desktop (M3)
   // bối cảnh dự án (Cài đặt › Dự án) gửi kèm mọi lần gọi AI
-  const project = () => readSettings(projectRoot);
+  // + thư mục test (đặt hoặc đoán) và bản ghi nhớ AI tự viết về hệ thống (server/aimemory.mjs)
+  const project = async () => {
+    const st = await readSettings(projectRoot);
+    const [td, mem] = await Promise.all([effectiveTestDir(projectRoot, st), readMemory(projectRoot)]);
+    return { ...st, testDir: td.path, memory: mem?.text ?? '' };
+  };
   const ai = createAi({ projectRoot, project, settings: () => aiPrefs(process.env, readConfig(projectRoot)) });
   // viết nội dung QC theo mẫu (kể cả tự log bug): không có công cụ nào
   const qcAi = createAi({ projectRoot, project, args: AI_NO_TOOLS_ARGS, settings: () => aiPrefs(process.env, readConfig(projectRoot)) });
+  // AI ghi nhớ dự án: đọc thư mục test + thư mục nguồn, viết bản ghi nhớ. Mỗi project một AI riêng (cwd = project),
+  // bối cảnh gửi kèm không có bản ghi nhớ cũ (viết lại từ mã nguồn, không chép lại chính nó); cho phép chạy lâu hơn
+  const learnAis = new Map();
+  const learner = createLearner({
+    aiFor: (root) => {
+      if (!learnAis.has(root)) {
+        learnAis.set(root, createAi({ projectRoot: root, timeoutMs: 600_000, maxConcurrent: 1, settings: () => aiPrefs(process.env, readConfig(root)), project: async () => {
+          const st = await readSettings(root);
+          return { ...st, testDir: (await effectiveTestDir(root, st)).path };
+        } }));
+      }
+      return learnAis.get(root);
+    },
+  });
   void syncIndex(projectRoot).catch(() => {}); // chỉ mục SQLite: dựng / bổ sung nền lúc khởi động
   const onArchive = async (r) => {
     last = r;
@@ -271,6 +291,7 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
     projectRoot, token, uiDir, live, lastArchive: () => last, runner,
     ai,
     qcAi,
+    learner,
     onEvent: (e) => {
       if (e?.type === 'run-started' && e.artifactsRoot) watcher.retarget(outputFromArtifactsRoot(e.artifactsRoot), e.artifactsRoot);
     },

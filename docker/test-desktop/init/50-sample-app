@@ -1,0 +1,6 @@
+#!/usr/bin/with-contenv bash
+# Chép app mẫu vào home người dùng (chỉ lần đầu) để có một project cho 1 Click Setup.
+if [ ! -d /config/sample-app ]; then
+  cp -r /opt/e2e-dashboard/docker/test-desktop/sample-app /config/sample-app
+  chown -R abc:abc /config/sample-app
+fi

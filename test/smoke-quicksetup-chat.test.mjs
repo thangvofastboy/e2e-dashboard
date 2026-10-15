@@ -3,7 +3,7 @@ import './_home.mjs';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { mkdtempSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -73,7 +73,55 @@ test('Hỏi AI dạng chat: câu đầu /ask mở session, câu sau /followup re
 test('bundle UI (/app.js) và CSS có khung chat + Quick Setup', async () => {
   const js = await (await fetch(`${base}/app.js`, { headers: auth })).text();
   assert.match(js, /chat-log/);
-  assert.match(js, /data-quick-run/);
+  assert.match(js, /1 Click Setup/);
+  assert.match(js, /quick-setup\/run/);
   const css = await (await fetch(`${base}/style.css`, { headers: auth })).text();
   assert.match(css, /\.chat-input/);
+});
+
+test('Quick Setup: kế hoạch có hệ điều hành đang chạy', async () => {
+  const plan = await (await fetch(`${base}/api/system/quick-setup`, { headers: auth })).json();
+  assert.ok(plan.os?.label);
+  assert.equal(plan.items[0].id, 'os');
+});
+
+test('e2e.config: GET đọc URL app / lệnh, POST sửa đúng hai giá trị, kiểu sai bị 400', async () => {
+  const cfgPath = join(root, 'e2e.config.ts');
+  const before = readFileSync(cfgPath, 'utf8');
+  writeFileSync(cfgPath, before.replace("defineConfig({", "defineConfig({\n  targets: [{ engine: web(), app: {\n    url: process.env.APP_URL ?? 'http://localhost:3000',\n  } }],"));
+  try {
+    const cur = await (await fetch(`${base}/api/system/e2e-config`, { headers: auth })).json();
+    assert.equal(cur.exists, true);
+    assert.equal(cur.appUrl, 'http://localhost:3000');
+    const r = await (await fetch(`${base}/api/system/e2e-config`, { method: 'POST', headers: auth, body: JSON.stringify({ appUrl: 'http://localhost:5173', command: 'npm run dev' }) })).json();
+    assert.deepEqual(r.changed, ['URL app', 'lệnh khởi động']);
+    assert.equal(r.command, 'npm run dev');
+    assert.match(readFileSync(cfgPath, 'utf8'), /command: \{ executable: 'npm', args: \['run', 'dev'\] \}/);
+    const bad = await fetch(`${base}/api/system/e2e-config`, { method: 'POST', headers: auth, body: JSON.stringify({ appUrl: 42 }) });
+    assert.equal(bad.status, 400);
+  } finally {
+    writeFileSync(cfgPath, before);
+  }
+});
+
+test('AI cho e2e: GET trả provider + danh sách; POST đổi provider và lưu key vào .env; provider lạ bị từ chối', async () => {
+  const cfgPath = join(root, 'e2e.config.ts');
+  const before = readFileSync(cfgPath, 'utf8');
+  writeFileSync(cfgPath, "import type { E2EConfig } from 'e2e';\nexport default {\n  targets: [],\n} satisfies E2EConfig;\n");
+  try {
+    const cur = await (await fetch(`${base}/api/system/e2e-config`, { headers: auth })).json();
+    assert.equal(cur.ai.provider, 'none');
+    assert.ok(cur.providers.some((p) => p.id === 'anthropic' && p.kind === 'key'));
+    const r = await (await fetch(`${base}/api/system/ai`, { method: 'POST', headers: auth, body: JSON.stringify({ provider: 'anthropic', apiKey: 'sk-ant-smoke' }) })).json();
+    assert.equal(r.provider, 'anthropic');
+    assert.equal(r.keySaved, true);
+    assert.match(readFileSync(join(root, '.env'), 'utf8'), /^ANTHROPIC_API_KEY=sk-ant-smoke$/m);
+    assert.match(readFileSync(cfgPath, 'utf8'), /import \{ anthropic \} from '@ai-sdk\/anthropic';/);
+    const plan = await (await fetch(`${base}/api/system/quick-setup`, { headers: auth })).json();
+    assert.deepEqual(plan.items.find((x) => x.id === 'ai').cmd.slice(-3), ['ai', 'zod', '@ai-sdk/anthropic']);
+    const bad = await fetch(`${base}/api/system/ai`, { method: 'POST', headers: auth, body: JSON.stringify({ provider: 'xyz' }) });
+    assert.equal(bad.status, 400);
+  } finally {
+    writeFileSync(cfgPath, before);
+  }
 });

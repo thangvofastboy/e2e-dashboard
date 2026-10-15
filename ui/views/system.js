@@ -1,7 +1,7 @@
 import { AI_MODELS } from '../ai-models.js';
-import { getJson, postJson, postStream } from '../api.js';
+import { getJson, postJson } from '../api.js';
 import { confirmDialog } from '../confirm.js';
-import { pageHead, copyToClipboard } from '../analysis.js';
+import { pageHead } from '../analysis.js';
 import { toast } from '../toast.js';
 import { escapeHtml, cap } from '../format.js';
 import { icon } from '../icons.js';
@@ -12,6 +12,7 @@ import { FONT_SCALES, storedTheme, setTheme, storedFont, setFont, NAV_LOCKED, st
 import { storedIconOnly, setIconOnly } from '../icon-only.js';
 import { renderMarkdown } from '../markdown.js';
 import { GUIDE_MD } from '../guide.js';
+import { memoryHtml, pollMemory, relearn } from '../project-context.js';
 
 const STATE = { set: ['good', 'check', 'Đã điền'], placeholder: ['warn', 'alert', 'Còn giá trị mẫu'], empty: ['bad', 'x', 'Trống'], missing: ['bad', 'x', 'Chưa có'] };
 const chip = (state) => {
@@ -48,12 +49,15 @@ const srcRowHtml = (s = {}) => `<li class="src-row" data-src-row>
     <button type="button" class="small-btn" data-src-del>${icon('close', { size: 13 })}Xoá</button></li>`;
 
 // Tab Dự án: các thư mục nguồn (đường dẫn + mô tả) và Prompt; mọi lần gọi AI đều kèm khối bối cảnh này
-export function projectSourcesHtml(prefs) {
+export function projectSourcesHtml(prefs, ctx = null) {
   const sources = prefs?.sources ?? [];
   const prompt = prefs?.prompt ?? '';
+  const t = ctx?.memory?.inputs;
   return `<section class="panel"><h2>${icon('layers', { size: 18 })} Dự án</h2>
     <p class="muted">Các thư mục mã nguồn của hệ thống (vd. backend, frontend) kèm mô tả, và Prompt mô tả hệ thống, rule, workflow. Mọi lần gọi AI của dashboard đều gửi kèm phần này, và AI được đọc các thư mục đó.</p>
     <form data-sources-form>
+      <label class="fb-field"><span>Thư mục chứa test <span class="muted small">(file *.e2e.ts; để trống: tự đoán${t?.testDirDetected ? `, đang dùng <code>${escapeHtml(t.testDir)}</code>` : ''})</span></span>
+        <input name="testDir" value="${escapeHtml(prefs?.testDir ?? '')}" placeholder="tests" autocomplete="off" spellcheck="false" aria-label="Thư mục chứa test"></label>
       <h3>Thư mục nguồn <span class="muted small">(tối đa ${SRC_MAX}; đường dẫn tương đối với project hoặc tuyệt đối)</span></h3>
       <ul class="src-list" data-src-list>${sources.map(srcRowHtml).join('')}</ul>
       <p><button type="button" data-src-add${sources.length >= SRC_MAX ? ' disabled' : ''}>${icon('folder', { size: 14 })}Thêm thư mục</button></p>
@@ -61,7 +65,8 @@ export function projectSourcesHtml(prefs) {
         <textarea class="proj-prompt" name="prompt" rows="8" maxlength="${PROMPT_MAX}" placeholder="Hệ thống gồm… Quy ước đặt tên… Luồng nghiệp vụ chính…" aria-label="Prompt cho AI">${escapeHtml(prompt)}</textarea></label>
       <p class="err small tone-bad" data-sources-err hidden></p>
       <div class="form-row"><button type="submit" class="primary">${icon('check', { size: 14 })}Lưu</button></div>
-    </form></section>`;
+    </form>
+    <div data-sys-mem>${memoryHtml(ctx?.memory)}</div></section>`;
 }
 
 // đọc form Dự án; trả { sources, prompt } hoặc { error }
@@ -74,7 +79,7 @@ function readSourcesForm(f) {
   if (j >= 0) return { error: `Dòng ${j + 1}: mô tả dài quá ${SRC_DESC_MAX} ký tự.` };
   const prompt = f.prompt.value;
   if (prompt.length > PROMPT_MAX) return { error: `Prompt dài quá ${PROMPT_MAX} ký tự.` };
-  return { sources, prompt };
+  return { sources, prompt, testDir: f.testDir.value.trim() };
 }
 
 const GB = (n) => `${Math.round(n * 10) / 10} GB`;
@@ -189,22 +194,6 @@ function userHtml(u, linear = null) {
   </section>`;
 }
 
-// kế hoạch Quick Setup: mục thiếu, lệnh sẽ chạy (tự cài) hoặc lệnh để copy (chạy tay: cần mật khẩu sudo, Node…)
-export function quickPlanHtml(plan) {
-  const todo = plan.items.filter((x) => !x.ok);
-  if (!todo.length) return `<p class="tone-good">${icon('check', { size: 14 })} Máy đã đủ mọi thứ, không cần cài gì.</p>`;
-  const rows = todo.map((x) => {
-    const auto = plan.steps.includes(x.id);
-    return `<li class="setup-item"><span class="tone-${auto ? 'warn' : 'muted'}">${icon(auto ? 'download' : 'terminal', { size: 15 })}</span>
-      <span><strong>${escapeHtml(x.label)}</strong>${x.optional ? ' <span class="muted small">(tuỳ chọn)</span>' : ''}<br><span class="muted small">${escapeHtml(x.detail)}</span><br>
-      <code>${escapeHtml(x.display ?? '')}</code> <span class="chip tone-${auto ? 'warn' : 'muted'}">${auto ? 'Tự cài' : 'Chạy tay'}</span>${auto ? '' : ` <button type="button" class="icon-btn" data-copy-cmd="${escapeHtml(x.display ?? '')}" aria-label="Copy lệnh">${icon('copy', { size: 13 })}</button>`}</span></li>`;
-  }).join('');
-  const sudoNote = !plan.canSudo && todo.some((x) => !plan.steps.includes(x.id) && /^sudo /.test(x.display ?? '')) ? '<p class="muted small">Lệnh cần mật khẩu sudo không chạy được từ trình duyệt: copy chạy trong terminal, hoặc chạy <code>/e2e-dashboard setup --quick</code> để cài hết (sudo sẽ hỏi mật khẩu).</p>' : '';
-  return `<ul class="setup-list">${rows}</ul>${sudoNote}
-    ${plan.steps.length ? `<p><button type="button" class="primary" data-quick-run="${escapeHtml(plan.steps.join(','))}">${icon('download', { size: 14 })}Cài tất cả (${plan.steps.length})</button></p>` : ''}
-    <pre class="log" data-quick-log hidden></pre>`;
-}
-
 function setupHtml(items) {
   const rows = items.map((x) => `<li class="setup-item"><span class="tone-${x.ok ? 'good' : x.optional ? 'muted' : 'bad'}">${icon(x.ok ? 'check' : x.optional ? 'info' : 'x', { size: 15 })}</span>
       <span><strong>${escapeHtml(x.label)}</strong><br><span class="muted small">${escapeHtml(x.detail)}</span></span></li>`).join('');
@@ -213,8 +202,7 @@ function setupHtml(items) {
   return `<section class="panel"><h2>${icon('flask', { size: 18 })} Thiết lập project</h2>
     ${sysStats(sysStat('Mục đạt', `${ok}/${items.length}`, ok === items.length ? 'good' : 'warn'), sysStat('Cần sửa', items.filter((x) => !x.ok && !x.optional).length, items.some((x) => !x.ok && !x.optional) ? 'bad' : 'good'), sysStat('Tuỳ chọn chưa bật', items.filter((x) => !x.ok && x.optional).length, 'muted'))}
     <ul class="setup-list">${rows}</ul>
-    <p><button type="button" class="${needs ? 'primary' : ''}" data-quick>${icon('zap', { size: 14 })}Quick Setup</button> <span class="muted small">Kiểm tra máy và thư viện (Git, Node, e2e, node_modules, Chromium + headless shell, Claude CLI, reporter, .env), xem lệnh sẽ chạy rồi cài phần còn thiếu.</span></p>
-    <div data-quick-box hidden></div>
+    <p><a class="button keep-label${needs ? ' primary' : ''}" href="#/setup">${icon('zap', { size: 14 })}Mở 1 Click Setup</a> <span class="muted small">Trang riêng: cài mọi thứ còn thiếu bằng một nút (thư viện, gói AI, trình duyệt, reporter, .env), chọn model AI và sửa e2e.config.ts.</span></p>
     <p><button type="button" data-doctor>${icon('recycle', { size: 14 })}Chạy doctor</button> <span class="muted small">Chuyển dữ liệu cũ sang bố cục mới (runs/YYYY/MM/DD, state/, runtime/) và dựng lại chỉ mục SQLite.</span></p>
     <pre class="log" data-setup-out hidden></pre>
   </section>`;
@@ -364,6 +352,17 @@ export async function renderSystem(main) {
     getJson('/api/settings').catch(() => null),
     getJson('/api/resources').catch(() => null), // chưa có endpoint (404) → "không đo được"
   ]);
+  let projCtx = await getJson('/api/project-context').catch(() => null); // thư mục test + trạng thái AI ghi nhớ
+  let stopMem = () => {};
+  const showMem = (m) => {
+    const box = main.querySelector('[data-sys-mem]');
+    if (box) box.innerHTML = memoryHtml(m);
+  };
+  const watchMem = () => {
+    stopMem();
+    stopMem = pollMemory(projCtx?.root ?? '', showMem);
+  };
+  if (projCtx?.memory?.state === 'learning') watchMem();
   let editing = null; // file env đang mở
   const urlTab = () => new URLSearchParams(location.hash.split('?')[1] ?? '').get('tab');
   let tab = SYS_TABS.some(([k]) => k === urlTab()) ? urlTab() : 'appearance';
@@ -372,7 +371,7 @@ export async function renderSystem(main) {
     return todo ? `<span class="sys-badge" title="Cần xem">${todo}</span>` : '';
   };
   const draw = () => {
-    const panes = { appearance: appearanceHtml(), project: setupHtml(d.setup) + envHtml(d.env), integrations: userHtml(d.user, linearInfo) + linearIssuesFormHtml(prefs?.linear ?? { emails: [], statuses: [] }), ai: healHtml(heal, d.user.selfHeal, d.user.ai), about: infoHtml(d, resources, prefs?.browsers?.installed), reset: junkHtml(junkInfo) + resetHtml(resetInfo), sources: projectSourcesHtml(prefs), guide: guideHtml() };
+    const panes = { appearance: appearanceHtml(), project: setupHtml(d.setup) + envHtml(d.env), integrations: userHtml(d.user, linearInfo) + linearIssuesFormHtml(prefs?.linear ?? { emails: [], statuses: [] }), ai: healHtml(heal, d.user.selfHeal, d.user.ai), about: infoHtml(d, resources, prefs?.browsers?.installed), reset: junkHtml(junkInfo) + resetHtml(resetInfo), sources: projectSourcesHtml(prefs, projCtx), guide: guideHtml() };
     main.innerHTML = `${pageHead('Cài đặt hệ thống', 'settings', 'Giao diện, biến môi trường của project, key của dashboard và tình trạng setup.')}
       <div class="sys">
         <div class="sys-nav" role="tablist" aria-orientation="vertical" aria-label="Nhóm cài đặt">${SYS_TABS.map(([k, label, ic, sub]) => `<button type="button" role="tab" id="sys-tab-${k}" data-sys-tab="${k}" aria-selected="${k === tab}" aria-controls="sys-pane-${k}" tabindex="${k === tab ? 0 : -1}"><span class="sys-nav-ic">${icon(ic, { size: 20 })}</span><span class="sys-nav-t"><strong>${label}</strong><span class="small">${sub}</span></span>${badge(k)}</button>`).join('')}</div>
@@ -507,6 +506,15 @@ export async function renderSystem(main) {
       return;
     }
     if (b.dataset.guideSec) return void main.querySelectorAll('#sys-pane-guide .md h2')[Number(b.dataset.guideSec)]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if ('ctxRelearn' in b.dataset) {
+      b.disabled = true;
+      const m = await relearn(projCtx?.root ?? '').catch((x) => toast(x.message, 'bad'));
+      if (m) {
+        showMem(m);
+        watchMem();
+      }
+      return;
+    }
     if ('srcAdd' in b.dataset || 'srcDel' in b.dataset) {
       const list = main.querySelector('[data-src-list]');
       if ('srcDel' in b.dataset) b.closest('[data-src-row]').remove();
@@ -582,48 +590,10 @@ export async function renderSystem(main) {
         const out = main.querySelector('[data-setup-out]');
         out.hidden = false;
         out.textContent = [...r.lines, ...r.warn.map((w) => `Lưu ý: ${w}`)].join('\n');
-      } else if ('quick' in b.dataset) {
-        b.setAttribute('aria-busy', 'true');
-        const box = main.querySelector('[data-quick-box]');
-        box.innerHTML = quickPlanHtml(await getJson('/api/system/quick-setup'));
-        box.hidden = false;
-        b.removeAttribute('aria-busy');
-      } else if ('copyCmd' in b.dataset) {
-        copyToClipboard(b.dataset.copyCmd, b);
-      } else if ('quickRun' in b.dataset) {
-        b.setAttribute('aria-busy', 'true');
-        b.disabled = true;
-        const out = main.querySelector('[data-quick-log]');
-        out.hidden = false;
-        const lines = [];
-        const push = (t) => {
-          lines.push(t);
-          out.textContent = lines.slice(-400).join('\n');
-          out.scrollTop = out.scrollHeight;
-        };
-        let failed = 0;
-        await postStream('/api/system/quick-setup/run', { ids: b.dataset.quickRun.split(',') }, (e) => {
-          if (e.type === 'step') push(`\n▶ ${e.label}\n$ ${e.display}`);
-          if (e.type === 'log') push(e.text);
-          if (e.type === 'step-done') {
-            if (!e.ok) failed++;
-            push(e.ok ? '✓ Xong' : `✗ Lỗi (mã ${e.code})`);
-          }
-          if (e.type === 'error') {
-            failed++;
-            push(`✗ ${e.message}`);
-          }
-        });
-        toast(failed ? `Quick Setup: ${failed} bước lỗi, xem log` : 'Quick Setup xong', failed ? 'bad' : 'good');
-        const log = lines.join('\n');
-        await reload();
-        const keep = main.querySelector('[data-setup-out]');
-        keep.hidden = false;
-        keep.textContent = log.trim();
       }
     } catch (x) {
       b.removeAttribute('aria-busy');
-      b.disabled = false; // nút Cài tất cả bị khoá khi bắt đầu: 409 / lỗi mạng thì mở lại để bấm lần nữa
+      b.disabled = false; // nút bị khoá khi bắt đầu: lỗi thì mở lại để bấm lần nữa
       toast(x.message, 'bad');
     }
   });
@@ -639,7 +609,10 @@ export async function renderSystem(main) {
       try {
         await postJson('/api/settings', v);
         prefs = { ...prefs, ...v };
-        toast('Đã lưu thư mục nguồn và Prompt');
+        projCtx = await getJson('/api/project-context').catch(() => projCtx);
+        showMem(projCtx?.memory);
+        if (projCtx?.memory?.state === 'learning') watchMem();
+        toast(projCtx?.memory?.state === 'learning' ? 'Đã lưu. AI đang đọc dự án để ghi nhớ (chạy nền)' : 'Đã lưu bối cảnh dự án');
       } catch (x) {
         err.hidden = false;
         err.textContent = x.message.replace(/^\d{3}: /, ''); // 400 của server: đường dẫn không tồn tại, quá dài…
@@ -673,4 +646,5 @@ export async function renderSystem(main) {
       toast(x.message, 'bad');
     }
   });
+  return () => stopMem(); // rời trang: thôi hỏi trạng thái AI ghi nhớ
 }

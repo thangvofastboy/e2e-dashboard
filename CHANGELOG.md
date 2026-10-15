@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.17.1 — 2026-10-15
+
+- **Máy Ubuntu có giao diện để thử 1 Click Setup** (`docker/test-desktop`): `docker compose up -d` rồi mở http://localhost:3000 để có desktop XFCE trong trình duyệt, mã repo mount sẵn ở `/opt/e2e-dashboard` và app mẫu ở `~/sample-app`. Thử `install.sh` từ marketplace hoặc bản đang phát triển (`E2E_DASHBOARD_PLUGIN_DIR`).
+
+## v0.17.0 — 2026-10-15
+
+- **Cài toàn bộ môi trường bằng một lệnh** (`install.sh` cho macOS / Linux / WSL, `install.ps1` cho Windows): phát hiện hệ điều hành (distro Linux, WSL, Alpine, phiên bản macOS / Windows) để cài đúng cách → git → Node ≥ 22.22.3 (nvm, không cần sudo) → Claude Code CLI → plugin → `e2e.config.ts` → AI cho e2e → Quick Setup → mở dashboard. In trước 9 bước, chạy với `[n/9]`, cuối cùng có bảng tổng kết. Chạy không tham số thì hỏi trước thư mục project, URL app, lệnh khởi động, model AI và API key (nhập ẩn), rồi cài một mạch.
+- **Trang 1 Click Setup** (menu *Tích hợp*): các bước cài theo thứ tự với nút *Cài tất cả* (trạng thái từng bước và log), API key nhập tại chỗ, chọn model AI, sửa URL app / lệnh khởi động trong `e2e.config.ts`. Mở dashboard mà project còn thiếu thì hiện popup *Thiết lập project* cùng nội dung.
+- **AI cho bước agent của e2e**: chọn model (Vercel AI Gateway, Anthropic, OpenRouter, OpenAI, gói ChatGPT / Copilot / OpenCode / Grok, model local), dashboard sửa `agents` trong config, cài gói npm của provider, lưu API key vào `.env` hoặc chạy `npx e2e login`. Lệnh `/e2e-dashboard ai`, `/e2e-dashboard config`, `/e2e-dashboard os`.
+- **Model `claude-code` (thử nghiệm)**: chạy `agent.act` / `agent.assert` bằng đăng nhập Pro/Max của Claude Code CLI qua gói cộng đồng `ai-sdk-provider-claude-code`, kèm lớp bọc giả lập tool call. Có cảnh báo về điều khoản và hạn mức; không phải mặc định.
+- **AI ghi nhớ dự án**: Thêm / Sửa project cho chọn thư mục chứa test và các thư mục khác kèm mô tả. Mỗi lần lưu, Claude đọc các thư mục đó và viết bản ghi nhớ về hệ thống; bản ghi nhớ đi kèm mọi lần gọi AI. Có trạng thái và nút *AI đọc lại dự án*.
+- **Tự cập nhật plugin**: script cài và trang 1 Click Setup bật auto-update của marketplace `e2e-dashboard` trong `settings.json` của Claude Code (mặc định Claude Code tắt với marketplace bên thứ ba); lệnh `/e2e-dashboard autoupdate [on|off]`.
+- **`/e2e-dashboard` ở thư mục chưa có e2e**: tự chạy `npx e2e init` trước rồi mở dashboard (không chạy ở thư mục home hay `/`; bỏ qua bằng `--no-init`).
+- **Sửa lỗi**: `setup --quick` trong terminal treo ở bước gắn reporter; Quick Setup đòi cài lại mãi khi project không có `.env.example` hoặc `.env` chưa vào `.gitignore`; Quick Setup kiểm tra Node theo đúng ngưỡng của e2e; phần Model AI hiển thị đúng ở chế độ tối; bộ đóng gói giao diện báo lỗi ngay khi gặp cú pháp làm trắng trang.
+
 ## v0.16.3 — 2026-10-15
 
 - **Bảng sửa testcase của issue Linear dễ nhìn hơn**: mỗi testcase là một thẻ có số `TC 1`, ô tiêu đề rộng và nút xoá; các bước và kết quả mong đợi chia hai cột, nhãn nằm trên ô, ô tự cao theo nội dung. Nút *Lưu testcase* là nút chính; *Gen e2e* báo rõ cần lưu trước.

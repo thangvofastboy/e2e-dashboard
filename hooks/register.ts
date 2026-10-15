@@ -110,8 +110,10 @@ async function updatePlugin($: EngineInterface) {
 
 // start | setup | stop | status | export [runId] | digest | projects | statusline: the same CLI the markdown command runs, argv without a shell.
 async function runCli($: EngineInterface, argv: string[]) {
+  // mở dashboard có thể phải chạy `npx e2e init` trước (lần đầu npx tải gói e2e): cho chờ lâu hơn
+  const opening = argv.length === 0 || argv[0] === 'start' || argv[0] === 'open'
   const run = await $.process.run(['node', `${$.plugin.root}/bin/dashboard.mjs`, ...argv], {
-    timeoutMs: 60000,
+    timeoutMs: opening ? 240000 : 60000,
     env: { CLAUDE_PLUGIN_ROOT: $.plugin.root },
   })
   const out = `${run.stdout}${run.stderr}`.trim() || `dashboard.mjs thoát mã ${run.exitCode}`

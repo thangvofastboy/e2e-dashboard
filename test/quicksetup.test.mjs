@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { quickSetupPlan, runQuickSetup, pickPm, spawnStep, jsPm, quickSetupRunning } from '../server/quicksetup.mjs';
+import { quickSetupPlan, runQuickSetup, pickPm, spawnStep, jsPm, quickSetupRunning, nodeOkForE2e } from '../server/quicksetup.mjs';
+import { osInfo } from '../server/osinfo.mjs';
 
 const project = (pkg, installed = []) => {
   const root = mkdtempSync(join(tmpdir(), 'e2ed-qs-'));
@@ -14,7 +15,7 @@ const project = (pkg, installed = []) => {
   }
   return root;
 };
-const base = { os: 'linux', which: (c) => c === 'apt-get', canSudo: false, nodeMajor: 22, browser: 'chromium', setupItems: [], tools: { git: 'git 2', gh: 'gh 2', claude: '1.0' }, browserEntries: ['chromium-1243', 'chromium_headless_shell-1243'] };
+const base = { autoUpdate: { enabled: true }, os: 'linux', which: (c) => c === 'apt-get', canSudo: false, nodeMajor: 22, browser: 'chromium', setupItems: [], tools: { git: 'git 2', gh: 'gh 2', claude: '1.0' }, browserEntries: ['chromium-1243', 'chromium_headless_shell-1243'] };
 const item = (plan, id) => plan.items.find((x) => x.id === id);
 
 test('máy đủ hết: không có bước nào', async () => {
@@ -98,19 +99,20 @@ test('spawnStep: lệnh không tồn tại trả 127, abort giết tiến trình
   assert.notEqual(await p, 0);
 });
 
-test('quickPlanHtml: mục tự cài có nút Cài tất cả, mục chạy tay có nút copy, không gửi lệnh lên server', async () => {
-  const { quickPlanHtml } = await import('../ui/views/system.js');
+test('stepsHtml (trang 1 Click Setup / popup): bước tự cài đánh số, nút Cài tất cả, mục làm tay có copy, mục đã có thu gọn', async () => {
+  const { stepsHtml } = await import('../ui/setup-steps.js');
   const plan = { canSudo: false, steps: ['browsers'], items: [
     { id: 'git', label: 'Git', ok: false, detail: 'Chưa cài', display: 'sudo apt-get install -y git', manual: true },
     { id: 'browsers', label: 'Trình duyệt', ok: false, detail: 'Thiếu headless shell', display: 'npx @e2e-dev/web install chromium' },
     { id: 'node', label: 'Node', ok: true, detail: 'v22' },
   ] };
-  const html = quickPlanHtml(plan);
-  assert.match(html, /data-quick-run="browsers"/);
-  assert.match(html, /data-copy-cmd="sudo apt-get install -y git"/);
-  assert.match(html, /setup --quick/);
-  assert.doesNotMatch(html, /Node/);
-  assert.match(quickPlanHtml({ steps: [], items: [{ id: 'x', ok: true }] }), /không cần cài/);
+  const html = stepsHtml(plan, { showOk: true });
+  assert.match(html, /data-step="browsers"[\s\S]*Bước 1\/1/);
+  assert.match(html, /data-run>[\s\S]*Cài tất cả \(1\)/);
+  assert.match(html, /data-copy="sudo apt-get install -y git"/);
+  assert.match(html, /Đã có \/ tuỳ chọn \(1\)[\s\S]*Node/);
+  assert.doesNotMatch(stepsHtml(plan), /Đã có \/ tuỳ chọn/); // popup: không liệt kê mục đã có
+  assert.doesNotMatch(stepsHtml({ steps: [], items: [{ id: 'x', ok: true }] }), /data-run/);
 });
 
 test('jsPm theo lockfile: pnpm / yarn / bun dùng đúng lệnh, Yarn PnP không đòi node_modules', async () => {
@@ -148,5 +150,91 @@ test('spawnStep huỷ thì giết cả nhóm tiến trình (cháu không sống 
   ac.abort();
   await p;
   await new Promise((r) => setTimeout(r, 100));
-  assert.throws(() => process.kill(Number(out[0]), 0)); // tiến trình cháu đã chết
+  // tiến trình cháu đã chết; zombie (đã chết, chờ PID 1 thu dọn — gặp trong container) cũng tính là chết
+  const pid = Number(out[0]);
+  let zombie = false;
+  try { zombie = readFileSync(`/proc/${pid}/stat`, 'utf8').replace(/^.*\) /, '').startsWith('Z'); } catch {}
+  if (!zombie) assert.throws(() => process.kill(pid, 0));
+});
+
+test('runQuickSetup: bước project dùng hàm setup được truyền vào (CLI không import lại chính bin/dashboard.mjs)', async () => {
+  const root = project(null);
+  const plan = { items: [{ id: 'project', label: 'p', internal: true }], steps: ['project'] };
+  const ev = [];
+  const r = await runQuickSetup(root, ['project'], { plan, setup: async (dir) => [`setup ${dir === root}`], onEvent: (e) => ev.push(e) });
+  assert.deepEqual(r.results, [{ id: 'project', ok: true, code: 0 }]);
+  assert.ok(ev.some((e) => e.type === 'log' && e.text === 'setup true'));
+});
+
+test('setup --quick qua CLI chạy hết bước project, không treo ở top-level await', { skip: process.platform === 'win32' }, async () => {
+  const { spawnSync } = await import('node:child_process');
+  const root = project({ devDependencies: { e2e: '1', '@e2e-dev/web': '1' } }, ['e2e', '@e2e-dev/web']);
+  writeFileSync(join(root, 'e2e.config.ts'), "export default {\n  tests: 'tests',\n};\n");
+  // trình duyệt giả + claude/git sẵn trên PATH không quan trọng: chỉ cần bước project chạy xong
+  const browsers = mkdtempSync(join(tmpdir(), 'e2ed-br-'));
+  for (const d of ['chromium-1', 'chromium_headless_shell-1']) mkdirSync(join(browsers, d));
+  const r = spawnSync(process.execPath, [join(import.meta.dirname, '..', 'bin', 'dashboard.mjs'), 'setup', '--quick', '--yes'], {
+    cwd: root, encoding: 'utf8', timeout: 60000, env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: browsers, PATH: '' },
+  });
+  const out = r.stdout + r.stderr;
+  assert.doesNotMatch(out, /unsettled top-level await/);
+  assert.match(out, /Đã thêm reporter vào e2e\.config\.ts/);
+});
+
+test('kế hoạch theo hệ điều hành: Fedora dùng dnf, Alpine dùng apk (gh là github-cli), --with-deps chỉ khi có apt-get', async () => {
+  const root = project({ devDependencies: { e2e: '1', '@e2e-dev/web': '1' } }, ['e2e', '@e2e-dev/web']);
+  const sys = (osRelease) => osInfo({ platform: 'linux', arch: 'x64', env: {}, osRelease, procVersion: '', exists: () => false });
+  const noTools = { ...base, canSudo: true, tools: { git: 'git 2', gh: null, claude: '1' }, browserEntries: [] };
+  const fedora = await quickSetupPlan(root, { ...noTools, osInfo: sys('ID=fedora\nPRETTY_NAME="Fedora Linux 40"'), which: (c) => ['dnf', 'apt-get'].includes(c) });
+  assert.equal(fedora.os.family, 'rhel');
+  assert.deepEqual(item(fedora, 'gh').cmd, ['sudo', '-n', 'dnf', 'install', '-y', 'gh']); // distro Fedora: dnf dù máy có apt-get
+  assert.ok(!item(fedora, 'browsers').cmd.includes('--with-deps'));
+  assert.match(item(fedora, 'os').detail, /Fedora Linux 40.*dnf/);
+  const alpine = await quickSetupPlan(root, { ...noTools, osInfo: sys('ID=alpine'), which: (c) => c === 'apk' });
+  assert.deepEqual(item(alpine, 'gh').cmd, ['sudo', '-n', 'apk', 'add', 'github-cli']);
+  assert.match(item(alpine, 'node').display, /apk add nodejs/);
+  const ubuntu = await quickSetupPlan(root, { ...noTools, osInfo: sys('ID=ubuntu'), which: (c) => c === 'apt-get' });
+  assert.ok(item(ubuntu, 'browsers').cmd.includes('--with-deps'));
+  assert.ok(!ubuntu.steps.includes('os')); // mục hệ điều hành chỉ để hiện
+});
+
+test('Node: ngưỡng của e2e (22.22.3 / 24.8), không phải chỉ ≥ 22', async () => {
+  const root = project({ devDependencies: { e2e: '1', '@e2e-dev/web': '1' } }, ['e2e', '@e2e-dev/web']);
+  for (const [v, ok] of [['22.22.0', false], ['22.22.3', true], ['24.7.0', false], ['24.8.0', true], ['25.0.0', true]]) {
+    assert.equal(item(await quickSetupPlan(root, { ...base, nodeVersion: v }), 'node').ok, ok, v);
+    assert.equal(nodeOkForE2e(v), ok, v);
+  }
+});
+
+test('AI cho e2e: thiếu gói của provider → bước cài; thiếu API key / đăng nhập → làm tay kèm lệnh', async () => {
+  const root = project({ devDependencies: { e2e: '1', '@e2e-dev/web': '1' } }, ['e2e', '@e2e-dev/web']);
+  const ai = { provider: 'anthropic', label: 'Anthropic', kind: 'key', packages: ['ai', 'zod', '@ai-sdk/anthropic'], missing: ['@ai-sdk/anthropic'], install: ['npm', 'install', '-D', '@ai-sdk/anthropic'], installDisplay: 'npm install -D @ai-sdk/anthropic', env: 'ANTHROPIC_API_KEY', keyState: 'missing', keyUrl: 'https://console.anthropic.com/settings/keys' };
+  const plan = await quickSetupPlan(root, { ...base, ai });
+  assert.deepEqual(item(plan, 'ai').cmd, ['npm', 'install', '-D', '@ai-sdk/anthropic']);
+  assert.ok(plan.steps.includes('ai'));
+  assert.equal(item(plan, 'ai-key').manual, true);
+  assert.match(item(plan, 'ai-key').display, /ANTHROPIC_API_KEY=… trong \.env/);
+  const sub = await quickSetupPlan(root, { ...base, ai: { provider: 'copilot', label: 'GitHub Copilot (đăng nhập)', kind: 'login', packages: ['ai'], missing: [], loggedIn: false, loginDisplay: 'npx e2e login github-copilot' } });
+  assert.equal(item(sub, 'ai').ok, true);
+  assert.equal(item(sub, 'ai-login').ok, false);
+  assert.equal(item(sub, 'ai-login').display, 'npx e2e login github-copilot');
+  assert.equal((await quickSetupPlan(root, base)).items.find((x) => x.id === 'ai').ok, true); // không có config / không dùng AI: không bắt cài gì
+});
+
+test('setup không hứa việc nó không làm được: thiếu .env mà không có .env.example thì không thành bước tự cài', async () => {
+  const { setupStatus, ensureEnvFile } = await import('../server/system.mjs');
+  const { execFileSync } = await import('node:child_process');
+  const root = project({});
+  execFileSync('git', ['init', '-q'], { cwd: root });
+  let items = await setupStatus(root, { reporter: { installed: true, version: '1', latest: '1' } });
+  const env = items.find((x) => x.id === 'env');
+  assert.equal(env.fix, null);
+  assert.equal(env.optional, true);
+  assert.equal(items.find((x) => x.id === 'ignore').ok, true); // chưa có .env: không có gì để lộ
+  writeFileSync(join(root, '.env'), 'A=1\n');
+  items = await setupStatus(root, { reporter: { installed: true, version: '1', latest: '1' } });
+  assert.equal(items.find((x) => x.id === 'ignore').fix, 'setup');
+  assert.deepEqual(await ensureEnvFile(root), ['Đã thêm .env vào .gitignore.']);
+  items = await setupStatus(root, { reporter: { installed: true, version: '1', latest: '1' } });
+  assert.equal(items.find((x) => x.id === 'ignore').ok, true);
 });

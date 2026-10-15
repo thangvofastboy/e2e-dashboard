@@ -24,3 +24,14 @@ test('rejects export default', async () => {
   writeFileSync(join(dir, 'app.js'), 'export default 1;\n');
   await assert.rejects(bundleUi(dir), /export default/);
 });
+
+test('bundle UI thật parse được (cú pháp module lạ như `export { … }` từng làm trắng cả trang)', async () => {
+  const js = await bundleUi(join(import.meta.dirname, '..', 'ui'));
+  assert.doesNotThrow(() => new Function(js)); // chỉ parse, không chạy
+});
+
+test('bundler từ chối `export { … }`', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'e2ed-bundle-'));
+  writeFileSync(join(dir, 'app.js'), "const a = 1;\nexport { a };\n");
+  await assert.rejects(bundleUi(dir), /export \{ … \} is not supported/);
+});

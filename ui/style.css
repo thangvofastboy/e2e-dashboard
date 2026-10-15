@@ -1408,3 +1408,54 @@ form[data-linear-issues] button { justify-self: start; }
 @media (max-width: 900px) { .tc-body { grid-template-columns: 1fr; } }
 /* chừa chỗ cho nút Hỏi AI nổi: cuộn hết trang thì nút cuối (Lưu, Gửi…) không bị che */
 body:has(.ai-fab) #main { padding-bottom: 88px; }
+
+/* Model AI (trang 1 Click Setup): dòng trạng thái tô theo tone, cảnh báo dạng banner; màu lấy từ biến theme nên đúng cả sáng / tối */
+.ai-model-status { list-style: none; margin: 6px 0 10px; padding: 0; display: grid; gap: 4px; }
+.ai-model-status .tone-good, .ai-model-status .tone-warn, .ai-model-status .tone-bad { color: var(--tone-ink); font-weight: 600; }
+.ai-warn { align-items: flex-start; flex-wrap: nowrap; }
+.ai-warn > .icon { flex: none; margin-top: 3px; }
+.ai-warn ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+/* đoạn văn mang tone (vd. "Máy đã đủ mọi thứ", trạng thái Linear): chữ theo màu tone của theme đang dùng */
+p.tone-good, p.tone-warn, p.tone-bad { color: var(--tone-ink); }
+/* popup 1 click setup: mở dashboard mà project chưa cài đủ. Màu lấy từ biến theme nên đúng cả sáng / tối */
+.setup-prompt { width: min(720px, calc(100vw - 32px)); }
+.setup-prompt h3 { margin: 4px 0 0; color: var(--text-secondary); }
+.sp-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: 46vh; overflow: auto; }
+.sp-step { display: grid; grid-template-columns: 20px 1fr auto; gap: 10px; align-items: start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.sp-step code { word-break: break-all; }
+.sp-state { color: var(--text-secondary); padding-top: 2px; }
+.sp-label { color: var(--text-secondary); white-space: nowrap; }
+.sp-step[data-state="run"] { border-color: var(--series-1); }
+.sp-step[data-state="run"] .sp-state, .sp-step[data-state="run"] .sp-label { color: var(--series-1); }
+.sp-step[data-state="run"] .sp-state .icon { animation: spin 1s linear infinite; }
+.sp-step[data-state="ok"] .sp-state, .sp-step[data-state="ok"] .sp-label { color: var(--good-ink); }
+.sp-step[data-state="fail"] { border-color: var(--bad); }
+.sp-step[data-state="fail"] .sp-state, .sp-step[data-state="fail"] .sp-label { color: var(--bad-ink); }
+.sp-step[data-state="manual"] .sp-state, .sp-step[data-state="manual"] .sp-label { color: var(--warn-ink); }
+.sp-log pre { max-height: 220px; overflow: auto; margin: 6px 0 0; }
+.setup-prompt footer { flex-wrap: wrap; }
+.setup-prompt .sp-spacer { flex: 1; }
+@media (prefers-reduced-motion: reduce) { .sp-step[data-state="run"] .sp-state .icon { animation: none; } }
+.setup-prompt [data-progress]:empty { display: none; }
+.setup-prompt .run-form > p { margin: 0; }
+.sp-key { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.sp-key input { flex: 1 1 220px; font: inherit; padding: 6px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-primary); }
+/* trang 1 Click Setup: các khung xếp dọc, không kéo giãn khung cuối cho đầy màn hình */
+.setup-page { display: flex; flex-direction: column; gap: 16px; }
+.setup-page > .panel { margin: 0; }
+/* bối cảnh dự án cho AI (hộp Thêm / Sửa project, tab Dự án): đường dẫn + nút Chọn…, trạng thái AI ghi nhớ */
+.project-dialog { width: min(760px, calc(100vw - 32px)); }
+.project-dialog form { max-height: calc(100vh - 64px); overflow: auto; }
+.ctx-path { display: flex; gap: 8px; align-items: center; }
+.ctx-path input { flex: 1 1 auto; min-width: 0; }
+.ctx-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; }
+.ctx-memory { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.ctx-memory > p { margin: 4px 0; }
+.ctx-mem-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ctx-mem-head .small-btn { margin-inline-start: auto; }
+.ctx-memory[data-state="learning"] .chip .icon { animation: spin 1s linear infinite; }
+.ctx-mem-text .md { max-height: 320px; overflow: auto; margin-top: 6px; }
+.project-ai { margin: 4px 0 0; }
+@media (prefers-reduced-motion: reduce) { .ctx-memory[data-state="learning"] .chip .icon { animation: none; } }
+@media (max-width: 900px) { .ctx-row { grid-template-columns: 1fr; } }
+.ctx-row textarea, .src-row textarea { font: inherit; }

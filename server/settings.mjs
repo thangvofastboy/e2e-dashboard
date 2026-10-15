@@ -2,6 +2,7 @@
 // workers: số worker mặc định cho run do dashboard khởi động; null = để e2e tự chọn theo máy.
 import { availableParallelism, homedir } from 'node:os';
 import { realpath, stat, lstat } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { resolve, isAbsolute, sep, parse } from 'node:path';
 import { readState, writeState, serial } from './jsonstate.mjs';
 import { validBrowser } from './browsers.mjs';
@@ -85,13 +86,33 @@ export async function normalizeSources(root, input, { lenient = false } = {}) {
 
 const validPrompt = (p) => typeof p === 'string' && p.length <= PROMPT_MAX;
 
+// Thư mục chứa file test (*.e2e.ts): cùng luật với thư mục nguồn; '' = để dashboard tự đoán (detectTestDir)
+export async function normalizeTestDir(root, input) {
+  const path = String(input ?? '').trim();
+  if (!path) return '';
+  if (path.length > 300) throw badSource('Đường dẫn thư mục test tối đa 300 ký tự');
+  const realRoot = await realpath(root);
+  const home = await realpath(homedir()).catch(() => homedir());
+  return (await oneSource(root, realRoot, home, { path })).path;
+}
+
+// đoán thư mục test: `tests: '…'` trong e2e.config, không thì thư mục có sẵn đầu tiên trong tests / e2e / test
+export function detectTestDir(root, configSource = '') {
+  const m = /\btests?\s*:\s*['"`]([^'"`*{]+)/.exec(configSource);
+  const fromConfig = m?.[1]?.replace(/\/+$/, '').replace(/^\.\//, '');
+  for (const d of [fromConfig, 'tests', 'e2e', 'test'].filter(Boolean)) if (existsSync(resolve(root, d))) return d;
+  return '';
+}
+
 export async function readSettings(root) {
   const s = await readState(root, FILE, {});
   // thư mục tạm biến mất (repo chưa checkout, ổ chưa mount) / file sửa tay: bỏ riêng dòng hỏng, không bỏ cả danh sách
   const sources = Array.isArray(s?.sources) && s.sources.length && s.sources.length <= SOURCES_MAX ? await normalizeSources(root, s.sources, { lenient: true }).catch(() => []) : [];
   // sqlite: dùng chỉ mục SQLite (cache/index.sqlite) — mặc định tắt, bật ở trang Cài đặt hệ thống (cần Node ≥ 22.13)
   // headed: mở trình duyệt khi chạy (mặc định tắt); sources / prompt: bối cảnh dự án gửi kèm mọi lần gọi AI
-  return { workers: validWorkers(s?.workers) ? s.workers : null, sqlite: s?.sqlite === true, browser: validBrowser(s?.browser) ? s.browser : 'chromium', headed: s?.headed === true, linear: linearOrEmpty(s?.linear), sources, prompt: validPrompt(s?.prompt) ? s.prompt : '' };
+  // testDir: thư mục chứa file test (Projects › Sửa project, Cài đặt › Dự án); hỏng / mất thì coi như chưa đặt
+  const testDir = typeof s?.testDir === 'string' && s.testDir ? await normalizeTestDir(root, s.testDir).catch(() => '') : '';
+  return { workers: validWorkers(s?.workers) ? s.workers : null, sqlite: s?.sqlite === true, browser: validBrowser(s?.browser) ? s.browser : 'chromium', headed: s?.headed === true, linear: linearOrEmpty(s?.linear), sources, prompt: validPrompt(s?.prompt) ? s.prompt : '', testDir };
 }
 
 export function writeSettings(root, patch) {
@@ -103,11 +124,12 @@ export function writeSettings(root, patch) {
     if (patch?.prompt !== undefined && !validPrompt(patch.prompt)) throw Object.assign(new Error(`Prompt phải là chuỗi tối đa ${PROMPT_MAX} ký tự`), { status: 400 });
     const linear = patch?.linear !== undefined ? normalizeLinear(patch.linear) : undefined;
     const sources = patch?.sources !== undefined ? await normalizeSources(root, patch.sources) : undefined;
+    const testDir = patch?.testDir !== undefined ? await normalizeTestDir(root, patch.testDir) : undefined;
     const pick = (k, v = patch?.[k]) => (v !== undefined ? { [k]: v } : {});
     // sources không đổi thì giữ nguyên bản trên đĩa: bản đọc đã bỏ dòng hỏng, ghi lại sẽ làm mất thư mục tạm vắng mặt
     const raw = await readState(root, FILE, {});
     const keep = Array.isArray(raw?.sources) ? { sources: raw.sources } : {};
-    const next = { ...(await readSettings(root)), ...keep, ...pick('workers'), ...pick('sqlite'), ...pick('browser'), ...pick('headed'), ...pick('linear', linear), ...pick('sources', sources), ...pick('prompt') };
+    const next = { ...(await readSettings(root)), ...keep, ...pick('workers'), ...pick('sqlite'), ...pick('browser'), ...pick('headed'), ...pick('linear', linear), ...pick('sources', sources), ...pick('prompt'), ...pick('testDir', testDir) };
     await writeState(root, FILE, next);
     return next;
   });

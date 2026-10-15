@@ -27,6 +27,21 @@ Từ máy trống tới lúc chạy test e2e và đọc kết quả trên dashbo
 
 ## 4. Cài và mở e2e-dashboard
 
+**Cách nhanh: một lệnh cho máy mới.** Đứng ở thư mục project e2e rồi chạy (macOS / Linux):
+
+\`\`\`bash
+curl -fsSL https://raw.githubusercontent.com/thangvofastboy/e2e-dashboard/main/install.sh | bash
+\`\`\`
+
+Windows (PowerShell): \`irm https://raw.githubusercontent.com/thangvofastboy/e2e-dashboard/main/install.ps1 | iex\`.
+Chạy không tham số thì script hỏi trước: thư mục project, URL app, lệnh khởi động app, **model AI** cho bước agent (API key nhập ẩn, hoặc đăng nhập gói ChatGPT / Copilot…), có mở dashboard không; rồi cài một mạch.
+
+Script in trước 9 bước rồi chạy lần lượt (\`[n/9]\`, dòng *Đang …* cho biết đang cài gì): phát hiện hệ điều hành (macOS, distro Linux, WSL, Windows) để chọn đúng cách cài → git → Node ≥ 22.22.3 (qua nvm, không cần sudo) → Claude Code CLI → plugin → cấu hình \`e2e.config.ts\` (chưa có thì tạo bằng \`e2e init\`, hỏi URL app và lệnh khởi động app) → AI cho e2e (chọn model, cài gói npm của provider như \`@ai-sdk/anthropic\`, lưu API key vào \`.env\` hoặc \`npx e2e login\`; có thêm \`claude-code\` thử nghiệm dùng đăng nhập Claude Code CLI thay cho API key, kèm cảnh báo về điều khoản và hạn mức) → Quick Setup của project (e2e, thư viện, Chromium, reporter, .env) → mở dashboard. Cuối cùng in bảng tổng kết từng bước. Phần đã có thì bỏ qua. Thêm \`--dry-run\` để xem trước, \`--init --yes --app-url … --app-command "npm run dev"\` để không phải trả lời câu hỏi. Muốn làm tay thì theo các bước dưới.
+
+Cho AI hiểu hệ thống: trang *Projects* → bút chì (Sửa project) hoặc *Cài đặt hệ thống › Dự án*: chọn **thư mục chứa test** và thêm **thư mục khác** (backend, frontend, tài liệu…) kèm mô tả. Bấm Lưu: Claude đọc các thư mục đó và viết bản ghi nhớ về hệ thống (khoảng nửa phút), bản ghi nhớ đi kèm mọi lần gọi AI. Sửa lại là AI đọc lại; mã nguồn đổi nhiều thì bấm *AI đọc lại dự án*.
+
+Sửa \`e2e.config.ts\` sau này: *trang 1 Click Setup* (model AI + API key, URL app, lệnh khởi động app), hoặc \`/e2e-dashboard config\` và \`/e2e-dashboard ai\`. Lưu ý: e2e không tự đọc \`.env\`; khi chọn model dùng API key, dashboard thêm dòng \`process.loadEnvFile('.env')\` vào config.
+
 **Bước 1.** Trong Claude Code, thêm marketplace và cài plugin:
 
 \`\`\`text
@@ -35,7 +50,7 @@ Từ máy trống tới lúc chạy test e2e và đọc kết quả trên dashbo
 /reload-plugins
 \`\`\`
 
-**Bước 2.** Đứng ở thư mục project e2e, gõ \`/e2e-dashboard\`: server chạy nền và mở trình duyệt. Lần sau gõ lại chỉ mở trình duyệt.
+**Bước 2.** Đứng ở thư mục project, gõ \`/e2e-dashboard\`: server chạy nền và mở trình duyệt. Chưa có \`e2e.config.ts\` thì lệnh tự chạy \`npx e2e init\` trước. Lần sau gõ lại chỉ mở trình duyệt. Project còn thiếu phần cài đặt thì dashboard hiện popup **Thiết lập project**: bấm **Cài tất cả** để cài theo thứ tự ngay trong popup, API key nhập luôn ở đó.
 
 **Bước 3** (tuỳ chọn). \`/e2e-dashboard setup\`: gắn reporter vào \`e2e.config.ts\` để xem tiến độ live. Hãy commit 2 file reporter được tạo ra; trên CI (\`CI=true\`) reporter tự tắt.
 
