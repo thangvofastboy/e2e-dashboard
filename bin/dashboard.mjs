@@ -307,6 +307,7 @@ export async function main(argv, cwd) {
     if (!existsSync(join(root, 'e2e-dashboard.reporter.mjs'))) lines.push('Gợi ý: chạy `/e2e-dashboard setup` để xem tiến độ live.');
     return { code: 0, out: lines.join('\n') };
   }
+  if (cmd === 'setup' && argv.includes('--quick')) return quickSetupCli(root, argv.includes('--yes'));
   if (cmd === 'setup') return { code: 0, out: (await setup(root)).join('\n') };
   if (cmd === 'doctor') {
     // chuyển dữ liệu .e2e-dashboard sang bố cục mới (runs theo ngày, state/, runtime/), dựng lại chỉ mục SQLite
@@ -449,4 +450,32 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const r = await main(process.argv.slice(2), process.cwd()).catch((e) => ({ code: 1, out: `Lỗi: ${e.message}` }));
   process.stdout.write(`${r.out}\n`);
   process.exit(r.code);
+}
+
+// `/e2e-dashboard setup --quick [--yes]`: như nút Quick Setup, nhưng chạy trong terminal nên sudo hỏi được mật khẩu
+async function quickSetupCli(root, yes) {
+  const { quickSetupPlan, runQuickSetup } = await import('../server/quicksetup.mjs');
+  const { reporterStatus } = await import('../server/app.mjs');
+  const plan = await quickSetupPlan(root, { interactive: true, reporter: reporterStatus(root) });
+  for (const x of plan.items) console.log(`${x.ok ? '✓' : plan.steps.includes(x.id) ? '↓' : '!'} ${x.label}: ${x.detail}${x.ok ? '' : `\n    $ ${x.display}`}`);
+  const manual = plan.items.filter((x) => !x.ok && !plan.steps.includes(x.id));
+  if (!plan.steps.length) return { code: manual.length ? 1 : 0, out: manual.length ? 'Không có gì tự cài được; các mục "!" cần làm tay.' : 'Máy đã đủ mọi thứ.' };
+  if (!yes) {
+    if (!process.stdin.isTTY) return { code: 1, out: `Sẽ chạy ${plan.steps.length} bước. Thêm --yes để cài khi không có terminal.` };
+    const { createInterface } = await import('node:readline/promises');
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const ans = await rl.question(`Cài ${plan.steps.length} mục đánh dấu ↓? [y/N] `);
+    rl.close();
+    if (!/^y(es)?$/i.test(ans.trim())) return { code: 1, out: 'Đã huỷ.' };
+  }
+  const { results } = await runQuickSetup(root, plan.steps, {
+    interactive: true, inherit: true, reporter: () => reporterStatus(root),
+    onEvent: (e) => {
+      if (e.type === 'step') console.log(`\n▶ ${e.label}\n$ ${e.display}`);
+      if (e.type === 'log') console.log(e.text);
+      if (e.type === 'step-done') console.log(e.ok ? '✓ Xong' : `✗ Lỗi (mã ${e.code})`);
+    },
+  });
+  const bad = results.filter((r) => !r.ok).length;
+  return { code: bad ? 1 : 0, out: bad ? `${bad} bước lỗi.` : 'Quick Setup xong.' };
 }

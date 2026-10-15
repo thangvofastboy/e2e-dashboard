@@ -261,6 +261,9 @@ function tool(cmd, args = ['--version']) {
   const r = spawnSync(cmd, args, { encoding: 'utf8', timeout: 5000 });
   return r.status === 0 ? (r.stdout || r.stderr).trim().split('\n')[0].slice(0, 80) : null;
 }
+export function resetTools() {
+  toolCache = null;
+}
 export function tools() {
   toolCache ??= { claude: tool('claude'), gh: tool('gh'), git: tool('git') };
   return toolCache;
