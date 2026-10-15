@@ -37,7 +37,7 @@ export async function renderQcTemplates(main) {
           <section class="panel"><h2>${icon('sparkles', { size: 18 })} Dùng mẫu</h2>
             <div class="form-row"><span class="form-label">Dữ liệu</span>${pickerHtml({ name: 'src', rows: srcRows, value: src, emptyLabel: ALL_RUN, attrs: 'data-src aria-label="Test hoặc run"' })}</div>
             <div class="form-row"><button type="button" data-use="prompt">${icon('copy', { size: 14 })}Chép prompt</button>
-              <button type="button" class="primary" data-use="ai">${icon('sparkles', { size: 14 })}Để AI viết</button></div>
+              <button type="button" class="primary" data-use="ai">${icon('yinyang', { size: 14 })}Để AI viết</button></div>
             <p class="muted small" data-missing></p>
             <pre class="tpl-out" data-out hidden></pre>
             <p class="row-actions" data-out-actions hidden><button type="button" data-copy-out>${icon('copy', { size: 14 })}Chép kết quả</button></p>

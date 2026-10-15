@@ -15,7 +15,7 @@ export function errorGroupHtml(g, { compact = false } = {}) {
       <span class="eg-msg">${escapeHtml(g.message)}</span>
       <span class="eg-count muted">${escapeHtml(g.tests.length)} test · ${escapeHtml(g.count)} lần${compact ? '' : ` · ${escapeHtml(g.runs)} run`}</span></summary>
     <div class="eg-body">
-      ${isExport() || !g.latest ? '' : `<p><button type="button" class="btn-ai" data-explain-group="${escapeHtml(g.id)}" data-run="${escapeHtml(g.latest.runId)}" data-title="${escapeHtml(g.message.slice(0, 60))}">${icon('sparkles', { size: 14 })}AI giải thích nhóm này</button> <span class="muted small">Nguyên nhân chung, do app hay do test, cách sửa</span></p>`}
+      ${isExport() || !g.latest ? '' : `<p><button type="button" class="btn-ai" data-explain-group="${escapeHtml(g.id)}" data-run="${escapeHtml(g.latest.runId)}" data-title="${escapeHtml(g.message.slice(0, 60))}">${icon('yinyang', { size: 14 })}AI giải thích nhóm này</button> <span class="muted small">Nguyên nhân chung, do app hay do test, cách sửa</span></p>`}
       ${g.locator ? `<div><span class="muted">Locator:</span> <code>${escapeHtml(g.locator)}</code></div>` : ''}
       <div class="muted small">Mẫu: <code>${escapeHtml(g.pattern)}</code>${compact ? '' : ` · lần đầu ${escapeHtml(fmtRelative(g.firstSeen))} · gần nhất ${escapeHtml(fmtRelative(g.lastSeen))}`}</div>
       <ul class="eg-tests">${tests}</ul>${g.tests.length > (compact ? 6 : 30) ? `<p class="muted small">…và ${g.tests.length - (compact ? 6 : 30)} test khác</p>` : ''}

@@ -166,7 +166,7 @@ export function chatRequest(sessionId, question) {
 // id = chat trong lịch sử (session đầu tiên), sessionId = session để hỏi tiếp
 const NEW_CHAT = () => ({ id: null, title: null, sessionId: null, msgs: [] });
 let chat = NEW_CHAT();
-const ACTION_LABEL = { ask: 'Hỏi AI', 'analyze-failure': 'Phân tích lỗi', 'analyze-run': 'Phân tích run', 'suggest-locator': 'Gợi ý locator', 'why-flaky': 'Vì sao flaky', 'repro-steps': 'Bước tái hiện', 'run-summary': 'Tóm tắt run' };
+const ACTION_LABEL = { ask: 'Hỏi AI', 'analyze-failure': 'Phân tích lỗi', 'analyze-run': 'Phân tích run', 'suggest-locator': 'Gợi ý locator', 'why-flaky': 'Vì sao flaky', 'repro-steps': 'Bước tái hiện', 'run-summary': 'Tóm tắt run', 'req-coverage': 'Độ phủ yêu cầu', 'explore-charter': 'Charter khám phá', 'test-data': 'Dữ liệu test', 'bug-dupe': 'Bug trùng' };
 const shortTitle = (q) => (q.length > 60 ? `${q.slice(0, 59)}…` : q);
 
 // danh sách chat đã lưu (mới nhất trước): bấm để mở lại và hỏi tiếp, nút × để xoá
@@ -195,7 +195,7 @@ export function openAskPanel() {
   panel.id = 'ai-panel';
   panel.className = 'ai-chat';
   panel.setAttribute('aria-label', 'Hỏi AI');
-  panel.innerHTML = `<header><h2>${icon('sparkles', { size: 16 })}Hỏi AI về bộ test</h2><span class="chat-head-btns"><button type="button" class="icon-btn" data-new title="Cuộc trò chuyện mới" aria-label="Cuộc trò chuyện mới">${icon('plus')}</button><button type="button" class="icon-btn" data-close aria-label="Đóng">${icon('close')}</button></span></header>
+  panel.innerHTML = `<header><h2>${icon('yinyang', { size: 16 })}Hỏi AI về bộ test</h2><span class="chat-head-btns"><button type="button" class="icon-btn" data-new title="Cuộc trò chuyện mới" aria-label="Cuộc trò chuyện mới">${icon('plus')}</button><button type="button" class="icon-btn" data-close aria-label="Đóng">${icon('close')}</button></span></header>
     <div class="chat-log" aria-live="polite"></div>
     <form class="chat-input"><textarea name="q" rows="1" placeholder="Nhắn cho AI… (Enter gửi, Shift+Enter xuống dòng)" aria-label="Câu hỏi" maxlength="4000"></textarea><button type="submit" aria-label="Gửi">${icon('send', { size: 14 })}</button></form>`;
   document.body.append(panel);

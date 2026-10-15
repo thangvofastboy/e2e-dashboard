@@ -48,24 +48,28 @@ export async function getJson(path) {
   });
 }
 
-export async function postJson(path, body) {
-  if (EXPORT) throw new Error('Bản export chỉ đọc');
-  // the button clicked just before this request shows a spinner until the server answers
+// the button clicked just before a POST shows a spinner until the server answers (or the stream ends)
+async function busyButton(work) {
   const btn = lastClick && Date.now() - lastClick.at < 1000 ? lastClick.el : null;
   if (btn) busyCount.set(btn, (busyCount.get(btn) ?? 0) + 1);
   btn?.setAttribute('aria-busy', 'true');
   try {
-    return await tracked(async () => {
-      const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-      if (!res.ok) throw await httpError(res);
-      return res.json();
-    });
+    return await tracked(work);
   } finally {
     if (btn) {
       busyCount.set(btn, busyCount.get(btn) - 1);
       if (!busyCount.get(btn)) btn.removeAttribute('aria-busy'); // two overlapping posts: wait for both
     }
   }
+}
+
+export async function postJson(path, body) {
+  if (EXPORT) throw new Error('Bản export chỉ đọc');
+  return busyButton(async () => {
+    const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) throw await httpError(res);
+    return res.json();
+  });
 }
 
 export function encodePath(rel) {
@@ -147,16 +151,19 @@ export function createSseParser(onEvent) {
   };
 }
 
+// AI / cài đặt chạy lâu: thanh hoạt động + spinner trên nút đã bấm suốt lúc stream chạy
 export async function postStream(path, body, onEvent, signal) {
   if (EXPORT) throw new Error('Bản export chỉ đọc');
-  const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal });
-  if (!res.ok) throw await httpError(res);
-  const feed = createSseParser(onEvent);
-  const reader = res.body.getReader();
-  const dec = new TextDecoder();
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    feed(dec.decode(value, { stream: true }));
-  }
+  return busyButton(async () => {
+    const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal });
+    if (!res.ok) throw await httpError(res);
+    const feed = createSseParser(onEvent);
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      feed(dec.decode(value, { stream: true }));
+    }
+  });
 }

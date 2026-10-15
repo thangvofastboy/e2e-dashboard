@@ -52,7 +52,7 @@ export function aiPanelHtml(c) {
         <small class="fld-hint">Lưu vào <code>.env</code> (quyền 600, tự vào .gitignore); config được thêm dòng đọc .env.</small></div>
       <div class="form-row" data-ai-local${ai.provider === 'openai-compatible' ? '' : ' hidden'}><span class="form-label">Server model</span><input type="url" name="baseURL" placeholder="http://127.0.0.1:11434/v1" aria-label="URL server model"><input type="text" name="modelId" placeholder="model id" aria-label="Model id" spellcheck="false"></div>
       ${status.length ? `<ul class="ai-model-status small">${status.map((x) => `<li>${x}</li>`).join('')}</ul>` : ''}${warn}
-      <p><button type="submit">${icon('sparkles', { size: 14 })}Lưu model AI</button> <span class="muted small" data-ai-msg></span></p>
+      <p><button type="submit">${icon('yinyang', { size: 14 })}Lưu model AI</button> <span class="muted small" data-ai-msg></span></p>
     </form>`;
 }
 

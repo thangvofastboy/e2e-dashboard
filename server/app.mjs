@@ -4,7 +4,7 @@ import { installedBrowsers, configSupport, validBrowser } from './browsers.mjs';
 import { quickSetupPlan, runQuickSetup, quickSetupRunning } from './quicksetup.mjs';
 import { findConfig as findConfigPath } from '../bin/project.mjs';
 import { indexedTestHistory, syncIndex, sqliteSupport, closeIndex, indexPath } from './runindex.mjs';
-import { failuresEvidence, runSummaryEvidence, whySlowEvidence, groupEvidence, triageEvidence, parseTriage, summaryState, testFiles, ticketEvidence, writeNewTest, selectTestsEvidence, locatorBatchEvidence, duplicateEvidence, releaseEvidence, visualEvidence } from './aiextra.mjs';
+import { failuresEvidence, runSummaryEvidence, whySlowEvidence, groupEvidence, triageEvidence, parseTriage, summaryState, testFiles, ticketEvidence, writeNewTest, selectTestsEvidence, reqCoverageEvidence, charterEvidence, testDataEvidence, bugDupeEvidence, locatorBatchEvidence, duplicateEvidence, releaseEvidence, visualEvidence } from './aiextra.mjs';
 import { envSummary, readEnvFile, writeEnvFile, userSummary, writeUser, setupStatus, aiPrefs } from './system.mjs';
 import { createReadStream, readFileSync, existsSync } from 'node:fs';
 import { pipeline } from 'node:stream';
@@ -270,8 +270,8 @@ const IDLE_RUNNER = { start: () => ({ ok: false, error: 'unavailable' }), stop: 
 // lịch sử từng test: từ chỉ mục SQLite khi có, không thì parse report như cũ
 // model / effort chọn cho riêng một lần gọi AI: hợp lệ thì vào khoá cache, sai thì bỏ (ai.run cũng bỏ)
 const aiVariant = (b) => [validModel(b?.model) ? b.model : '', AI_EFFORTS.includes(b?.effort) ? b.effort : ''].join('|').replace(/^\|$/, '');
-const SUITE_AI = new Set(['quality-review', 'ask', 'followup', 'route-test', 'ticket-test', 'select-tests', 'locator-batch', 'duplicate-tests', 'release-notes']);
-const SUITE_EVIDENCE = new Set(['ticket-test', 'select-tests', 'locator-batch', 'duplicate-tests', 'release-notes']);
+const SUITE_AI = new Set(['quality-review', 'ask', 'followup', 'route-test', 'ticket-test', 'select-tests', 'locator-batch', 'duplicate-tests', 'release-notes', 'req-coverage', 'explore-charter', 'test-data', 'bug-dupe']);
+const SUITE_EVIDENCE = new Set(['ticket-test', 'select-tests', 'locator-batch', 'duplicate-tests', 'release-notes', 'req-coverage', 'explore-charter', 'test-data', 'bug-dupe']);
 const DRAFT_DIR = /^(?!.*(?:^|\/)\.)(?!.*\.\.)[\w./ -]{1,150}$/;
 const historyTable = async (root, n) => (await indexedTestHistory(root, n).catch(() => null)) ?? testHistory(root, n);
 
@@ -805,7 +805,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return send(res, 200, await deleteChat(projectRoot, (await readBody(req)).id));
       }
       if (p.startsWith('/api/ai/')) {
-        const action = /^\/api\/ai\/(analyze-failure|analyze-run|suggest-locator|why-flaky|explore-to-test|route-test|ask|followup|run-summary|why-slow|explain-group|ticket-test|select-tests|locator-batch|duplicate-tests|release-notes|explain-visual|repro-steps|severity|dedupe-failures|quality-review)$/.exec(p)?.[1];
+        const action = /^\/api\/ai\/(analyze-failure|analyze-run|suggest-locator|why-flaky|explore-to-test|route-test|ask|followup|run-summary|why-slow|explain-group|ticket-test|select-tests|locator-batch|duplicate-tests|release-notes|explain-visual|repro-steps|severity|dedupe-failures|quality-review|req-coverage|explore-charter|test-data|bug-dupe)$/.exec(p)?.[1];
         if (!action) return send(res, 404, { error: 'unknown action' });
         const body = await readBody(req);
         // a question about the whole suite, or a follow-up in an existing session, needs no run
@@ -852,11 +852,11 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
             if (typeof body.ticket !== 'string' || body.ticket.trim().length < 10 || body.ticket.length > 8000) return send(res, 400, { error: 'Dán nội dung ticket (10–8000 ký tự)' });
             const folder = typeof body.folder === 'string' && DRAFT_DIR.test(body.folder) ? body.folder : null;
             evidence = ticketEvidence(body.ticket, folder, await testFiles(projectRoot));
-          } else if (action === 'select-tests') {
+          } else if (action === 'select-tests' || action === 'explore-charter') {
             const base = typeof body.base === 'string' && /^[\w./-]{1,100}$/.test(body.base) ? body.base : 'main';
             const files = await changedFiles(projectRoot, base).catch(() => null);
             if (!files?.length) return send(res, 400, { error: files ? `Không có file nào đổi so với ${base}` : 'Không đọc được git diff (không phải repo git, hoặc không có nhánh này)' });
-            evidence = selectTestsEvidence(base, files, await historyTable(projectRoot, 10));
+            evidence = action === 'select-tests' ? selectTestsEvidence(base, files, await historyTable(projectRoot, 10)) : charterEvidence(base, files);
           } else if (action === 'locator-batch') {
             const cfg = readConfig(projectRoot);
             const cands = [];
@@ -868,6 +868,12 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
             evidence = locatorBatchEvidence(cands);
           } else if (action === 'duplicate-tests') {
             evidence = duplicateEvidence(await loadHistory(projectRoot, 1));
+          } else if (action === 'req-coverage' || action === 'test-data' || action === 'bug-dupe') {
+            // cả ba nhận văn bản người dùng dán (yêu cầu / mô tả field / mô tả bug)
+            if (typeof body.text !== 'string' || body.text.trim().length < 10 || body.text.length > 8000) return send(res, 400, { error: 'Nhập nội dung (10–8000 ký tự)' });
+            evidence = action === 'req-coverage' ? reqCoverageEvidence(body.text, await historyTable(projectRoot, 10))
+              : action === 'test-data' ? testDataEvidence(body.text)
+              : bugDupeEvidence(body.text, groupErrors(await loadHistory(projectRoot, 30)));
           } else if (action === 'release-notes') {
             const tag = (v) => (typeof v === 'string' && /^[\w./-]{1,100}$/.test(v) ? v : null);
             evidence = releaseEvidence(await releaseReport(projectRoot, { from: tag(body.from), to: tag(body.to), slo: sloConfig(readConfig(projectRoot)).target }));
@@ -1372,6 +1378,19 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         if (!root) return send(res, 400, { error: 'Project chưa có trong danh sách Projects' });
         void learner.learn(root).catch(() => {});
         return send(res, 200, await learner.status(root));
+      }
+      if (p === '/api/projects/select') {
+        // chọn project để chạy: mở (khởi động nếu chưa chạy) dashboard của project đó; run ở đó chạy e2e trong thư mục project
+        const root = await knownRoot((await readBody(req)).root);
+        if (!root) return send(res, 400, { error: 'Project chưa có trong danh sách Projects' });
+        if (root === projectRoot) return send(res, 200, { current: true });
+        if (!findConfigPath(root)) return send(res, 400, { error: 'Project chưa có e2e.config.*: mở terminal ở thư mục đó và chạy /e2e-dashboard' });
+        try {
+          const { start } = await import('../bin/dashboard.mjs');
+          return send(res, 200, await start(root, { open: false }));
+        } catch (e) {
+          return send(res, 500, { error: e.message });
+        }
       }
       if (p === '/api/projects/forget') {
         const { root } = await readBody(req);

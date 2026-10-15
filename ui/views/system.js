@@ -12,7 +12,7 @@ import { FONT_SCALES, storedTheme, setTheme, storedFont, setFont, NAV_LOCKED, st
 import { storedIconOnly, setIconOnly } from '../icon-only.js';
 import { renderMarkdown } from '../markdown.js';
 import { GUIDE_MD } from '../guide.js';
-import { memoryHtml, pollMemory, relearn } from '../project-context.js';
+import { memoryHtml, pollMemory, relearn, CTX_PROMPT_MAX as PROMPT_MAX } from '../project-context.js';
 
 const STATE = { set: ['good', 'check', 'Đã điền'], placeholder: ['warn', 'alert', 'Còn giá trị mẫu'], empty: ['bad', 'x', 'Trống'], missing: ['bad', 'x', 'Chưa có'] };
 const chip = (state) => {
@@ -42,7 +42,6 @@ const SYS_TABS = [
 
 const SRC_MAX = 20;
 const SRC_DESC_MAX = 500;
-const PROMPT_MAX = 8000;
 const srcRowHtml = (s = {}) => `<li class="src-row" data-src-row>
     <input name="srcPath" value="${escapeHtml(s.path ?? '')}" placeholder="../crm-backend" aria-label="Đường dẫn thư mục" autocomplete="off" spellcheck="false">
     <textarea name="srcDesc" rows="2" maxlength="${SRC_DESC_MAX}" placeholder="Backend NestJS: API, auth, job nền" aria-label="Mô tả thư mục">${escapeHtml(s.description ?? '')}</textarea>
@@ -112,14 +111,14 @@ function guideHtml() {
   const secs = GUIDE_MD.split('\n').filter((l) => /^##\s/.test(l)).map((l) => l.replace(/^##\s+/, ''));
   return `<section class="panel"><div class="guide">
     <nav class="guide-toc" aria-label="Mục lục hướng dẫn">${secs.map((s, i) => `<button type="button" class="small-btn" data-guide-sec="${i}">${escapeHtml(s)}</button>`).join('')}</nav>
-    <div class="md">${renderMarkdown(GUIDE_MD)}</div></div></section>`;
+    <div class="md">${renderMarkdown(GUIDE_MD).replace(/<strong>(Bước \d+\.?)<\/strong>/g, (m, t) => `<strong class="step s${t.match(/\d+/)[0] % 4}">${t}</strong>`)}</div></div></section>`;
 }
 
 // Danh sách mục menu lấy từ menu trái đang hiển thị (tránh import vòng NAV từ app.js)
 function navPickHtml() {
   const hidden = storedHiddenNav();
   const items = [...document.querySelectorAll('.nav a[data-nav]')].filter((a) => !NAV_LOCKED.has(a.dataset.nav));
-  return `<div class="nav-pick">${items.map((a) => `<label><input type="checkbox" name="navShow" value="${escapeHtml(a.dataset.nav)}"${hidden.has(a.dataset.nav) ? '' : ' checked'}> ${escapeHtml(a.querySelector('.nl')?.textContent ?? a.dataset.nav)}</label>`).join('')}</div>`;
+  return `<div class="nav-pick">${items.map((a) => `<label class="switch small"><input type="checkbox" name="navShow" value="${escapeHtml(a.dataset.nav)}"${hidden.has(a.dataset.nav) ? '' : ' checked'}><span class="track"></span><span>${escapeHtml(a.querySelector('.nl')?.textContent ?? a.dataset.nav)}</span></label>`).join('')}</div>`;
 }
 
 function appearanceHtml() {

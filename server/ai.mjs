@@ -297,6 +297,74 @@ Trả lời: một đoạn giải thích ngắn, rồi đúng MỘT khối \`\`\
 PATH: <đường dẫn file đề xuất, trong thư mục test của project, đuôi .e2e.ts>
 `;
   }
+  if (action === 'req-coverage') {
+    return `${FRAME(language, fence)}
+
+Nhiệm vụ: đối chiếu yêu cầu dưới đây với các test e2e hiện có. Tách yêu cầu thành từng tiêu chí (acceptance criteria); với mỗi tiêu chí, tìm test đã kiểm tra nó (đọc file test bằng Read / Grep khi tên test chưa đủ rõ).
+
+<${fence}>
+${lines}
+</${fence}>
+
+Trả lời theo khung:
+## Độ phủ
+(bảng: Tiêu chí · Trạng thái ✅ có test / ⚠️ phủ một phần / ❌ chưa có · Test (key))
+## Còn thiếu
+(mỗi tiêu chí chưa phủ: kịch bản test nên thêm, 1–3 dòng)
+## Câu hỏi cho PO / dev
+(chỗ yêu cầu mơ hồ, nếu có)
+`;
+  }
+  if (action === 'explore-charter') {
+    return `${FRAME(language, fence)}
+
+Nhiệm vụ: soạn charter cho một phiên test khám phá (exploratory) dựa trên thay đổi code bên dưới. Đọc các file đổi (Read, \`git diff\` qua Bash nếu được phép) để hiểu màn / API / luồng bị ảnh hưởng.
+
+<${fence}>
+${lines}
+</${fence}>
+
+Trả lời theo khung:
+## Mục tiêu
+(Khám phá <vùng> với <tài nguyên / dữ liệu> để tìm <loại rủi ro>)
+## Vùng rủi ro
+(xếp theo mức độ, mỗi vùng một câu vì sao)
+## Checklist edge case
+(- [ ] dạng checklist: dữ liệu biên, quyền, mạng chậm / lỗi, thao tác lặp, trạng thái dở dang…)
+## Gợi ý thời lượng
+(phút cho mỗi vùng)
+`;
+  }
+  if (action === 'test-data') {
+    return `${FRAME(language, fence)}
+
+Nhiệm vụ: đề xuất bộ dữ liệu test cho form / field / API mô tả dưới đây: giá trị hợp lệ, giá trị biên, giá trị không hợp lệ (rỗng, quá dài, ký tự đặc biệt, unicode / emoji, sai định dạng, khoảng trắng đầu cuối, injection cơ bản). Nếu project có validate ở mã nguồn thì đọc (Grep / Read) để lấy đúng giới hạn.
+
+<${fence}>
+${lines}
+</${fence}>
+
+Trả lời: mỗi field một bảng (Giá trị · Loại: hợp lệ / biên / không hợp lệ · Kết quả mong đợi), rồi một khối \`\`\`json gom tất cả giá trị để dán vào test.
+`;
+  }
+  if (action === 'bug-dupe') {
+    return `${FRAME(language, fence)}
+
+Nhiệm vụ: trước khi log bug mới, kiểm tra nó có trùng với lỗi đã gặp không. So mô tả, thông báo lỗi và bước tái hiện với danh sách nhóm lỗi bên dưới (đọc test liên quan bằng Read khi cần).
+
+<${fence}>
+${lines}
+</${fence}>
+
+Trả lời theo khung:
+## Kết luận
+(Trùng / Có thể trùng / Mới — một câu vì sao)
+## Lỗi gần giống
+(mã nhóm lỗi, mức giống, điểm giống / khác)
+## Nếu là bug mới
+(tiêu đề gợi ý và bước tái hiện gọn)
+`;
+  }
   if (action === 'select-tests') {
     return `${FRAME(language, fence)}
 

@@ -288,6 +288,9 @@ export async function fixContext(root, runId, resultId) {
 }
 
 export async function main(argv, cwd) {
+  // alias: `1-setup` = `setup --quick` (1 Click Setup trong terminal), `setting` / `settings` = `config`
+  if (argv[0] === '1-setup') argv = ['setup', '--quick', ...argv.slice(1)];
+  else if (argv[0] === 'setting' || argv[0] === 'settings') argv = ['config', ...argv.slice(1)];
   const [first] = argv;
   if (first === 'os') {
     const { osInfo } = await import('../server/osinfo.mjs');
@@ -471,7 +474,7 @@ export async function main(argv, cwd) {
     const label = { new: '🆕 Mới', investigating: '🔍 Đang xem', known: '📌 Đã biết', fixed: '✅ Đã sửa', ignored: '🙈 Bỏ qua' };
     return { code: 0, out: b.rows.map((r) => `${label[r.status]} ${r.title} [${r.target ?? '?'}]${r.assignee ? ` · ${r.assignee}` : ''}${r.failingNow ? ` · fail ${r.streak} run` : ' · không còn fail'}`).join('\n') };
   }
-  return { code: 1, out: 'Dùng: /e2e-dashboard [setup [--quick]|config [--init] [--app-url URL] [--app-command CMD]|ai [--provider ID] [--api-key KEY]|os|doctor [--dry-run]|export [runId]|stop|status|digest [ngày]|report [week|month] [--send]|publish [dir]|mark <loại> <mô tả>|triage|ci-sync|projects|statusline [install]|quarantine|import …|share push|pull [dir]|fix [runId] [resultId]|gate]' };
+  return { code: 1, out: 'Dùng: /e2e-dashboard [setup [--quick]|1-setup|config|setting [--init] [--app-url URL] [--app-command CMD]|ai [--provider ID] [--api-key KEY]|os|doctor [--dry-run]|export [runId]|stop|status|digest [ngày]|report [week|month] [--send]|publish [dir]|mark <loại> <mô tả>|triage|ci-sync|projects|statusline [install]|quarantine|import …|share push|pull [dir]|fix [runId] [resultId]|gate]' };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

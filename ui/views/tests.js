@@ -9,7 +9,7 @@ import { toast } from '../toast.js';
 import { postJson } from '../api.js';
 import { openAiPanel } from './ai-panel.js';
 
-let filter = { file: '', tag: '', target: '', failed: false };
+let filter = { file: '', tag: '', target: '', failed: false, q: '' };
 const picked = new Set(); // TestRow keys chosen to run
 
 export function historyCells(history, n = 10) {
@@ -71,13 +71,13 @@ function impactPanel() {
   if (impact.error) return `<section class="panel"><p class="muted">${escapeHtml(impact.error)}</p></section>`;
   return `<section class="panel impact"><div class="section-head"><h2>${icon('crosshair', { size: 15 })} ${impact.tests.length} test bị ảnh hưởng bởi ${impact.files.length} file đã đổi (so với <code>${escapeHtml(impact.base)}</code>)</h2>
       <span class="row-actions">${impact.tests.length ? `<button type="button" class="primary" data-run-impact>${icon('play', { size: 14 })}Chạy ${impact.tests.length} test</button>` : ''}
-      <button type="button" class="btn-ai" data-ai-select title="AI đọc thay đổi và chọn test cần chạy (ít mà đủ)">${icon('sparkles', { size: 14 })}AI chọn test</button></span></div>
+      <button type="button" class="btn-ai" data-ai-select title="AI đọc thay đổi và chọn test cần chạy (ít mà đủ)">${icon('yinyang', { size: 14 })}AI chọn test</button></span></div>
     ${impact.tests.length ? `<ul class="eg-tests">${impact.tests.map((t) => `<li><a href="${testHref(t.key)}">${escapeHtml(t.title)}</a> <span class="muted small">${escapeHtml(t.reasons.join(' · '))}</span></li>`).join('')}</ul>` : '<p class="muted">Không test nào khớp các file đã đổi (theo file test, route đã đi qua và tên test).</p>'}
     <details><summary class="muted small">File đã đổi</summary><ul class="mono-list">${impact.files.slice(0, 200).map((f) => `<li><code>${escapeHtml(f)}</code></li>`).join('')}</ul></details></section>`;
 }
 
 export async function renderTests(main, route = {}) {
-  filter = { file: route.params?.file ?? filter.file, tag: route.params?.tag ?? filter.tag, target: route.params?.target ?? filter.target, failed: route.params ? route.params.failed === '1' : filter.failed };
+  filter = { file: route.params?.file ?? filter.file, tag: route.params?.tag ?? filter.tag, target: route.params?.target ?? filter.target, failed: route.params ? route.params.failed === '1' : filter.failed, q: route.params?.q ?? filter.q };
   const load = () => Promise.all([getJson('/api/tests'), isExport() ? { list: [] } : getJson('/api/quarantine').catch(() => ({ list: [] }))]);
   let [all, q] = await load();
   // test đã bị xoá / đổi tên (kể cả từ lần mở trang trước) không còn được tính trong "Chạy N test"
@@ -91,17 +91,18 @@ export async function renderTests(main, route = {}) {
     // "Chỉ test fail": test fail ở run gần nhất có nó
     const failing = (r) => isFailed(r.history?.[0]?.status);
     const nFail = all.filter(failing).length;
-    const rows = all.filter((r) => (!filter.file || r.file === filter.file) && (!filter.tag || r.tags.includes(filter.tag)) && (!filter.target || r.target === filter.target) && (!filter.failed || failing(r)));
+    const ql = filter.q.trim().toLowerCase(); // lọc theo tên test (và tên file)
+    const rows = all.filter((r) => (!ql || `${r.title} ${r.file}`.toLowerCase().includes(ql)) && (!filter.file || r.file === filter.file) && (!filter.tag || r.tags.includes(filter.tag)) && (!filter.target || r.target === filter.target) && (!filter.failed || failing(r)));
     const sel = (k, values, label) => `<label>${label} <select name="${k}" data-f="${k}"><option value="">Tất cả</option>${values
       .map((v) => `<option ${filter[k] === v ? 'selected' : ''}>${escapeHtml(v)}</option>`)
       .join('')}</select></label>`;
     const tree = buildTree(rows);
-    main.innerHTML = `<h1>Tests</h1>${impactPanel()}
-      <div class="filters">${isExport() ? '' : `<button type="button" class="primary" data-run-picked ${picked.size ? '' : 'disabled'}>${icon('play', { size: 14 })}Chạy ${picked.size} test</button>
+    main.innerHTML = `<h1>Tests</h1>${impactPanel()}<div class="tests-head">
+      <div class="filters"><input type="search" class="tests-q" data-q value="${escapeHtml(filter.q)}" placeholder="Lọc theo tên test…" aria-label="Lọc theo tên test" autocomplete="off">${isExport() ? '' : `<button type="button" class="primary" data-run-picked ${picked.size ? '' : 'disabled'}>${icon('play', { size: 14 })}Chạy ${picked.size} test</button>
         <button type="button" data-reload title="Tải lại danh sách test, giữ lựa chọn">${icon('rerun', { size: 14 })}Tải lại</button>
-        <button type="button" class="btn-ai" data-ai-ticket title="Dán ticket (Jira / Linear…), AI viết nháp file .e2e.ts theo quy ước của project">${icon('sparkles', { size: 14 })}Viết test từ ticket</button>
-        <button type="button" class="btn-ai" data-ai-dupes title="Tìm test đi cùng luồng / kiểm tra cùng điều, đề xuất gộp">${icon('sparkles', { size: 14 })}AI tìm test trùng</button>
-        <a class="button" href="/api/export/tests.csv" download>${icon('download', { size: 14 })}CSV</a><span class="impact-form"><label>Test bị ảnh hưởng so với <input type="text" data-base value="${escapeHtml(impact?.base ?? 'main')}" size="10" aria-label="Nhánh gốc"></label><button type="button" data-impact>${icon('crosshair', { size: 14 })}Tìm</button></span>`}<button type="button" class="only-failed" data-only-failed aria-pressed="${filter.failed}"${nFail || filter.failed ? '' : ' disabled'}>${icon('x', { size: 14 })}Chỉ test fail <strong>${nFail}</strong></button>${sel('file', distinct(all.map((r) => r.file)), 'File')}${sel('tag', distinct(all.flatMap((r) => r.tags)), 'Tag')}${sel('target', distinct(all.map((r) => r.target)), 'Target')}</div>
+        <button type="button" class="btn-ai" data-ai-ticket title="Dán ticket (Jira / Linear…), AI viết nháp file .e2e.ts theo quy ước của project">${icon('yinyang', { size: 14 })}Viết test từ ticket</button>
+        <button type="button" class="btn-ai" data-ai-dupes title="Tìm test đi cùng luồng / kiểm tra cùng điều, đề xuất gộp">${icon('yinyang', { size: 14 })}AI tìm test trùng</button>
+        <a class="button" href="/api/export/tests.csv" download>${icon('download', { size: 14 })}CSV</a><span class="impact-form"><label>Test bị ảnh hưởng so với <input type="text" data-base value="${escapeHtml(impact?.base ?? 'main')}" size="10" aria-label="Nhánh gốc"></label><button type="button" data-impact>${icon('crosshair', { size: 14 })}Tìm</button></span>`}<button type="button" class="only-failed" data-only-failed aria-pressed="${filter.failed}"${nFail || filter.failed ? '' : ' disabled'}>${icon('x', { size: 14 })}Chỉ test fail <strong>${nFail}</strong></button>${sel('file', distinct(all.map((r) => r.file)), 'File')}${sel('tag', distinct(all.flatMap((r) => r.tags)), 'Tag')}${sel('target', distinct(all.map((r) => r.target)), 'Target')}</div></div>
       ${rows.length
         ? `<div class="tt">${nodeHtml(tree)}</div>`
         : '<div class="empty-state"><p>Chưa có test nào trong lịch sử.</p></div>'}`;
@@ -178,7 +179,23 @@ export async function renderTests(main, route = {}) {
         replaceParams({ ...filter, failed: filter.failed ? '1' : undefined });
         draw();
       }));
+    // ô lọc tên: vẽ lại sau khi ngừng gõ, giữ focus và con trỏ
+    const qEl = main.querySelector('[data-q]');
+    qEl?.addEventListener('input', () => {
+      clearTimeout(qTimer);
+      qTimer = setTimeout(() => {
+        if (!qEl.isConnected) return; // đã rời trang Tests trong lúc chờ
+        const pos = qEl.selectionStart;
+        filter = { ...filter, q: qEl.value };
+        replaceParams({ ...filter, q: filter.q || undefined, failed: filter.failed ? '1' : undefined });
+        draw();
+        const again = main.querySelector('[data-q]');
+        again?.focus();
+        again?.setSelectionRange(pos, pos);
+      }, 150);
+    });
   };
+  let qTimer;
   draw();
 }
 
@@ -216,7 +233,7 @@ function openTicketDialog() {
     <p class="muted small">Dán tiêu đề, mô tả và tiêu chí chấp nhận của ticket. AI đọc test sẵn có để viết đúng quy ước, chỗ ticket không rõ để <code>// TODO</code>.</p>
     <label class="small">Nội dung ticket<textarea name="ticket" rows="12" required minlength="10" maxlength="8000" placeholder="D1-1234 Tạo order cho khách mới…"></textarea></label>
     <label class="small">Thư mục đích (tuỳ chọn)<input name="folder" placeholder="TestCases/05_Billing/Orders" autocomplete="off"></label>
-    <div class="row-actions"><button type="submit" class="btn-ai" value="go">${icon('sparkles', { size: 14 })}Viết test</button><button type="button" data-cancel>${icon('close', { size: 14 })}Huỷ</button></div>
+    <div class="row-actions"><button type="submit" class="btn-ai" value="go">${icon('yinyang', { size: 14 })}Viết test</button><button type="button" data-cancel>${icon('close', { size: 14 })}Huỷ</button></div>
   </form>`;
   document.body.append(dlg);
   dlg.querySelector('[name=ticket]').value = lastTicket.ticket;
