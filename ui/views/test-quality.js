@@ -26,7 +26,7 @@ export function reviewFormHtml(ai = {}) {
   const opt = (v, label, cur) => `<option value="${escapeHtml(v)}"${v === cur ? ' selected' : ''}>${escapeHtml(label)}</option>`;
   return `<form class="form-row" data-review-form><label>Model <select name="model">${opt('', 'mặc định', ai.model ?? '')}${AI_MODELS.map((m) => opt(m, m, ai.model)).join('')}</select></label>
     <label>Effort <select name="effort">${opt('', 'mặc định', ai.effort ?? '')}${(Array.isArray(ai.efforts) && ai.efforts.length ? ai.efforts : AI_EFFORTS).map((e) => opt(e, e, ai.effort)).join('')}</select></label>
-    <button type="submit" class="btn-ai">${icon('yinyang', { size: 14 })}Đánh giá</button><button type="button" data-review-cancel>${icon('close', { size: 14 })}Huỷ</button></form>`;
+    <button type="submit" class="btn-ai">${icon('sparkles', { size: 14 })}Đánh giá</button><button type="button" data-review-cancel>${icon('close', { size: 14 })}Huỷ</button></form>`;
 }
 
 export async function renderTestQuality(main) {
@@ -36,7 +36,7 @@ export async function renderTestQuality(main) {
   const avg = q.rows.length ? Math.round(q.rows.reduce((s, r) => s + r.score, 0) / q.rows.length) : null;
   main.innerHTML = `${pageHead('Chất lượng test', 'check', 'Chấm điểm từng test theo cấu trúc, độ ổn định và chi phí; tìm test trùng và test nên tách hoặc gộp. Dashboard chỉ đề xuất, Claude Code làm việc sửa.')}
     <div class="form-row"><button type="button" data-recalc>${icon('recycle', { size: 14 })}Tính lại</button>
-      <button type="button" class="btn-ai" data-review>${icon('yinyang', { size: 14 })}AI đánh giá lại</button></div>
+      <button type="button" class="btn-ai" data-review>${icon('sparkles', { size: 14 })}AI đánh giá lại</button></div>
     <div data-review-box hidden></div>
     ${q.rows.length ? `<div class="sys-stats">
       <div class="sys-stat"><span class="sys-stat-v">${avg ?? '—'}</span><span class="sys-stat-l">Điểm trung bình</span></div>

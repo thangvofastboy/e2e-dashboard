@@ -1,6 +1,6 @@
 import { readdir, readFile, writeFile, mkdir, rename, rm, lstat } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
-import { join, relative } from 'node:path';
+import { join, relative, dirname, sep } from 'node:path';
 import { serial } from './jsonstate.mjs';
 import { DATA_DIR, RUN_ID, RESULT_ID, resultAttempts, realInside, isLink, listRunDirs } from '../reporter/e2e-dashboard.reporter.mjs';
 
@@ -48,7 +48,16 @@ export async function listRuns(root) {
 export async function findRunDir(root, runId) {
   if (typeof runId !== 'string' || !RUN_ID.test(runId)) return null;
   if (isLink(join(root, DATA_DIR)) || isLink(runsDir(root))) return null;
-  const dir = (await listRunDirs(runsDir(root), { sort: false })).find((d) => d.endsWith(`_${runId}`)); // tra cứu: không cần sắp xếp
+  // run listRuns đã thấy: lấy thư mục từ metaCache, khỏi quét cả cây runs/ (mỗi file ảnh / video, mỗi getRun trong vòng lặp)
+  const base = runsDir(root) + sep;
+  const tail = `_${runId}${sep}meta.json`;
+  let dir = null;
+  for (const k of metaCache.keys()) {
+    if (!k.startsWith(base) || !k.endsWith(tail)) continue;
+    if ((await lstat(k).catch(() => null))?.isFile()) dir = relative(runsDir(root), dirname(k)); // retention vừa xoá: quét lại
+    break;
+  }
+  dir ??= (await listRunDirs(runsDir(root), { sort: false })).find((d) => d.endsWith(`_${runId}`)); // tra cứu: không cần sắp xếp
   if (!dir) return null;
   // a hostile clone can commit runs/<x> (or runs/2026 …) as a symlink: only real directories under runs/ count
   const full = join(runsDir(root), dir);
@@ -98,10 +107,10 @@ function dropReport(key) {
   cachedBytes -= e.bytes;
 }
 
-// The last n runs as {meta, report}, newest first (what server/analytics.mjs works on).
-export async function loadHistory(root, n = 30) {
+// The last n runs as {meta, report}, newest first (what server/analytics.mjs works on). skip: bỏ qua skip run mới nhất.
+export async function loadHistory(root, n = 30, skip = 0) {
   const out = [];
-  for (const meta of (await listRuns(root)).slice(0, n)) {
+  for (const meta of (await listRuns(root)).slice(skip, skip + n)) {
     if (isLink(join(runsDir(root), meta.dir))) continue;
     try {
       out.push({ meta, report: await cachedReport(root, meta.dir) });

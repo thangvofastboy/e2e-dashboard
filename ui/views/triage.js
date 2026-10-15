@@ -42,7 +42,7 @@ export async function renderTriage(main, route = {}) {
   if (route.params?.status !== undefined) triageFilter = route.params.status || null;
   if (route.view) aiSuggest = null; // vào trang từ router: gợi ý cũ không còn đúng
   const b = await getJson('/api/triage');
-  const head = pageHead('Triage lỗi', 'ticket', 'Mỗi test fail có trạng thái <em>Mới → Đang xem → Đã biết → Đã sửa / Bỏ qua</em>, người phụ trách và ghi chú. Trạng thái gắn với đúng lỗi đó (test + dạng lỗi): run sau vẫn fail như cũ thì giữ nguyên, “Đã sửa” mà fail lại thì tự mở lại, đang mở mà test pass thì tự chuyển “Đã sửa”.', isExport() ? '' : `<button type="button" class="btn-ai" data-tri-ai title="AI gợi ý trạng thái, mức độ và người phụ trách cho các test đang fail">${icon('yinyang', { size: 14 })}AI gợi ý triage</button>`);
+  const head = pageHead('Triage lỗi', 'ticket', 'Mỗi test fail có trạng thái <em>Mới → Đang xem → Đã biết → Đã sửa / Bỏ qua</em>, người phụ trách và ghi chú. Trạng thái gắn với đúng lỗi đó (test + dạng lỗi): run sau vẫn fail như cũ thì giữ nguyên, “Đã sửa” mà fail lại thì tự mở lại, đang mở mà test pass thì tự chuyển “Đã sửa”.', isExport() ? '' : `<button type="button" class="btn-ai" data-tri-ai title="AI gợi ý trạng thái, mức độ và người phụ trách cho các test đang fail">${icon('sparkles', { size: 14 })}AI gợi ý triage</button>`);
   if (!b.rows.length) {
     main.innerHTML = `${head}${emptyBox('Không có lỗi nào cần xử lý', 'Mọi test đều đang pass. 🎉')}`;
     return;

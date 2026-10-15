@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.19.0 — 2026-10-16
+
+- **Giao diện tuỳ chọn** (*Cài đặt hệ thống › Giao diện*): **Bảng màu** (Mặc định, Nord, Solarized, Tương phản cao), **Màu nhấn** (xanh dương, tím, xanh ngọc, hồng, cam), **Mật độ** (Thoáng / Vừa / Gọn), **Bo góc** (Vuông / Vừa / Tròn), **Kiểu biểu đồ**. Mỗi bảng màu và màu nhấn có bản sáng và tối, chữ trên nút đạt tương phản ≥ 4.5:1 ở mọi tổ hợp.
+- **Đổi loại chart ngay trên chart**: biểu đồ theo thời gian có thanh Đường / Vùng / Cột / Bậc, nhớ riêng từng chart; bấm lại loại mặc định để theo cài đặt chung.
+- **Nút mới**: nền màu đậm theo nhóm icon (xanh lá, đỏ, cam, xanh dương, tím, xanh ngọc), icon trắng; nút chính / đang chọn có vòng sáng. Tab Cài đặt hệ thống theo kiểu mục menu.
+- **AI**: icon ngôi sao lấp lánh; nút chat, avatar và icon AI màu navy đậm.
+- **Animation**: màn hình đang tải khi mở web, các khối hiện dần khi đổi trang, hiệu ứng khi bấm nút; tự tắt khi hệ điều hành bật giảm chuyển động.
+- **Gọn và nhanh hơn**: không còn thanh cuộn ngang thừa (nút phóng to nằm trong dòng tiêu đề); form không còn ô nhập dính nhau; giao diện không quét lại cả trang mỗi khi có thay đổi; tick test không vẽ lại cả cây; server không quét lại cả thư mục run cho mỗi ảnh / video; không còn animation chạy mãi khi trang đứng yên.
+- **README**: hướng dẫn **1 Click Setup** (trên dashboard và `/e2e-dashboard 1-setup`) và bảng **Lệnh cài đặt nhanh**.
+- **Sửa lỗi**: trang Cài đặt hệ thống không mở được ("PROMPT_MAX is not defined"); nút Gỡ issue / Gắn issue / Comment lỗi / Để AI viết / Gỡ liên kết lỗi sau khi bấm; Projects tiếp tục hỏi server sau khi rời trang; server sập khi prompt dự án có ký tự NUL; step không có định danh không bao giờ đóng ở trang Live; chỉ mục SQLite đọc xuyên qua `report.json` là symlink.
+
 ## v0.18.0 — 2026-10-15
 
 - **AI hỗ trợ QC** (trang mới, menu *Theo dõi*): **Độ phủ theo yêu cầu** đối chiếu acceptance criteria của ticket với test hiện có và chỉ ra tiêu chí còn thiếu; **Charter test khám phá** soạn mục tiêu, vùng rủi ro và checklist edge case từ thay đổi code so với nhánh gốc; **Sinh dữ liệu test** đề xuất giá trị hợp lệ / biên / không hợp lệ cho form, field, API; **Kiểm tra bug trùng** so bug định log với các nhóm lỗi đã gặp.

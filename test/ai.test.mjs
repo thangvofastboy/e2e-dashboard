@@ -139,3 +139,26 @@ test('claude runs sandboxed: restricted mode, only Read/Grep/Glob exist, no MCP,
   for (const flag of ['--restricted', '--tools Read,Grep,Glob', '--strict-mcp-config', '--permission-mode dontAsk', '--disable-slash-commands'])
     assert.ok(a.includes(flag), flag);
 });
+
+test('a spawn that throws synchronously ends the run with an error and frees its slot', async () => {
+  const ok = fakeClaude((c) => { c.stdout.end(); c.emit('close', 0); });
+  let calls = 0;
+  const spawnImpl = (...a) => {
+    if (++calls <= 2) throw new TypeError('args must be a string without null bytes');
+    return ok.spawnImpl(...a);
+  };
+  const ai = createAi({ projectRoot: '/p', spawnImpl, maxConcurrent: 1 });
+  const events = [];
+  await ai.run({ prompt: 'p', onEvent: (e) => events.push(e) });
+  await ai.run({ prompt: 'p', onEvent: () => {} });
+  assert.deepEqual(events.map((e) => e.type), ['error']);
+  await ai.run({ prompt: 'p', onEvent: () => {} }); // slot không bị giữ: lần sau vẫn spawn được
+  assert.equal(ok.spawned.length, 1);
+});
+
+test('a NUL byte in the project context never reaches the claude argv', async () => {
+  const { spawned, spawnImpl } = fakeClaude((c) => { c.stdout.end(); c.emit('close', 0); });
+  await createAi({ projectRoot: '/p', spawnImpl, project: () => ({ prompt: 'a\0b' }) }).run({ prompt: 'q', onEvent: () => {} });
+  assert.ok(spawned[0].args.every((x) => !x.includes('\0')));
+  assert.ok(spawned[0].args.some((x) => x.includes('ab')));
+});

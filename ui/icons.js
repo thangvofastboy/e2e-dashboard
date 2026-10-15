@@ -39,8 +39,7 @@ const PATHS = {
   bolt: '<path d="M13 2 3 14h9l-1 8 10-12h-9z"/>',
   arrow: '<path d="M5 12h14M12 5l7 7-7 7"/>',
   eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
-  yinyang: '<circle cx="12" cy="12" r="10"/><path d="M12 2a5 5 0 0 1 0 10 5 5 0 0 0 0 10"/><circle cx="12" cy="7" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="17" r="1.6"/>',
-  sparkles: '<path d="M9.94 14.06 4 20M12 2l1.6 4.4L18 8l-4.4 1.6L12 14l-1.6-4.4L6 8l4.4-1.6z"/><path d="M20 15l.8 2.2L23 18l-2.2.8L20 21l-.8-2.2L17 18l2.2-.8z"/>',
+  sparkles: '<path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14a2 2 0 0 0 1.44 1.44l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/><path d="M20 3v4M22 5h-4M4 17v2M5 18H3"/>',
   play: '<path d="M6 3l14 9-14 9V3z"/>',
   square: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
   send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
@@ -72,7 +71,7 @@ const PATHS = {
 export const ICON_NAMES = Object.keys(PATHS);
 
 export const ICON_SPRITE = `<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true">${ICON_NAMES
-  .map((n) => `<symbol id="i-${n}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${PATHS[n]}</symbol>`)
+  .map((n) => `<symbol id="i-${n}" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="stroke-width: var(--icon-sw, 2)" stroke-linecap="round" stroke-linejoin="round">${PATHS[n]}</symbol>`)
   .join('')}</svg>`;
 
 const escAttr = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);

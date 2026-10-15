@@ -127,3 +127,18 @@ test('run-stopped and notice events reach the snapshot; a new run clears them', 
   assert.equal(live.snapshot().stopped, null);
   assert.deepEqual(live.snapshot().notices, []);
 });
+
+test('a step without identity is closed by its end event', () => {
+  const live = createLive();
+  live.apply({ type: 'run-started', at: at(0), runId: 'r1' });
+  live.apply(started('A', 1));
+  const base = { type: 'step', testId: 'A', agent: 'default', repeat: 0, target: 'web' };
+  live.apply({ ...base, progress: { phase: 'start', kind: 'action', api: 'page.click', label: 'one' } });
+  live.apply({ ...base, progress: { phase: 'end', api: 'page.click', status: 'passed', durationMs: 5 } });
+  live.apply({ ...base, progress: { phase: 'start', kind: 'agent', api: 'agent.act', label: 'two' } });
+  live.apply({ ...base, progress: { phase: 'activity', api: 'agent.act', activity: 'model' } });
+  live.apply({ ...base, progress: { phase: 'end', api: 'agent.act', status: 'failed', durationMs: 9 } });
+  const t = live.snapshot().tests[0];
+  assert.deepEqual(t.steps.map((s) => [s.label, s.status, s.durationMs]), [['one', 'passed', 5], ['two', 'failed', 9]]);
+  assert.equal(t.activity, null);
+});

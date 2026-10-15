@@ -1,5 +1,6 @@
 import { escapeHtml, STATUS, cap } from './format.js';
 import { icon } from './icons.js';
+import { storedStyle, storedChartType, setChartType } from './prefs.js';
 
 const W = 600;
 const H = 180;
@@ -20,8 +21,16 @@ function grid(yMax, yFormat) {
     .join('');
 }
 
-export function lineChart({ points = [], yMax, yFormat = String, ariaLabel, area = false, markers = [] } = {}) {
+// Loại chart: chọn trên chính chart (nhớ theo ariaLabel) > type truyền vào > Kiểu biểu đồ chung (Cài đặt › Giao diện)
+// > thiết kế của chart (area ? vùng : đường). Thanh chọn loại vẽ lại chart tại chỗ bằng tham số đã lưu trong chartArgs.
+const CHART_SWITCH = [['line', 'Đường'], ['area', 'Vùng'], ['bar', 'Cột'], ['step', 'Bậc']];
+const chartArgs = new Map(); // id → tham số của lineChart, để vẽ lại khi đổi loại
+export function lineChart(opts = {}) {
+  const { points = [], yMax, yFormat = String, ariaLabel, area = false, markers = [], type = null } = opts;
   if (!points.length) return EMPTY;
+  const pref = storedStyle('chart');
+  const fallback = type || (pref === 'auto' ? (area ? 'area' : 'line') : pref);
+  const kind = (ariaLabel && storedChartType(ariaLabel)) || fallback;
   const values = points.map((p) => p.value).filter((v) => v != null);
   const max = yMax ?? Math.max(1, ...values);
   const iw = W - PAD.left - PAD.right;
@@ -38,19 +47,26 @@ export function lineChart({ points = [], yMax, yFormat = String, ariaLabel, area
     } else cur.push([x(i), y(p.value)]);
   });
   if (cur.length) segments.push(cur);
-  const lines = segments
-    .map((s) => `<path class="line series-1" pathLength="1" d="M${s.map(([a, b]) => `${a.toFixed(1)},${b.toFixed(1)}`).join('L')}"/>`)
-    .join('');
-  const gid = `ag${++chartSeq}`;
   const base = PAD.top + ih;
-  const fill = area
+  // bậc thang: giữ giá trị tới điểm kế tiếp rồi đổi (H rồi V)
+  const pathOf = (s) => (kind === 'step'
+    ? `M${s[0][0].toFixed(1)},${s[0][1].toFixed(1)}${s.slice(1).map(([a, b]) => `H${a.toFixed(1)}V${b.toFixed(1)}`).join('')}`
+    : `M${s.map(([a, b]) => `${a.toFixed(1)},${b.toFixed(1)}`).join('L')}`);
+  // cột: một cột mỗi điểm, đầu cột bo 4px, cách nhau 2px; giá trị null thì để trống
+  const bw = Math.max(2, Math.min(24, (points.length > 1 ? step : iw) - 2));
+  const bars = kind === 'bar'
+    ? points.map((p, i) => (p.value == null ? '' : `<path class="bar series-1" d="${topRounded(x(i) - bw / 2, y(p.value), bw, Math.max(1, base - y(p.value)), 4)}"/>`)).join('')
+    : '';
+  const lines = kind === 'bar' ? '' : segments.map((s) => `<path class="line series-1" pathLength="1" d="${pathOf(s)}"/>`).join('');
+  const gid = `ag${++chartSeq}`;
+  const fill = kind === 'area'
     ? `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ag-top"/><stop offset="1" class="ag-bot"/></linearGradient></defs>${segments
       .filter((sg) => sg.length > 1)
-      .map((sg) => `<path class="area" d="M${sg.map(([a, b]) => `${a.toFixed(1)},${b.toFixed(1)}`).join('L')}L${sg.at(-1)[0].toFixed(1)},${base}L${sg[0][0].toFixed(1)},${base}Z" fill="url(#${gid})"/>`)
+      .map((sg) => `<path class="area" d="${pathOf(sg)}L${sg.at(-1)[0].toFixed(1)},${base}L${sg[0][0].toFixed(1)},${base}Z" fill="url(#${gid})"/>`)
       .join('')}`
     : '';
   const dots = points
-    .map((p, i) => (p.value == null || points.length > 40 ? '' : `<circle class="dot series-1" cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="4"/>`))
+    .map((p, i) => (p.value == null || points.length > 40 || kind === 'bar' ? '' : `<circle class="dot series-1" cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="4"/>`))
     .join('');
   const lastIdx = points.findLastIndex((p) => p.value != null);
   const last = lastIdx >= 0
@@ -65,8 +81,28 @@ export function lineChart({ points = [], yMax, yFormat = String, ariaLabel, area
     .filter((m) => Number.isInteger(m.index) && m.index >= 0 && m.index < points.length)
     .map((m) => `<g class="marker mk-${escapeHtml(m.kind ?? 'note')}" data-tip="${escapeHtml(m.label)}"><line x1="${x(m.index).toFixed(1)}" x2="${x(m.index).toFixed(1)}" y1="${PAD.top}" y2="${base}"/><circle cx="${x(m.index).toFixed(1)}" cy="${PAD.top}" r="4"/></g>`)
     .join('');
-  return `${svgOpen(ariaLabel)}${grid(max, yFormat)}${fill}${lines}${dots}${last}${hits}${marks}</svg>`;
+  const svg = `${svgOpen(ariaLabel)}${grid(max, yFormat)}${fill}${bars}${lines}${dots}${last}${hits}${marks}</svg>`;
+  if (!ariaLabel) return svg; // không có tên thì không nhớ được lựa chọn: vẽ như cũ, không có thanh chọn
+  const id = `ch${chartSeq}`;
+  chartArgs.set(id, opts);
+  if (chartArgs.size > 200) chartArgs.delete(chartArgs.keys().next().value); // trang cũ đã rời: bỏ tham số cũ nhất
+  const switcher = `<div class="chart-type" role="group" aria-label="Loại biểu đồ: ${escapeHtml(ariaLabel)}">${CHART_SWITCH
+    .map(([v, t]) => `<button type="button" class="ct-btn" data-chart-type="${v}" aria-pressed="${v === kind}">${t}</button>`).join('')}</div>`;
+  return `<div class="chart-box" data-chart-id="${id}" data-fallback="${fallback}">${switcher}${svg}</div>`;
 }
+
+// bấm Đường / Vùng / Cột / Bậc trên một chart: nhớ lựa chọn rồi vẽ lại đúng chart đó
+globalThis.document?.addEventListener('click', (e) => {
+  const b = e.target.closest?.('[data-chart-type]');
+  const box = b?.closest('[data-chart-id]');
+  const opts = box && chartArgs.get(box.dataset.chartId);
+  if (!opts) return;
+  const kind = b.dataset.chartType;
+  setChartType(opts.ariaLabel, kind === box.dataset.fallback ? null : kind); // chọn đúng loại mặc định: bỏ nhớ riêng, lại theo cài đặt chung
+  chartArgs.delete(box.dataset.chartId);
+  box.outerHTML = lineChart(opts);
+  document.querySelector(`[data-chart-id="ch${chartSeq}"] [data-chart-type="${kind}"]`)?.focus(); // giữ focus cho người dùng bàn phím
+});
 
 // GitHub-style calendar (M7): one square per day, coloured by pass rate. days: [{date, passRate, runs}].
 export function calendarHeatmap(days = [], { href = null } = {}) {

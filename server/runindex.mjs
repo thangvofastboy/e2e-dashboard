@@ -101,8 +101,9 @@ async function doSync(root) {
     }
     let report;
     try {
-      if (isLink(join(root, DATA_DIR, 'runs', m.dir))) continue;
-      report = JSON.parse(await readFile(join(root, DATA_DIR, 'runs', m.dir, 'report.json'), 'utf8'));
+      const dir = join(root, DATA_DIR, 'runs', m.dir);
+      if (isLink(dir) || isLink(join(dir, 'report.json'))) continue; // như store.cachedReport: report.json là symlink thì không đọc theo
+      report = JSON.parse(await readFile(join(dir, 'report.json'), 'utf8'));
     } catch {
       continue; // đang ghi / vừa bị xoá: lần sau
     }

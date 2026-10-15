@@ -102,6 +102,8 @@
 | 📝 | **Prompt quy tắc cho AI** | Hộp Thêm / Sửa project có ô *Prompt*: quy ước đặt tên, luồng nghiệp vụ, rule (vd. tài khoản test, không xoá dữ liệu thật). Prompt gửi kèm mọi lần gọi AI của project |
 | 📂 | **Chọn project để chạy** | Trang *Projects*: thẻ gọn, project đang chọn có viền và chip *Đang chọn để chạy*; bấm **Chọn để chạy** để chuyển dashboard sang project khác (tự khởi động server của project đó), Run sẽ chạy e2e trong thư mục của nó. Nút copy lệnh mở trong terminal |
 | 🧪 | **AI hỗ trợ QC** | Trang riêng (menu *Theo dõi*): **Độ phủ theo yêu cầu** (đối chiếu acceptance criteria với test), **Charter test khám phá** (từ thay đổi code so với nhánh gốc), **Sinh dữ liệu test** (giá trị hợp lệ / biên / không hợp lệ), **Kiểm tra bug trùng** (so với nhóm lỗi đã gặp) |
+| 🎨 | **Giao diện tuỳ chọn** | *Cài đặt hệ thống › Giao diện*: bảng màu (Nord, Solarized, Tương phản cao), màu nhấn, mật độ, bo góc, kiểu biểu đồ; mỗi lựa chọn có bản sáng và tối |
+| 📈 | **Đổi loại chart trên chart** | Biểu đồ theo thời gian có thanh Đường / Vùng / Cột / Bậc, nhớ riêng từng chart |
 | ⚡ | **1 Click Setup** | Trang riêng (menu *Tích hợp*): hệ điều hành, các bước cài theo thứ tự với nút **Cài tất cả** (thư viện, gói AI, Chromium, reporter, `.env`), trạng thái từng bước và log, API key nhập tại chỗ, chọn model AI, sửa URL app / lệnh khởi động trong `e2e.config.ts`. Mở dashboard mà project còn thiếu thì hiện popup cùng nội dung |
 | ⚙️ | **Cài đặt hệ thống** | Theme, cỡ chữ, ngôn ngữ; xem và sửa trực tiếp `.env` / `.env.local` (lưu thẳng vào file, file có secret tự vào `.gitignore`); Linear key, webhook, setup và doctor |
 | 🎛️ | **Menu gọn mặc định** | *Chi phí & cache*, *Model & ngân sách*, *Gợi ý locator*, *Lint agent* ẩn khỏi menu mặc định; bật lại bằng switch ở *Cài đặt hệ thống › Giao diện › Menu hiển thị* (vẫn mở được bằng Tìm kiếm) |
@@ -330,6 +332,57 @@ Lệnh này copy `e2e-dashboard.reporter.mjs` (kèm `.d.mts`) vào project và t
 
 > [!NOTE]
 > Không cài reporter vẫn có lịch sử: run do Claude chạy được lưu qua hook, run bạn tự chạy được lưu khi dashboard đang mở.
+
+### 🖱️ 1 Click Setup
+
+1 Click Setup kiểm tra máy và project rồi cài mọi thứ còn thiếu để chạy e2e từ dashboard. Phần nào đã có thì bỏ qua, chạy lại bao nhiêu lần cũng được.
+
+**Trên dashboard:**
+
+1. Mở dashboard bằng `/e2e-dashboard`. Project còn thiếu gì thì popup **Thiết lập project** tự hiện.
+2. Bấm **Cài tất cả**: các bước chạy lần lượt, mỗi bước có trạng thái (Chờ → Đang cài → Xong, hoặc Lỗi / Bỏ qua) và log.
+3. Muốn xem lại hoặc cài tiếp sau này: menu **Tích hợp › 1 Click Setup**. Trang này còn cho nhập API key, chọn model AI cho bước agent, sửa URL app và lệnh khởi động app trong `e2e.config.ts`.
+4. Mỗi lệnh đều có nút copy để chạy tay trong terminal khi cần.
+
+**Trong terminal** (dùng khi có bước cần mật khẩu `sudo`, vì trình duyệt không hỏi được mật khẩu):
+
+```text
+/e2e-dashboard 1-setup          # xem danh sách bước rồi hỏi trước khi cài
+/e2e-dashboard 1-setup --yes    # cài luôn, không hỏi
+```
+
+`1-setup` là viết tắt của `setup --quick`. Các bước được kiểm tra:
+
+| Bước | Có rồi thì | Chưa có thì |
+|---|---|---|
+| Git, GitHub CLI (gh tuỳ chọn, cho đồng bộ CI) | bỏ qua | cài bằng trình quản lý gói của máy (apt-get, dnf, pacman, brew, winget…) |
+| Node ≥ 22.22.3 (hoặc ≥ 24.8) | bỏ qua | **làm tay**: in lệnh gợi ý theo hệ điều hành (nvm, brew, apk); không tự cài vì đổi Node dưới chân server đang chạy |
+| e2e + `@e2e-dev/web`, `node_modules` | bỏ qua | `npm install -D e2e @e2e-dev/web` |
+| Gói AI cho model đang chọn | bỏ qua | `npm install -D ai zod …` theo provider |
+| API key của model | bỏ qua | **làm tay**: điền vào `.env` hoặc `/e2e-dashboard ai --api-key …`. Không cần nếu dùng `claude-code` (đăng nhập Claude Code CLI) |
+| Chromium + headless shell | bỏ qua | cài bằng bin của `@e2e-dev/web` trong project (Debian/Ubuntu thêm `--with-deps`) |
+| Claude Code CLI (cho tính năng AI của dashboard) | bỏ qua | `npm install -g @anthropic-ai/claude-code` |
+| Tự cập nhật plugin | bỏ qua | bật auto-update của marketplace trong `settings.json` |
+| Reporter, `.env`, `.gitignore` | bỏ qua | như `/e2e-dashboard setup` |
+
+### 📋 Lệnh cài đặt nhanh
+
+| Việc | Lệnh |
+|---|---|
+| Cài tất cả trên máy mới (macOS / Linux) | `curl -fsSL https://raw.githubusercontent.com/thangvofastboy/e2e-dashboard/main/install.sh \| bash` |
+| Cài tất cả trên máy mới (Windows) | `irm https://raw.githubusercontent.com/thangvofastboy/e2e-dashboard/main/install.ps1 \| iex` |
+| Chỉ xem sẽ cài gì, không cài | `curl -fsSL …/install.sh \| bash -s -- --dry-run` |
+| Thêm marketplace (trong Claude Code) | `/plugin marketplace add thangvofastboy/e2e-dashboard` |
+| Cài plugin | `/plugin install e2e-dashboard@e2e-dashboard` rồi `/reload-plugins` |
+| Mở dashboard (tự `e2e init` nếu chưa có config) | `/e2e-dashboard` |
+| Cài phần còn thiếu của project | `/e2e-dashboard 1-setup --yes` |
+| Chọn model AI cho bước agent | `/e2e-dashboard ai --provider anthropic --api-key …` hoặc `/e2e-dashboard ai --provider claude-code` |
+| Sửa URL app / lệnh khởi động trong config | `/e2e-dashboard setting --app-url http://localhost:5173 --app-command "npm run dev"` |
+| Gắn reporter để xem live | `/e2e-dashboard setup` |
+| Cập nhật plugin | `/e2e-dashboard update` |
+| Xem trạng thái / tắt server | `/e2e-dashboard status` · `/e2e-dashboard stop` |
+| Xem máy và project còn thiếu gì (không cài) | `/e2e-dashboard 1-setup`, trả lời `N` khi được hỏi |
+| Xem hệ điều hành và trình quản lý gói sẽ dùng | `/e2e-dashboard os` |
 
 ---
 

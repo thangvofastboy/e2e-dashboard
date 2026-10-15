@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { archive } from '../reporter/e2e-dashboard.reporter.mjs';
-import { listRuns, getRun, setFlag, testHistory, findRunDir } from '../server/store.mjs';
+import { listRuns, getRun, setFlag, testHistory, findRunDir, loadHistory } from '../server/store.mjs';
 
 const fixture = () => JSON.parse(readFileSync(new URL('./fixtures/report-v1.valid.json', import.meta.url), 'utf8'));
 const id = (i) => `018f0f5c-7b2a-7abc-8abc-00000000000${i}`;
@@ -77,4 +77,32 @@ test('report cache is capped by bytes (LRU) and does not keep a broken report', 
   assert.equal((await store.loadHistory(root, 3)).length, 2);
   writeFileSync(join(runs, 'a', 'report.json'), big); // lỗi không bị cache: sửa file là đọc lại được
   assert.equal((await store.loadHistory(root, 3)).length, 3);
+});
+
+test('findRunDir trusts the listRuns cache only while the run is still there and real', async () => {
+  const { rmSync, renameSync, mkdirSync, symlinkSync, cpSync } = await import('node:fs');
+  const { dirname: dn } = await import('node:path');
+  const root = await projectWithRuns(3);
+  await listRuns(root); // metaCache biết cả ba run
+  const d0 = await findRunDir(root, id(0));
+  assert.ok(d0.endsWith(`_${id(0)}`));
+  rmSync(d0, { recursive: true }); // retention xoá sau lần listRuns
+  assert.equal(await findRunDir(root, id(0)), null);
+  const d1 = await findRunDir(root, id(1));
+  const moved = join(root, '.e2e-dashboard', 'runs', '2025', '01', '01', d1.split('/').pop());
+  mkdirSync(dn(moved), { recursive: true });
+  renameSync(d1, moved); // chuyển chỗ: quét lại, không trả đường dẫn cũ
+  assert.equal(await findRunDir(root, id(1)), moved);
+  const d2 = await findRunDir(root, id(2));
+  const outside = mkdtempSync(join(tmpdir(), 'e2ed-out-'));
+  cpSync(d2, outside, { recursive: true });
+  rmSync(d2, { recursive: true });
+  symlinkSync(outside, d2); // thư mục run bị thay bằng symlink ra ngoài
+  assert.equal(await findRunDir(root, id(2)), null);
+});
+
+test('loadHistory can skip the newest runs', async () => {
+  const root = await projectWithRuns(4);
+  assert.deepEqual((await loadHistory(root, 2, 1)).map((h) => h.meta.runId), [id(2), id(1)]);
+  assert.deepEqual((await loadHistory(root, 5, 3)).map((h) => h.meta.runId), [id(0)]);
 });

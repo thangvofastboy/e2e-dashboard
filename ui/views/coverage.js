@@ -12,7 +12,7 @@ const ignoreBtn = (kind, value) => (isExport() ? '' : `<button type="button" cla
 export function coverageRowHtml(r) {
   return `<tr><td><code>${escapeHtml(r.route)}</code></td><td class="muted small wrap" style="overflow-wrap:anywhere">${escapeHtml(r.source)}</td>
     <td>${r.tested ? `<span class="chip tone-good">${icon('check', { size: 12 })}${escapeHtml(r.tests)} test · ${escapeHtml(r.visits)} lượt</span>${r.failures ? ` <span class="tone-bad delta">${escapeHtml(r.failures)} fail</span>` : ''}` : `<span class="chip tone-warn">${icon('alert', { size: 12 })}Chưa có test</span>`}</td>
-    <td class="row-actions">${!r.tested && !isExport() ? `<button type="button" class="btn-ai small-btn" data-route="${escapeHtml(r.route)}">${icon('yinyang', { size: 13 })}Viết test</button>` : ''}${ignoreBtn('route', r.route)}</td></tr>`;
+    <td class="row-actions">${!r.tested && !isExport() ? `<button type="button" class="btn-ai small-btn" data-route="${escapeHtml(r.route)}">${icon('sparkles', { size: 13 })}Viết test</button>` : ''}${ignoreBtn('route', r.route)}</td></tr>`;
 }
 
 export function domainRowHtml(d) {

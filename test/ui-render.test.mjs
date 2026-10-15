@@ -23,7 +23,7 @@ test('markdown never emits raw HTML or script links', () => {
 
 test('lineChart draws one marker per non-null point and breaks on null', () => {
   const svg = lineChart({ points: [{ label: 'a', value: 1 }, { label: 'b', value: null }, { label: 'c', value: 3 }], ariaLabel: 'pass rate' });
-  assert.match(svg, /^<svg[^>]*role="img"[^>]*aria-label="pass rate"/);
+  assert.match(svg, /^<div class="chart-box"[^]*<svg[^>]*role="img"[^>]*aria-label="pass rate"/); // có tên: bọc kèm thanh chọn loại chart
   assert.equal((svg.match(/<circle /g) ?? []).length, 2);
   assert.equal((svg.match(/<path class="line/g) ?? []).length, 2);
   assert.equal((svg.match(/data-tip=/g) ?? []).length, 3);

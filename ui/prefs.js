@@ -37,9 +37,47 @@ export function setFont(scale) {
   set('e2ed-font', scale);
 }
 
+// Style (Cài đặt hệ thống › Giao diện): mỗi lựa chọn lưu ở localStorage e2ed-<key> và gắn data-<key> lên <html>;
+// giá trị mặc định thì bỏ thuộc tính. Bảng màu và màu nhấn có biến thể sáng / tối, đi theo Theme.
+export const PALETTES = [['default', 'Mặc định'], ['nord', 'Nord'], ['solarized', 'Solarized'], ['contrast', 'Tương phản cao']];
+export const ACCENTS = [['auto', 'Theo bảng màu'], ['blue', 'Xanh dương'], ['violet', 'Tím'], ['emerald', 'Xanh ngọc'], ['rose', 'Hồng'], ['amber', 'Cam']];
+export const DENSITIES = [['comfortable', 'Thoáng'], ['normal', 'Vừa'], ['compact', 'Gọn']];
+export const RADII = [['sharp', 'Vuông'], ['normal', 'Vừa'], ['round', 'Tròn']];
+// kiểu chart chuỗi thời gian (ui/charts.js lineChart); auto = như thiết kế của từng chart (đường hoặc vùng)
+export const CHART_TYPES = [['auto', 'Mặc định'], ['line', 'Đường'], ['area', 'Vùng'], ['bar', 'Cột'], ['step', 'Bậc thang']];
+const STYLES = { palette: [PALETTES, 'default'], accent: [ACCENTS, 'auto'], density: [DENSITIES, 'normal'], radius: [RADII, 'normal'], chart: [CHART_TYPES, 'auto'] };
+export const STYLE_KEYS = Object.keys(STYLES);
+
+export function storedStyle(key) {
+  const [opts, def] = STYLES[key];
+  const v = get(`e2ed-${key}`);
+  return opts.some(([o]) => o === v) ? v : def;
+}
+export function applyStyle(key, value) {
+  if (value === STYLES[key][1]) delete document.documentElement.dataset[key];
+  else document.documentElement.dataset[key] = value;
+}
+export function setStyle(key, value) {
+  const [opts, def] = STYLES[key] ?? [];
+  if (!opts?.some(([o]) => o === value)) return;
+  applyStyle(key, value);
+  set(`e2ed-${key}`, value === def ? null : value);
+}
+
+// Loại chart chọn ngay trên một chart (thanh Đường / Vùng / Cột / Bậc): nhớ riêng theo tên chart, thắng lựa chọn chung
+const CHART_KINDS = CHART_TYPES.map(([v]) => v).filter((v) => v !== 'auto');
+export function storedChartType(name) {
+  const v = get(`e2ed-chart:${name}`);
+  return CHART_KINDS.includes(v) ? v : null;
+}
+export function setChartType(name, kind) {
+  if (kind == null || CHART_KINDS.includes(kind)) set(`e2ed-chart:${name}`, kind); // null: bỏ lựa chọn riêng
+}
+
 export function applyPrefs() {
   applyTheme(storedTheme());
   applyFont(storedFont());
+  for (const k of STYLE_KEYS) applyStyle(k, storedStyle(k));
 }
 
 // Mục menu bị ẩn (Cài đặt hệ thống → Giao diện): Overview và Cài đặt hệ thống luôn hiện để còn đường bật lại.

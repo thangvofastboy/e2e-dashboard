@@ -39,13 +39,14 @@ export function projectBlock(project) {
   const memory = String(project?.memory ?? '').trim().slice(0, 6000);
   if (!sources.length && !prompt && !testDir && !memory) return '';
   const dirs = sources.map((s) => `- ${String(s.path).slice(0, 300)}${s.description ? `: ${String(s.description).slice(0, 500)}` : ''}`).join('\n');
+  // khối này thành tham số dòng lệnh (--append-system-prompt): byte NUL làm spawn ném lỗi
   return [
     'Bối cảnh dự án (người dùng viết):',
     testDir && `Thư mục chứa test e2e: ${testDir}`,
     dirs && `Thư mục nguồn của hệ thống:\n${dirs}`,
     prompt && `Hướng dẫn của người dùng:\n${prompt}`,
     memory && `Ghi nhớ về hệ thống (AI đã đọc dự án và tóm tắt; mã nguồn có thể đã đổi, kiểm lại khi cần):\n${memory}`,
-  ].filter(Boolean).join('\n\n');
+  ].filter(Boolean).join('\n\n').replaceAll('\0', '');
 }
 
 // Điểm chất lượng (server/quality.mjs) thành các dòng bằng chứng cho action quality-review: test tệ nhất trước
@@ -641,7 +642,14 @@ export function createAi({ projectRoot, spawnImpl = nodeSpawn, maxConcurrent = 2
       // model / effort của riêng lần gọi đè Settings; giá trị sai bị bỏ qua
       const pick = { model, ...settings(), ...(validModel(oneModel) ? { model: oneModel } : {}), ...(AI_EFFORTS.includes(oneEffort) ? { effort: oneEffort } : {}) };
       const args = [...baseArgs, ...(validModel(pick.model) ? ['--model', pick.model] : []), ...(AI_EFFORTS.includes(pick.effort) ? ['--effort', pick.effort] : []), ...(block ? ['--append-system-prompt', block] : []), ...dirs.flatMap((d) => ['--add-dir', d]), ...(resume ? ['--resume', resume] : [])];
-      const child = spawnImpl('claude', args, { cwd: projectRoot, stdio: ['pipe', 'pipe', 'pipe'] });
+      let child;
+      try {
+        child = spawnImpl('claude', args, { cwd: projectRoot, stdio: ['pipe', 'pipe', 'pipe'] });
+      } catch (e) {
+        // spawn ném đồng bộ (vd. tham số có byte NUL): không có thì run() treo mãi và giữ chỗ trong hàng đợi
+        onEvent({ type: 'error', message: e.message });
+        return done();
+      }
       let buf = '';
       let stderr = '';
       let finished = false;

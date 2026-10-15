@@ -157,7 +157,8 @@ async function commitsFor(projectRoot, run, action, resultId) {
   // resultId không có trong run (các action không kiểm tra nó): coi như cả run, không đọc r.testId của undefined
   if (action === 'analyze-run' || !r) return commitsBetween(projectRoot, older[0]?.git?.commit, to);
   const ids = new Set(older.map((m) => m.runId));
-  for (const { meta: m, report } of (await loadHistory(projectRoot, i + 21)).filter((h) => ids.has(h.meta.runId))) {
+  // chỉ đọc 20 run cũ hơn, không đọc lại i run mới hơn (run cũ ở vị trí 300 từng phải parse 321 report)
+  for (const { meta: m, report } of (await loadHistory(projectRoot, 20, i + 1)).filter((h) => ids.has(h.meta.runId))) {
     const same = report.run.results?.find((x) => x.testId === r.testId && x.targetId === r.targetId && (x.agent ?? 'default') === (r.agent ?? 'default'));
     if (same?.status === 'passed') return commitsBetween(projectRoot, m.git?.commit, to);
   }
@@ -520,9 +521,10 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       }
       if (p === '/api/test') {
         const key = String(url.searchParams.get('key') ?? '');
-        const d = testDetail(await loadHistory(projectRoot, 60), key);
+        const history = await loadHistory(projectRoot, 60);
+        const d = testDetail(history, key);
         if (!d) return send(res, 404, { error: 'test not found' });
-        const flaky = flakyTests(await loadHistory(projectRoot, 30)).find((f) => f.key === key) ?? null;
+        const flaky = flakyTests(history.slice(0, 30)).find((f) => f.key === key) ?? null; // 30 run mới nhất: đã có trong 60 run trên
         const q = (await readQuarantine(projectRoot)).find((x) => x.key === key) ?? null;
         return send(res, 200, { ...d, owners: ownersOf(readCodeowners(projectRoot).rules, d.file), flaky: flaky && { score: flaky.score, flaky: flaky.flaky, flips: flaky.flips }, quarantine: q });
       }
