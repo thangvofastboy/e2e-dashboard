@@ -57,3 +57,17 @@ test('SQLite needs Node ≥ 22.13 with node:sqlite', () => {
   assert.equal(sqliteSupport('24.0.0', true).ok, true);
   assert.equal(sqliteSupport('24.0.0', false).ok, false);
 });
+
+test('a report.json planted as a symlink is not indexed', { skip: !indexAvailable() && 'node:sqlite không có' }, async () => {
+  const { renameSync, symlinkSync } = await import('node:fs');
+  const root = await project(2);
+  const [newest] = await listRuns(root);
+  const rep = join(root, '.e2e-dashboard/runs', newest.dir, 'report.json');
+  const outside = join(mkdtempSync(join(tmpdir(), 'e2ed-out-')), 'x.json');
+  renameSync(rep, outside);
+  symlinkSync(outside, rep);
+  await writeSettings(root, { sqlite: true });
+  assert.deepEqual(await syncIndex(root), { added: 1, removed: 0, total: 2 });
+  assert.equal((await indexedCounts(root)).has(newest.runId), false);
+  closeIndex(root);
+});

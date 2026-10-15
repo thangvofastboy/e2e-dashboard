@@ -91,8 +91,10 @@ export function createLive({ throttleMs = 250 } = {}) {
         const p = e.progress;
         if (!t || !p) return;
         dirty.add(t.key);
-        const stepId = p.identity?.stepId ?? `${p.api}:${t.steps.length}`;
-        let s = t.steps.find((x) => x.stepId === stepId);
+        const id = p.identity?.stepId;
+        const stepId = id ?? `${p.api}:${t.steps.length}`;
+        // không có identity: id dựng từ steps.length đã khác lúc start, nên end khớp step đang chạy gần nhất cùng api
+        const s = id != null ? t.steps.find((x) => x.stepId === id) : t.steps.findLast((x) => x.status === 'running' && x.api === p.api);
         if (p.phase === 'start') {
           t.steps.push({ stepId, kind: p.kind, api: p.api, label: p.label, status: 'running', durationMs: null, error: null });
         } else if (p.phase === 'end' && s) {
