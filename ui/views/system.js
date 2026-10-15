@@ -237,7 +237,9 @@ function aiPanelHtml(c) {
   const status = [];
   if (ai.packages.length) status.push(ai.missing.length ? `<span class="tone-warn">Thiếu gói ${escapeHtml(ai.missing.join(', '))}</span>: bấm Quick Setup ở trên để cài (<code>${escapeHtml(ai.installDisplay)}</code>)` : `<span class="tone-good">Đủ gói</span> ${escapeHtml(ai.packages.join(', '))}`);
   if (ai.env && ai.kind === 'key') status.push(ai.keyState === 'set' ? `<span class="tone-good">${escapeHtml(ai.env)} đã có</span> (${escapeHtml(ai.keySource)})` : `<span class="tone-warn">Chưa có ${escapeHtml(ai.env)}</span>${ai.keyUrl ? `: tạo key ở <a href="${escapeHtml(ai.keyUrl)}" target="_blank" rel="noreferrer">${escapeHtml(ai.keyUrl)}</a>` : ''}`);
-  if (ai.kind === 'cli') status.push(`${ai.claude ? '<span class="tone-good">Có lệnh claude</span>' : '<span class="tone-warn">Không thấy lệnh claude</span>'}: đăng nhập một lần bằng <code>claude</code>${ai.adapterMissing ? ' · <span class="tone-warn">thiếu e2e-dashboard.claude-code.mjs</span>: bấm Quick Setup' : ''}`, ...ai.warning.map((w) => `<span class="tone-warn">${escapeHtml(w)}</span>`));
+  if (ai.kind === 'cli') status.push(`${ai.claude ? '<span class="tone-good">Có lệnh claude</span>' : '<span class="tone-warn">Không thấy lệnh claude</span>'}: đăng nhập một lần bằng <code>claude</code>${ai.adapterMissing ? ' · <span class="tone-warn">thiếu e2e-dashboard.claude-code.mjs</span>: bấm Quick Setup' : ''}`);
+  // cảnh báo của model thử nghiệm: khung banner theo màu theme (sáng / tối)
+  const warn = ai.warning?.length ? `<div class="banner tone-warn ai-warn" role="note" data-nums>${icon('alert', { size: 15 })}<ul>${ai.warning.map((w) => `<li>${escapeHtml(w)}</li>`).join('')}</ul></div>` : '';
   if (ai.kind === 'login') status.push(ai.loggedIn ? '<span class="tone-good">Đã đăng nhập</span> trên máy này' : `<span class="tone-warn">Chưa đăng nhập</span>: chạy trong terminal <code>${escapeHtml(ai.loginDisplay)}</code> <button type="button" class="icon-btn" data-copy-cmd="${escapeHtml(ai.loginDisplay)}" aria-label="Copy lệnh">${icon('copy', { size: 13 })}</button>`);
   return `<form data-ai-config>
       <div class="form-row"><span class="form-label">Model AI (bước agent)</span><select name="provider" aria-label="Model AI cho bước agent">${ai.provider === 'custom' ? '<option value="" selected>Model tuỳ chỉnh (giữ nguyên)</option>' : ''}${opts}</select>
@@ -245,7 +247,7 @@ function aiPanelHtml(c) {
       <div class="form-row" data-ai-key${ai.env && ai.kind === 'key' ? '' : ' hidden'}><span class="form-label">API key</span><input type="password" name="apiKey" autocomplete="off" placeholder="${escapeHtml(ai.keyState === 'set' ? 'Đã có: để trống để giữ nguyên' : `Dán ${ai.env ?? 'API key'}`)}" aria-label="API key">
         <small class="fld-hint">Lưu vào <code>.env</code> (quyền 600, tự vào .gitignore); config được thêm dòng đọc .env.</small></div>
       <div class="form-row" data-ai-local${ai.provider === 'openai-compatible' ? '' : ' hidden'}><span class="form-label">Server model</span><input type="url" name="baseURL" placeholder="http://127.0.0.1:11434/v1" aria-label="URL server model"><input type="text" name="modelId" placeholder="model id" aria-label="Model id" spellcheck="false"></div>
-      ${status.length ? `<p class="small">${status.join('<br>')}</p>` : ''}
+      ${status.length ? `<ul class="ai-model-status small">${status.map((x) => `<li>${x}</li>`).join('')}</ul>` : ''}${warn}
       <p><button type="submit">${icon('sparkles', { size: 14 })}Lưu model AI</button> <span class="muted small" data-ai-msg></span></p>
     </form>`;
 }
