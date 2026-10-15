@@ -231,6 +231,35 @@ Tất cả ảnh chụp ở giao diện tối (đổi sáng / tối ở Cài đ�
 > [!IMPORTANT]
 > Cần một project đã dùng **e2e** (có `e2e.config.ts`). e2e bản mới yêu cầu **Node ≥ 22.22.3** (hoặc ≥ 24.8). Dashboard cần **Node ≥ 22**; chỉ mục SQLite tuỳ chọn cần Node ≥ 22.13.
 
+### ⚡ Cài bằng một lệnh (máy mới)
+
+Đứng ở thư mục project e2e (có `e2e.config.ts`) rồi chạy:
+
+```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/thangvofastboy/e2e-dashboard/main/install.sh | bash
+```
+
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/thangvofastboy/e2e-dashboard/main/install.ps1 | iex
+```
+
+Script cài lần lượt, phần nào đã có thì bỏ qua (chạy lại bao nhiêu lần cũng được):
+
+| Bước | Cài gì | Cách cài |
+|:-:|---|---|
+| 1 | git | brew / apt-get / dnf / pacman (Windows: winget) |
+| 2 | Node ≥ 22.22.3 (hoặc ≥ 24.8) | [nvm](https://github.com/nvm-sh/nvm), không cần sudo, không đụng Node hệ thống (Windows: winget `OpenJS.NodeJS.LTS`) |
+| 3 | Claude Code CLI | `npm install -g @anthropic-ai/claude-code` |
+| 4 | Plugin e2e-dashboard | `claude plugin marketplace add` + `claude plugin install` (đã cài thì cập nhật) |
+| 5 | Phần của project | Quick Setup: e2e + `@e2e-dev/web`, `node_modules`, Chromium + headless shell, reporter, `.env`, `.gitignore` |
+| 6 | Mở dashboard | Như gõ `/e2e-dashboard` |
+
+Tham số: `--project <thư mục>`, `--no-open`, `--skip-project` (chỉ cài máy + plugin), `--dry-run` (chỉ in các bước). Truyền qua pipe: `curl … | bash -s -- --project ~/code/my-app`. Windows: `-Project`, `-NoOpen`, `-SkipProject`, `-DryRun` (tải file về rồi chạy `.\install.ps1 -DryRun`). Xong thì gõ `claude` một lần để đăng nhập nếu chưa đăng nhập, và `/reload-plugins` trong phiên Claude Code đang mở.
+
+### Hoặc cài từng bước
+
 **1️⃣ Thêm marketplace và cài plugin** (trong Claude Code):
 
 ```text

@@ -27,6 +27,15 @@ Từ máy trống tới lúc chạy test e2e và đọc kết quả trên dashbo
 
 ## 4. Cài và mở e2e-dashboard
 
+**Cách nhanh: một lệnh cho máy mới.** Đứng ở thư mục project e2e rồi chạy (macOS / Linux):
+
+\`\`\`bash
+curl -fsSL https://raw.githubusercontent.com/thangvofastboy/e2e-dashboard/main/install.sh | bash
+\`\`\`
+
+Windows (PowerShell): \`irm https://raw.githubusercontent.com/thangvofastboy/e2e-dashboard/main/install.ps1 | iex\`.
+Script cài phần còn thiếu theo thứ tự: git → Node ≥ 22.22.3 (qua nvm, không cần sudo) → Claude Code CLI → plugin → Quick Setup của project (e2e, thư viện, Chromium, reporter, .env) → mở dashboard. Phần đã có thì bỏ qua. Thêm \`--dry-run\` để xem trước các bước. Muốn làm tay thì theo các bước dưới.
+
 **Bước 1.** Trong Claude Code, thêm marketplace và cài plugin:
 
 \`\`\`text

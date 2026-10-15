@@ -150,3 +150,27 @@ test('spawnStep huỷ thì giết cả nhóm tiến trình (cháu không sống 
   await new Promise((r) => setTimeout(r, 100));
   assert.throws(() => process.kill(Number(out[0]), 0)); // tiến trình cháu đã chết
 });
+
+test('runQuickSetup: bước project dùng hàm setup được truyền vào (CLI không import lại chính bin/dashboard.mjs)', async () => {
+  const root = project(null);
+  const plan = { items: [{ id: 'project', label: 'p', internal: true }], steps: ['project'] };
+  const ev = [];
+  const r = await runQuickSetup(root, ['project'], { plan, setup: async (dir) => [`setup ${dir === root}`], onEvent: (e) => ev.push(e) });
+  assert.deepEqual(r.results, [{ id: 'project', ok: true, code: 0 }]);
+  assert.ok(ev.some((e) => e.type === 'log' && e.text === 'setup true'));
+});
+
+test('setup --quick qua CLI chạy hết bước project, không treo ở top-level await', { skip: process.platform === 'win32' }, async () => {
+  const { spawnSync } = await import('node:child_process');
+  const root = project({ devDependencies: { e2e: '1', '@e2e-dev/web': '1' } }, ['e2e', '@e2e-dev/web']);
+  writeFileSync(join(root, 'e2e.config.ts'), "export default {\n  tests: 'tests',\n};\n");
+  // trình duyệt giả + claude/git sẵn trên PATH không quan trọng: chỉ cần bước project chạy xong
+  const browsers = mkdtempSync(join(tmpdir(), 'e2ed-br-'));
+  for (const d of ['chromium-1', 'chromium_headless_shell-1']) mkdirSync(join(browsers, d));
+  const r = spawnSync(process.execPath, [join(import.meta.dirname, '..', 'bin', 'dashboard.mjs'), 'setup', '--quick', '--yes'], {
+    cwd: root, encoding: 'utf8', timeout: 60000, env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: browsers, PATH: '' },
+  });
+  const out = r.stdout + r.stderr;
+  assert.doesNotMatch(out, /unsettled top-level await/);
+  assert.match(out, /Đã thêm reporter vào e2e\.config\.ts/);
+});

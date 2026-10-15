@@ -469,7 +469,7 @@ async function quickSetupCli(root, yes) {
     if (!/^y(es)?$/i.test(ans.trim())) return { code: 1, out: 'Đã huỷ.' };
   }
   const { results } = await runQuickSetup(root, plan.steps, {
-    interactive: true, inherit: true, reporter: () => reporterStatus(root),
+    interactive: true, inherit: true, reporter: () => reporterStatus(root), setup,
     onEvent: (e) => {
       if (e.type === 'step') console.log(`\n▶ ${e.label}\n$ ${e.display}`);
       if (e.type === 'log') console.log(e.text);

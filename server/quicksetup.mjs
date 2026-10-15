@@ -169,7 +169,9 @@ export async function runQuickSetup(root, ids, opts = {}) {
   }
 }
 
-async function runSteps(root, ids, { onEvent = () => {}, signal, inherit = false, plan: given, ...planOpts } = {}) {
+// setup: hàm setup() của bin/dashboard.mjs. CLI (bin/dashboard.mjs là entry, đang ở top-level await) phải truyền vào:
+// import lại chính module đang chạy sẽ chờ nó chạy xong → treo, Node thoát với "unsettled top-level await"
+async function runSteps(root, ids, { onEvent = () => {}, signal, inherit = false, plan: given, setup: setupFn, ...planOpts } = {}) {
   const plan = given ?? (await quickSetupPlan(root, planOpts));
   const want = new Set(ids);
   const steps = plan.items.filter((x) => want.has(x.id) && plan.steps.includes(x.id));
@@ -180,7 +182,7 @@ async function runSteps(root, ids, { onEvent = () => {}, signal, inherit = false
     let code = 0;
     if (s.internal) {
       try {
-        const { setup } = await import('../bin/dashboard.mjs'); // lazy: bin kéo theo nhiều module server
+        const setup = setupFn ?? (await import('../bin/dashboard.mjs')).setup; // lazy: bin kéo theo nhiều module server
         for (const line of await setup(root)) onEvent({ type: 'log', id: s.id, text: line });
       } catch (e) {
         onEvent({ type: 'log', id: s.id, text: e.message });
