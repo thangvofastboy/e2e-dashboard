@@ -28,12 +28,16 @@ export function typewriter(paint, { step = 30, now = reducedMotion() } = {}) {
     paint(target.slice(0, shown), shown < target.length);
   };
   return {
-    // văn bản mới không nối tiếp phần đã hiện (vd. kết quả cuối khác bản stream) thì vẽ lại từ đầu phần chung
+    // văn bản mới không nối tiếp phần đã hiện (vd. kết quả cuối bỏ câu "để mình đọc file…" trước khi dùng tool):
+    // thay ngay, không xoá rồi gõ lại từ đầu
     set(text) {
       let common = 0;
       while (common < shown && common < text.length && text[common] === target[common]) common++;
       target = text;
-      shown = Math.min(shown, common);
+      if (common < shown) {
+        shown = text.length;
+        paint(text, false);
+      }
       if (!timer) timer = setInterval(tick, step);
     },
     finish: () => (timer ? new Promise((r) => waiters.push(r)) : Promise.resolve()),
@@ -252,23 +256,32 @@ export function openAskPanel() {
     // tự cuộn xuống chỉ khi đang ở gần cuối: người dùng cuộn lên đọc lại thì không bị kéo xuống
     const nearBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 80;
     let status = thinkingHtml();
+    let view = ''; // phần chữ đang hiện (typewriter); ai.text luôn là toàn văn đã nhận, để mở lại panel giữa chừng vẫn đủ
     const paint = () => {
       const stick = nearBottom();
-      bubble.innerHTML = `${ai.text ? renderMarkdown(ai.text) : ''}<p class="chat-status muted small">${status}</p>`;
+      bubble.innerHTML = `${view ? renderMarkdown(view) : ''}<p class="chat-status muted small">${status}</p>`;
       if (stick) log.scrollTop = log.scrollHeight;
     };
     log.scrollTop = log.scrollHeight;
     paint();
     const tw = typewriter((t) => {
-      ai.text = t;
+      view = t;
       paint();
     });
     setBusy(true);
     const { path, payload } = chatRequest(chat.sessionId, q);
     const mine = chat;
     aiAbort = new AbortController();
-    aiAbort.signal.addEventListener('abort', () => tw.stop()); // Dừng / đóng panel: bỏ phần gõ dở, không bắt chờ
     let streamed = '';
+    let ended = false;
+    // Dừng / đóng / mở lại panel: bỏ phần gõ dở. Chạy đồng bộ trước khi panel mới vẽ chat.msgs, nên ghi chú "dừng" đặt ngay ở đây
+    aiAbort.signal.addEventListener('abort', () => {
+      tw.stop();
+      if (!ended) {
+        if (streamed) ai.error ??= 'Đã dừng giữa chừng';
+        else ai.text ||= '_Đã dừng._';
+      }
+    });
     try {
       await postStream(path, payload, (e) => {
         if (e.type === 'session') mine.sessionId = e.sessionId;
@@ -278,6 +291,7 @@ export function openAskPanel() {
         }
         if (e.type === 'text') {
           streamed += `${e.text}\n`;
+          ai.text = streamed;
           status = thinkingHtml('Đang trả lời');
           tw.set(streamed);
         }
@@ -285,19 +299,18 @@ export function openAskPanel() {
           if (e.sessionId) mine.sessionId = e.sessionId;
           if (e.result && !e.isError) {
             streamed = e.result;
+            ai.text = streamed;
             tw.set(streamed);
           }
         }
         if (e.type === 'error') ai.error = e.message;
       }, aiAbort.signal);
+      ended = true;
       await tw.finish(); // chữ hiện hết rồi mới chốt tin nhắn
     } catch (x) {
-      if (x.name !== 'AbortError') ai.error = x.message;
-      else if (!streamed) ai.text = '_Đã dừng._';
-      else ai.error = 'Đã dừng giữa chừng';
+      if (x.name !== 'AbortError') ai.error = x.message; // AbortError: listener ở trên đã ghi chú
     }
     tw.stop();
-    if (streamed) ai.text = streamed; // lịch sử lưu đủ câu trả lời, kể cả phần chưa kịp hiện
     if (!ai.text && !ai.error) ai.text = '_(Không có câu trả lời)_';
     setBusy(false);
     mine.title ??= shortTitle(q);

@@ -40,9 +40,13 @@ test('typewriter: hiện dần tới hết, đổi văn bản giữa chừng th�
   assert.deepEqual(frames.at(-1), [text, false]);
   assert.ok(frames.every(([t], i) => i === 0 || t.length >= frames[i - 1][0].length)); // chỉ tăng
   frames.length = 0;
-  tw.set(`${'x'.repeat(50)}y`); // kết quả cuối khác bản stream: vẽ lại từ phần chung
+  tw.set(`${'x'.repeat(50)}y`); // kết quả cuối khác bản đã hiện: thay ngay, không gõ lại từ đầu
   await tw.finish();
-  assert.equal(frames.at(-1)[0], `${'x'.repeat(50)}y`);
+  assert.deepEqual(frames, [[`${'x'.repeat(50)}y`, false]]);
+  frames.length = 0;
+  tw.set(`${'x'.repeat(50)}yzzzzzzzz`); // nối tiếp: hiện dần phần thêm
+  await tw.finish();
+  assert.ok(frames.length >= 2 && frames.at(-1)[0].endsWith('zzzzzzzz'));
   const tw2 = typewriter(() => {}, { step: 1000, now: false });
   tw2.set('abc');
   const done = tw2.finish();

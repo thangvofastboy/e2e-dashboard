@@ -2,7 +2,7 @@ import './_home.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -344,6 +344,16 @@ test('static site: index + runs, never through a symlinked folder', async () => 
   assert.equal(names.length, 4);
   assert.ok(names.includes('e2e-report/index.html') && names.includes('e2e-report/.nojekyll'));
   assert.equal(await siteZip(tmp()), null); // chưa xuất thì không có zip
+  // xuất lại với ít run hơn: trang run cũ bị xoá, zip chỉ còn index + run đang link
+  await publishSite(root, { runs: 1 });
+  const zip2 = await siteZip(root);
+  assert.equal((zip2.toString('latin1').match(/PK\x01\x02/g) ?? []).length, 3);
+  // thư mục site/runs là symlink (repo clone về): không đọc qua
+  const root3 = await project(series('p'));
+  await publishSite(root3);
+  rmSync(join(root3, '.e2e-dashboard/site/runs'), { recursive: true });
+  symlinkSync(tmp(), join(root3, '.e2e-dashboard/site/runs'));
+  assert.equal(await siteZip(root3), null);
   const root2 = await project(series('p'));
   mkdirSync(join(root2, '.e2e-dashboard'), { recursive: true });
   symlinkSync(tmp(), join(root2, '.e2e-dashboard/site'));

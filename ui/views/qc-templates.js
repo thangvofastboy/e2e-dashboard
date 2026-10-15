@@ -90,6 +90,7 @@ export async function renderQcTemplates(main) {
       const out = main.querySelector('[data-out]');
       const actions = main.querySelector('[data-out-actions]');
       b.setAttribute('aria-busy', 'true');
+      const prev = out.innerHTML; // AI lỗi: trả lại kết quả cũ thay vì để trống
       try {
         if (b.dataset.use === 'prompt') {
           const r = await postJson('/api/qc/render', body);
@@ -102,12 +103,12 @@ export async function renderQcTemplates(main) {
         }
         actions.hidden = false;
       } catch (x) {
-        if (out.querySelector('.think')) out.textContent = ''; // lỗi: không để hiệu ứng chờ đứng mãi
+        if (out.querySelector('.think')) out.innerHTML = prev;
         toast(x.message.replace(/^\d{3}: /, ''), 'bad');
       } finally {
         b.removeAttribute('aria-busy');
       }
-      out.hidden = false;
+      out.hidden = !out.textContent.trim(); // lỗi ở lần đầu: không hiện khung trống
     }));
     main.querySelector('[data-copy-out]')?.addEventListener('click', async () => {
       await navigator.clipboard.writeText(main.querySelector('[data-out]').textContent);

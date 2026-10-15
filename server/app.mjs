@@ -606,7 +606,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return send(res, 200, reportHtml(data), { 'content-type': 'text/html; charset=utf-8', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; img-src data:", 'x-content-type-options': 'nosniff' });
       }
       if (p === '/api/publish/site.zip') {
-        const zip = await siteZip(projectRoot);
+        const zip = await siteZip(projectRoot, env);
         if (!zip) return send(res, 404, { error: 'Chưa xuất trang tĩnh' });
         res.writeHead(200, { 'content-type': 'application/zip', 'content-disposition': 'attachment; filename="e2e-report.zip"', 'content-length': zip.length, 'referrer-policy': 'no-referrer' });
         return res.end(zip);

@@ -2,8 +2,11 @@
 // self-contained HTML, in a folder you can push to GitHub Pages or a shared drive. The folder is
 // .e2e-dashboard/site unless the user passes one (CLI) or sets "publish": { "dir" } in their own
 // ~/.e2e-dashboard/config.json — never from the repo's config, which a clone controls.
-import { mkdir, writeFile, rename, rm, lstat, readFile, readdir } from 'node:fs/promises';
-import { deflateRawSync } from 'node:zlib';
+import { mkdir, writeFile, rename, rm, lstat, readFile, readdir, unlink } from 'node:fs/promises';
+import zlib, { deflateRaw } from 'node:zlib';
+import { promisify } from 'node:util';
+
+const deflate = promisify(deflateRaw);
 import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { DATA_DIR, ensureDataDir } from '../reporter/e2e-dashboard.reporter.mjs';
@@ -51,6 +54,9 @@ export async function publishSite(root, { dir = null, runs = 10, env = process.e
     await put(join(out, 'runs'), `${x.runId}.html`, x.html);
     links.push({ href: `runs/${x.runId}.html`, label: `${m.git?.branch ?? ''}${m.git?.commit ? `@${String(m.git.commit).slice(0, 7)}` : ''} ${m.runId.slice(-8)}`.trim(), status: m.status, at: m.startedAt });
   }
+  // trang run của lần xuất trước không còn trong index: xoá, để thư mục (và zip tải về) đúng bằng trang đang xuất
+  const keep = new Set(links.map((l) => l.href.slice('runs/'.length)));
+  for (const n of await readdir(join(out, 'runs')).catch(() => [])) if (n.endsWith('.html') && !keep.has(n)) await unlink(join(out, 'runs', n)).catch(() => {});
   const data = await buildReport(root, { kind: 'site', calendar: true });
   await put(out, 'index.html', reportHtml(data, { runs: links }));
   await put(out, '.nojekyll', '');
@@ -58,13 +64,15 @@ export async function publishSite(root, { dir = null, runs = 10, env = process.e
 }
 
 const CRC = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
-const crc32 = (b) => { let c = ~0; for (const x of b) c = CRC[(c ^ x) & 0xff] ^ (c >>> 8); return ~c >>> 0; };
+// zlib.crc32 (native, Node ≥ 22.2) khi có; bản JS cho Node 22.0–22.1
+const crc32 = zlib.crc32 ?? ((b) => { let c = ~0; for (const x of b) c = CRC[(c ^ x) & 0xff] ^ (c >>> 8); return ~c >>> 0; });
 
-// Zip (deflate) từ danh sách { name, data }: đủ cho vài chục file HTML, không cần ZIP64.
-export function zipFiles(files) {
+// Zip (deflate) từ danh sách { name, data }: đủ cho vài chục file HTML, không cần ZIP64. Nén bất đồng bộ (threadpool
+// của zlib) để file run vài MB không chặn server
+export async function zipFiles(files) {
   const local = []; const central = []; let off = 0;
   for (const f of files) {
-    const name = Buffer.from(f.name); const raw = Buffer.from(f.data); const z = deflateRawSync(raw); const crc = crc32(raw);
+    const name = Buffer.from(f.name); const raw = Buffer.from(f.data); const z = await deflate(raw); const crc = crc32(raw);
     const h = Buffer.alloc(30); h.writeUInt32LE(0x04034b50, 0); h.writeUInt16LE(20, 4); h.writeUInt16LE(0x0800, 6); h.writeUInt16LE(8, 8);
     h.writeUInt32LE(crc, 14); h.writeUInt32LE(z.length, 18); h.writeUInt32LE(raw.length, 22); h.writeUInt16LE(name.length, 26);
     const c = Buffer.alloc(46); c.writeUInt32LE(0x02014b50, 0); c.writeUInt16LE(20, 4); c.writeUInt16LE(20, 6); c.writeUInt16LE(0x0800, 8); c.writeUInt16LE(8, 10);
@@ -79,6 +87,8 @@ export function zipFiles(files) {
 // Trang tĩnh đã xuất, gói thành zip để tải về (chỉ file thường, bỏ symlink và file tạm)
 export async function siteZip(root, env = process.env) {
   const out = await siteDir(root, null, env);
+  // giống publishSite: không đọc qua thư mục symlink (repo clone về có thể cài site/runs -> ~/.aws)
+  for (const d of [out, join(out, 'runs')]) if ((await lstat(d).catch(() => null))?.isSymbolicLink()) return null;
   const files = [];
   for (const rel of ['index.html', '.nojekyll', ...(await readdir(join(out, 'runs')).catch(() => [])).map((n) => `runs/${n}`)]) {
     const st = await lstat(join(out, rel)).catch(() => null);
