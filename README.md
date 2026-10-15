@@ -99,8 +99,12 @@
 | 🌱 | **Vòng đời test** | Test mới, bị bỏ, đổi tên, luôn fail, commit sửa gần nhất |
 | 🌐 | **Trang báo cáo tĩnh** | Xuất cả lịch sử thành thư mục HTML cho GitHub Pages / thư mục chung |
 | 🧠 | **AI ghi nhớ dự án** | Thêm / Sửa project (trang *Projects*, hoặc *Cài đặt hệ thống › Dự án*): chọn thư mục chứa test và thêm các thư mục khác của hệ thống (tuỳ chọn) kèm mô tả. Mỗi lần lưu (bối cảnh có đổi), dashboard cho Claude đọc các thư mục đó và viết **bản ghi nhớ về hệ thống** (hệ thống làm gì, các phần, luồng chính, cách tổ chức test, thuật ngữ, chỗ hay hỏng); bản ghi nhớ đi kèm mọi lần gọi AI sau đó. Có trạng thái *đang đọc / đã ghi nhớ / cần đọc lại*, xem được bản ghi nhớ, nút *AI đọc lại dự án* |
+| 📝 | **Prompt quy tắc cho AI** | Hộp Thêm / Sửa project có ô *Prompt*: quy ước đặt tên, luồng nghiệp vụ, rule (vd. tài khoản test, không xoá dữ liệu thật). Prompt gửi kèm mọi lần gọi AI của project |
+| 📂 | **Chọn project để chạy** | Trang *Projects*: thẻ gọn, project đang chọn có viền và chip *Đang chọn để chạy*; bấm **Chọn để chạy** để chuyển dashboard sang project khác (tự khởi động server của project đó), Run sẽ chạy e2e trong thư mục của nó. Nút copy lệnh mở trong terminal |
+| 🧪 | **AI hỗ trợ QC** | Trang riêng (menu *Theo dõi*): **Độ phủ theo yêu cầu** (đối chiếu acceptance criteria với test), **Charter test khám phá** (từ thay đổi code so với nhánh gốc), **Sinh dữ liệu test** (giá trị hợp lệ / biên / không hợp lệ), **Kiểm tra bug trùng** (so với nhóm lỗi đã gặp) |
 | ⚡ | **1 Click Setup** | Trang riêng (menu *Tích hợp*): hệ điều hành, các bước cài theo thứ tự với nút **Cài tất cả** (thư viện, gói AI, Chromium, reporter, `.env`), trạng thái từng bước và log, API key nhập tại chỗ, chọn model AI, sửa URL app / lệnh khởi động trong `e2e.config.ts`. Mở dashboard mà project còn thiếu thì hiện popup cùng nội dung |
 | ⚙️ | **Cài đặt hệ thống** | Theme, cỡ chữ, ngôn ngữ; xem và sửa trực tiếp `.env` / `.env.local` (lưu thẳng vào file, file có secret tự vào `.gitignore`); Linear key, webhook, setup và doctor |
+| 🎛️ | **Menu gọn mặc định** | *Chi phí & cache*, *Model & ngân sách*, *Gợi ý locator*, *Lint agent* ẩn khỏi menu mặc định; bật lại bằng switch ở *Cài đặt hệ thống › Giao diện › Menu hiển thị* (vẫn mở được bằng Tìm kiếm) |
 | 🌐 | **Chọn trình duyệt** | Chromium mặc định, đổi trong Cài đặt: chạy test bằng Firefox hoặc WebKit, kể cả lịch chạy |
 | 🛠️ | **Tự sửa lỗi dashboard (có duyệt)** | Lỗi của chính dashboard được AI phân tích và sửa trên branch riêng. **Dừng chờ bạn duyệt diff**; chỉ khi bấm *Chạy test & tạo PR* mới chạy `npm test`, push và mở PR draft |
 | ✨ | **AI mở rộng** | Tóm tắt run, giải thích nhóm lỗi, triage, vì sao chậm, viết test từ ticket, chọn test bị ảnh hưởng, gom locator, tìm test trùng, nháp release notes, giải thích visual diff |
@@ -135,6 +139,7 @@
 | 🛡️ | **Xác nhận mọi thao tác nguy hiểm** | Một hộp thoại dùng chung cho mọi thao tác xoá, gỡ, dừng run, ghi đè snapshot, bật tự động; mặc định focus vào *Huỷ*, Esc để thoát |
 | 🖥️ | **Chạy có / không giao diện** | Công tắc *headed* ở Tự động & lưu trữ → Chạy & lịch (mặc định tắt) và trong hộp thoại Run; áp cho chạy tay, chạy lại, chạy theo lịch và chạy qua MCP |
 | 🌳 | **Tests dạng cây thư mục** | Thư mục gập / mở kèm số test và số fail, mỗi file một dòng tóm tắt (pass rate, thời gian TB, trạng thái mới nhất), chọn cả thư mục, nút *Tải lại*; tên test dài tự xuống dòng |
+| 🔍 | **Lọc test theo tên** | Trang *Tests*: ô lọc theo tên test (và tên file); thanh nút và bộ lọc dính trên cùng khi cuộn cây thư mục |
 | 🔎 | **Chọn test có ô lọc** | Ô chọn test ở QC xác nhận và Mẫu QC: lọc theo tên, file, tag (gõ không dấu vẫn khớp), hiện theo cây, dùng được bằng bàn phím |
 | 🧯 | **Live: danh sách test fail riêng** | Ngay dưới Gantt, cập nhật trong lúc chạy; run xong có đủ nút như Runs: Phân tích lỗi, Bước tái hiện, Gửi Linear, Tìm commit gây lỗi, Sửa bằng Claude Code, Chạy lại đúng test |
 | 📟 | **Tài nguyên máy & app** | Live hiện CPU, RAM, disk trống của máy (cả khi chưa chạy) và RAM / CPU / số tiến trình của run đang chạy (gồm trình duyệt); Cài đặt hệ thống có bảng cấu hình máy |
@@ -421,6 +426,8 @@ Lệnh này copy `e2e-dashboard.reporter.mjs` (kèm `.d.mts`) vào project và t
 | `/e2e-dashboard autoupdate [on\|off]` | 🔄 | Tự cập nhật plugin: bật / tắt auto-update của marketplace `e2e-dashboard` trong `settings.json` của Claude Code (mặc định Claude Code tắt với marketplace bên thứ ba). Khi bật, Claude Code tải bản mới sau tin nhắn đầu tiên của mỗi phiên; áp dụng sau `/reload-plugins` hoặc lần mở sau. Script cài và trang 1 Click Setup bật sẵn |
 | `/e2e-dashboard os` | 🖥️ | Hệ điều hành đang chạy (distro, phiên bản, CPU, WSL) và trình quản lý gói Quick Setup sẽ dùng |
 | `/e2e-dashboard setup --quick [--yes]` | ⚡ | Quick Setup: kiểm tra Git, gh, Node, e2e ([tester-army/e2e](https://github.com/tester-army/e2e)) + `@e2e-dev/web`, `node_modules`, Chromium + headless shell, Claude CLI, reporter/.env; hiện lệnh rồi cài phần thiếu (sudo hỏi mật khẩu trong terminal). Trong dashboard: *trang 1 Click Setup* |
+| `/e2e-dashboard 1-setup [--yes]` | ⚡ | Viết tắt của `setup --quick` (1 Click Setup trong terminal) |
+| `/e2e-dashboard setting …` | 🧩 | Viết tắt của `config …` (cũng nhận `settings`) |
 | `/e2e-dashboard doctor [--dry-run]` | 🩺 | Chuyển dữ liệu theo bố cục cũ sang bố cục mới (runs theo ngày, `state/`, `runtime/`), dựng lại chỉ mục SQLite nếu đã bật. `--dry-run` chỉ liệt kê, không ghi |
 | `/e2e-dashboard export [runId]` | 📤 | Xuất một run (mặc định là run mới nhất) thành HTML tự chứa |
 | `/e2e-dashboard status` | ℹ️ | Xem server có đang chạy không |
@@ -459,6 +466,7 @@ Trên trang run: **✨ Phân tích run** (tóm tắt, gom nhóm lỗi, ưu tiên
 | ⏱️ | Tối đa 2 phân tích cùng lúc, timeout 5 phút, đóng panel là dừng |
 | 🔀 | **Vì sao flaky?** ở trang Flaky: Claude đọc lịch sử pass/fail theo commit, cache, timing và code test, tách flaky thật khỏi regression |
 | 🎯 | **Chuyển thành locator** trên step `agent.act`: Claude đọc test và bản ghi cache, đề xuất code locator thay cho bước agent |
+| ☯️ | Nút AI dùng icon âm dương; khi AI hay cài đặt đang chạy, nút đã bấm hiện spinner và đầu trang có thanh tiến độ |
 
 ---
 
