@@ -38,6 +38,8 @@ Chạy không tham số thì script hỏi trước: thư mục project, URL app,
 
 Script in trước 9 bước rồi chạy lần lượt (\`[n/9]\`, dòng *Đang …* cho biết đang cài gì): phát hiện hệ điều hành (macOS, distro Linux, WSL, Windows) để chọn đúng cách cài → git → Node ≥ 22.22.3 (qua nvm, không cần sudo) → Claude Code CLI → plugin → cấu hình \`e2e.config.ts\` (chưa có thì tạo bằng \`e2e init\`, hỏi URL app và lệnh khởi động app) → AI cho e2e (chọn model, cài gói npm của provider như \`@ai-sdk/anthropic\`, lưu API key vào \`.env\` hoặc \`npx e2e login\`; có thêm \`claude-code\` thử nghiệm dùng đăng nhập Claude Code CLI thay cho API key, kèm cảnh báo về điều khoản và hạn mức) → Quick Setup của project (e2e, thư viện, Chromium, reporter, .env) → mở dashboard. Cuối cùng in bảng tổng kết từng bước. Phần đã có thì bỏ qua. Thêm \`--dry-run\` để xem trước, \`--init --yes --app-url … --app-command "npm run dev"\` để không phải trả lời câu hỏi. Muốn làm tay thì theo các bước dưới.
 
+Cho AI hiểu hệ thống: trang *Projects* → bút chì (Sửa project) hoặc *Cài đặt hệ thống › Dự án*: chọn **thư mục chứa test** và thêm **thư mục khác** (backend, frontend, tài liệu…) kèm mô tả. Bấm Lưu: Claude đọc các thư mục đó và viết bản ghi nhớ về hệ thống (khoảng nửa phút), bản ghi nhớ đi kèm mọi lần gọi AI. Sửa lại là AI đọc lại; mã nguồn đổi nhiều thì bấm *AI đọc lại dự án*.
+
 Sửa \`e2e.config.ts\` sau này: *trang 1 Click Setup* (model AI + API key, URL app, lệnh khởi động app), hoặc \`/e2e-dashboard config\` và \`/e2e-dashboard ai\`. Lưu ý: e2e không tự đọc \`.env\`; khi chọn model dùng API key, dashboard thêm dòng \`process.loadEnvFile('.env')\` vào config.
 
 **Bước 1.** Trong Claude Code, thêm marketplace và cài plugin:

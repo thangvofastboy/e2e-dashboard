@@ -41,6 +41,7 @@ import { estimateEta } from './live.mjs';
 import { bundleUi } from '../ui/bundle.mjs';
 import { buildExportHtml } from './export.mjs';
 import { readSettings, writeSettings, autoWorkers } from './settings.mjs';
+import { createLearner, contextHash, readMemory } from './aimemory.mjs';
 import { syncLongterm, readDays, daySeries, totals, reliability, lifecycle, dayKey } from './longterm.mjs';
 import { syncTriage, triageBoard, updateTriage, TRIAGE_STATUSES } from './triage.mjs';
 import { groupReport } from './groups.mjs';
@@ -274,7 +275,29 @@ const SUITE_EVIDENCE = new Set(['ticket-test', 'select-tests', 'locator-batch', 
 const DRAFT_DIR = /^(?!.*(?:^|\/)\.)(?!.*\.\.)[\w./ -]{1,150}$/;
 const historyTable = async (root, n) => (await indexedTestHistory(root, n).catch(() => null)) ?? testHistory(root, n);
 
-export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER, ai = NO_AI, qcAi = null, env = process.env, linearFetch, mcpDetect = detectMcpLinear, github = createGithub({ projectRoot }), ghImport = importFromGithub, automation = null, tracking = null, selfHeal = null }) {
+export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER, ai = NO_AI, qcAi = null, env = process.env, linearFetch, mcpDetect = detectMcpLinear, github = createGithub({ projectRoot }), ghImport = importFromGithub, automation = null, tracking = null, selfHeal = null, learner: givenLearner = null }) {
+  // AI ghi nhớ dự án (server/aimemory.mjs): main.mjs truyền learner riêng mỗi project; test / mặc định dùng `ai`
+  const learner = givenLearner ?? createLearner({ aiFor: () => ai });
+  // project được phép đọc / sửa bối cảnh: project đang mở hoặc có trong danh sách Projects
+  const knownRoot = async (root) => {
+    if (root == null || root === '') return projectRoot;
+    if (typeof root !== 'string') return null;
+    const abs = resolve(root);
+    if (abs === resolve(projectRoot)) return projectRoot;
+    return (await readRegistry(env)).some((x) => resolve(x.root) === abs) ? abs : null;
+  };
+  const contextOf = async (root) => {
+    const st = await readSettings(root);
+    return { root, testDir: st.testDir, sources: st.sources, prompt: st.prompt, memory: await learner.status(root) };
+  };
+  // lưu bối cảnh; nội dung đổi so với lần AI ghi nhớ gần nhất thì cho AI đọc lại (chạy nền)
+  const saveContext = async (root, patch) => {
+    await writeSettings(root, patch);
+    const ctx = await contextOf(root);
+    const mem = await readMemory(root);
+    if (contextHash(ctx.memory.inputs) !== mem?.hash) void learner.learn(root).catch(() => {});
+    return { ...ctx, memory: await learner.status(root) };
+  };
   // Linear: API key nếu có, không thì MCP Linear của Claude CLI. `settings` giống các phiên AI khác (model, effort).
   // force: dò lại MCP Linear ngay (nút Kiểm tra lại), không dùng kết quả trong cache
   const linearBackend = ({ force = false } = {}) => resolveLinear({ projectRoot, cfg: readConfig(projectRoot), env, fetchImpl: linearFetch, detect: force ? () => mcpDetect({ force: true }) : mcpDetect, settings: () => aiPrefs(env, readConfig(projectRoot)) });
@@ -469,7 +492,21 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         if (!a || !b) return send(res, 400, { error: 'a and b are required' });
         return send(res, 200, compareBranches(await loadHistory(projectRoot, 100), a, b));
       }
-      if (p === '/api/projects') return send(res, 200, { projects: await projectSummaries(projectRoot, env) });
+      if (p === '/api/projects') {
+        // kèm tóm tắt bối cảnh AI của từng project (thẻ ở trang Projects)
+        const projects = await projectSummaries(projectRoot, env);
+        for (const x of projects) {
+          if (!x.exists) continue;
+          const st = await learner.status(x.root).catch(() => null);
+          if (st) x.ai = { state: st.state, updatedAt: st.updatedAt, testDir: st.inputs.testDir, sources: st.inputs.sources.length };
+        }
+        return send(res, 200, { projects });
+      }
+      if (p === '/api/project-context') {
+        const root = await knownRoot(url.searchParams.get('root'));
+        if (!root) return send(res, 400, { error: 'Project chưa có trong danh sách Projects' });
+        return send(res, 200, await contextOf(root));
+      }
       if (p === '/api/fs/dirs') {
         try {
           return send(res, 200, await listDirs(url.searchParams.get('path') || dirname(projectRoot)));
@@ -1217,12 +1254,17 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return send(res, 200, { lines: await setup(projectRoot) });
       }
       if (p === '/api/settings') {
-        const { workers, sqlite, browser, linear, headed, sources, prompt } = await readBody(req);
+        const { workers, sqlite, browser, linear, headed, sources, prompt, testDir } = await readBody(req);
         if (sqlite === true) {
           const sup = sqliteSupport();
           if (!sup.ok) return send(res, 400, { error: sup.reason });
         }
-        const saved = await writeSettings(projectRoot, { workers, sqlite, browser, linear, headed, sources, prompt });
+        const saved = await writeSettings(projectRoot, { workers, sqlite, browser, linear, headed, sources, prompt, testDir });
+        // bối cảnh dự án đổi (tab Dự án): AI đọc lại để ghi nhớ
+        if (sources !== undefined || prompt !== undefined || testDir !== undefined) {
+          const st = await learner.status(projectRoot);
+          if (contextHash(st.inputs) !== (await readMemory(projectRoot))?.hash) void learner.learn(projectRoot).catch(() => {});
+        }
         if (sqlite === true) void syncIndex(projectRoot).catch(() => {});
         if (sqlite === false) {
           closeIndex(projectRoot);
@@ -1311,6 +1353,25 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         } catch (e) {
           return send(res, 400, { error: e.message });
         }
+      }
+      if (p === '/api/project-context') {
+        // thư mục test, các thư mục khác + mô tả (và prompt nếu gửi) của một project; lưu xong AI đọc lại để ghi nhớ
+        const { root: r, testDir, sources, prompt } = await readBody(req);
+        const root = await knownRoot(r);
+        if (!root) return send(res, 400, { error: 'Project chưa có trong danh sách Projects' });
+        if ((testDir !== undefined && typeof testDir !== 'string') || (sources !== undefined && !Array.isArray(sources)) || (prompt !== undefined && typeof prompt !== 'string')) return send(res, 400, { error: 'invalid body' });
+        try {
+          return send(res, 200, await saveContext(root, { testDir, sources, prompt }));
+        } catch (e) {
+          return send(res, e.status ?? 400, { error: e.message });
+        }
+      }
+      if (p === '/api/project-memory/refresh') {
+        // nút "AI đọc lại dự án": đọc lại kể cả khi bối cảnh không đổi (mã nguồn đã đổi)
+        const root = await knownRoot((await readBody(req)).root);
+        if (!root) return send(res, 400, { error: 'Project chưa có trong danh sách Projects' });
+        void learner.learn(root).catch(() => {});
+        return send(res, 200, await learner.status(root));
       }
       if (p === '/api/projects/forget') {
         const { root } = await readBody(req);

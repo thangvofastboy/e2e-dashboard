@@ -98,6 +98,7 @@
 | 📍 | **Sự kiện trên biểu đồ** | Deploy, release, sự cố đánh dấu trên biểu đồ xu hướng |
 | 🌱 | **Vòng đời test** | Test mới, bị bỏ, đổi tên, luôn fail, commit sửa gần nhất |
 | 🌐 | **Trang báo cáo tĩnh** | Xuất cả lịch sử thành thư mục HTML cho GitHub Pages / thư mục chung |
+| 🧠 | **AI ghi nhớ dự án** | Thêm / Sửa project (trang *Projects*, hoặc *Cài đặt hệ thống › Dự án*): chọn thư mục chứa test và thêm các thư mục khác của hệ thống (tuỳ chọn) kèm mô tả. Mỗi lần lưu (bối cảnh có đổi), dashboard cho Claude đọc các thư mục đó và viết **bản ghi nhớ về hệ thống** (hệ thống làm gì, các phần, luồng chính, cách tổ chức test, thuật ngữ, chỗ hay hỏng); bản ghi nhớ đi kèm mọi lần gọi AI sau đó. Có trạng thái *đang đọc / đã ghi nhớ / cần đọc lại*, xem được bản ghi nhớ, nút *AI đọc lại dự án* |
 | ⚡ | **1 Click Setup** | Trang riêng (menu *Tích hợp*): hệ điều hành, các bước cài theo thứ tự với nút **Cài tất cả** (thư viện, gói AI, Chromium, reporter, `.env`), trạng thái từng bước và log, API key nhập tại chỗ, chọn model AI, sửa URL app / lệnh khởi động trong `e2e.config.ts`. Mở dashboard mà project còn thiếu thì hiện popup cùng nội dung |
 | ⚙️ | **Cài đặt hệ thống** | Theme, cỡ chữ, ngôn ngữ; xem và sửa trực tiếp `.env` / `.env.local` (lưu thẳng vào file, file có secret tự vào `.gitignore`); Linear key, webhook, setup và doctor |
 | 🌐 | **Chọn trình duyệt** | Chromium mặc định, đổi trong Cài đặt: chạy test bằng Firefox hoặc WebKit, kể cả lịch chạy |

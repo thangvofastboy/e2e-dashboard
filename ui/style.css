@@ -1443,3 +1443,19 @@ p.tone-good, p.tone-warn, p.tone-bad { color: var(--tone-ink); }
 /* trang 1 Click Setup: các khung xếp dọc, không kéo giãn khung cuối cho đầy màn hình */
 .setup-page { display: flex; flex-direction: column; gap: 16px; }
 .setup-page > .panel { margin: 0; }
+/* bối cảnh dự án cho AI (hộp Thêm / Sửa project, tab Dự án): đường dẫn + nút Chọn…, trạng thái AI ghi nhớ */
+.project-dialog { width: min(760px, calc(100vw - 32px)); }
+.project-dialog form { max-height: calc(100vh - 64px); overflow: auto; }
+.ctx-path { display: flex; gap: 8px; align-items: center; }
+.ctx-path input { flex: 1 1 auto; min-width: 0; }
+.ctx-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; }
+.ctx-memory { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.ctx-memory > p { margin: 4px 0; }
+.ctx-mem-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ctx-mem-head .small-btn { margin-inline-start: auto; }
+.ctx-memory[data-state="learning"] .chip .icon { animation: spin 1s linear infinite; }
+.ctx-mem-text .md { max-height: 320px; overflow: auto; margin-top: 6px; }
+.project-ai { margin: 4px 0 0; }
+@media (prefers-reduced-motion: reduce) { .ctx-memory[data-state="learning"] .chip .icon { animation: none; } }
+@media (max-width: 900px) { .ctx-row { grid-template-columns: 1fr; } }
+.ctx-row textarea, .src-row textarea { font: inherit; }

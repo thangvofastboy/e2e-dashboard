@@ -12,6 +12,7 @@ import { FONT_SCALES, storedTheme, setTheme, storedFont, setFont, NAV_LOCKED, st
 import { storedIconOnly, setIconOnly } from '../icon-only.js';
 import { renderMarkdown } from '../markdown.js';
 import { GUIDE_MD } from '../guide.js';
+import { memoryHtml, pollMemory, relearn } from '../project-context.js';
 
 const STATE = { set: ['good', 'check', 'Đã điền'], placeholder: ['warn', 'alert', 'Còn giá trị mẫu'], empty: ['bad', 'x', 'Trống'], missing: ['bad', 'x', 'Chưa có'] };
 const chip = (state) => {
@@ -48,12 +49,15 @@ const srcRowHtml = (s = {}) => `<li class="src-row" data-src-row>
     <button type="button" class="small-btn" data-src-del>${icon('close', { size: 13 })}Xoá</button></li>`;
 
 // Tab Dự án: các thư mục nguồn (đường dẫn + mô tả) và Prompt; mọi lần gọi AI đều kèm khối bối cảnh này
-export function projectSourcesHtml(prefs) {
+export function projectSourcesHtml(prefs, ctx = null) {
   const sources = prefs?.sources ?? [];
   const prompt = prefs?.prompt ?? '';
+  const t = ctx?.memory?.inputs;
   return `<section class="panel"><h2>${icon('layers', { size: 18 })} Dự án</h2>
     <p class="muted">Các thư mục mã nguồn của hệ thống (vd. backend, frontend) kèm mô tả, và Prompt mô tả hệ thống, rule, workflow. Mọi lần gọi AI của dashboard đều gửi kèm phần này, và AI được đọc các thư mục đó.</p>
     <form data-sources-form>
+      <label class="fb-field"><span>Thư mục chứa test <span class="muted small">(file *.e2e.ts; để trống: tự đoán${t?.testDirDetected ? `, đang dùng <code>${escapeHtml(t.testDir)}</code>` : ''})</span></span>
+        <input name="testDir" value="${escapeHtml(prefs?.testDir ?? '')}" placeholder="tests" autocomplete="off" spellcheck="false" aria-label="Thư mục chứa test"></label>
       <h3>Thư mục nguồn <span class="muted small">(tối đa ${SRC_MAX}; đường dẫn tương đối với project hoặc tuyệt đối)</span></h3>
       <ul class="src-list" data-src-list>${sources.map(srcRowHtml).join('')}</ul>
       <p><button type="button" data-src-add${sources.length >= SRC_MAX ? ' disabled' : ''}>${icon('folder', { size: 14 })}Thêm thư mục</button></p>
@@ -61,7 +65,8 @@ export function projectSourcesHtml(prefs) {
         <textarea class="proj-prompt" name="prompt" rows="8" maxlength="${PROMPT_MAX}" placeholder="Hệ thống gồm… Quy ước đặt tên… Luồng nghiệp vụ chính…" aria-label="Prompt cho AI">${escapeHtml(prompt)}</textarea></label>
       <p class="err small tone-bad" data-sources-err hidden></p>
       <div class="form-row"><button type="submit" class="primary">${icon('check', { size: 14 })}Lưu</button></div>
-    </form></section>`;
+    </form>
+    <div data-sys-mem>${memoryHtml(ctx?.memory)}</div></section>`;
 }
 
 // đọc form Dự án; trả { sources, prompt } hoặc { error }
@@ -74,7 +79,7 @@ function readSourcesForm(f) {
   if (j >= 0) return { error: `Dòng ${j + 1}: mô tả dài quá ${SRC_DESC_MAX} ký tự.` };
   const prompt = f.prompt.value;
   if (prompt.length > PROMPT_MAX) return { error: `Prompt dài quá ${PROMPT_MAX} ký tự.` };
-  return { sources, prompt };
+  return { sources, prompt, testDir: f.testDir.value.trim() };
 }
 
 const GB = (n) => `${Math.round(n * 10) / 10} GB`;
@@ -347,6 +352,17 @@ export async function renderSystem(main) {
     getJson('/api/settings').catch(() => null),
     getJson('/api/resources').catch(() => null), // chưa có endpoint (404) → "không đo được"
   ]);
+  let projCtx = await getJson('/api/project-context').catch(() => null); // thư mục test + trạng thái AI ghi nhớ
+  let stopMem = () => {};
+  const showMem = (m) => {
+    const box = main.querySelector('[data-sys-mem]');
+    if (box) box.innerHTML = memoryHtml(m);
+  };
+  const watchMem = () => {
+    stopMem();
+    stopMem = pollMemory(projCtx?.root ?? '', showMem);
+  };
+  if (projCtx?.memory?.state === 'learning') watchMem();
   let editing = null; // file env đang mở
   const urlTab = () => new URLSearchParams(location.hash.split('?')[1] ?? '').get('tab');
   let tab = SYS_TABS.some(([k]) => k === urlTab()) ? urlTab() : 'appearance';
@@ -355,7 +371,7 @@ export async function renderSystem(main) {
     return todo ? `<span class="sys-badge" title="Cần xem">${todo}</span>` : '';
   };
   const draw = () => {
-    const panes = { appearance: appearanceHtml(), project: setupHtml(d.setup) + envHtml(d.env), integrations: userHtml(d.user, linearInfo) + linearIssuesFormHtml(prefs?.linear ?? { emails: [], statuses: [] }), ai: healHtml(heal, d.user.selfHeal, d.user.ai), about: infoHtml(d, resources, prefs?.browsers?.installed), reset: junkHtml(junkInfo) + resetHtml(resetInfo), sources: projectSourcesHtml(prefs), guide: guideHtml() };
+    const panes = { appearance: appearanceHtml(), project: setupHtml(d.setup) + envHtml(d.env), integrations: userHtml(d.user, linearInfo) + linearIssuesFormHtml(prefs?.linear ?? { emails: [], statuses: [] }), ai: healHtml(heal, d.user.selfHeal, d.user.ai), about: infoHtml(d, resources, prefs?.browsers?.installed), reset: junkHtml(junkInfo) + resetHtml(resetInfo), sources: projectSourcesHtml(prefs, projCtx), guide: guideHtml() };
     main.innerHTML = `${pageHead('Cài đặt hệ thống', 'settings', 'Giao diện, biến môi trường của project, key của dashboard và tình trạng setup.')}
       <div class="sys">
         <div class="sys-nav" role="tablist" aria-orientation="vertical" aria-label="Nhóm cài đặt">${SYS_TABS.map(([k, label, ic, sub]) => `<button type="button" role="tab" id="sys-tab-${k}" data-sys-tab="${k}" aria-selected="${k === tab}" aria-controls="sys-pane-${k}" tabindex="${k === tab ? 0 : -1}"><span class="sys-nav-ic">${icon(ic, { size: 20 })}</span><span class="sys-nav-t"><strong>${label}</strong><span class="small">${sub}</span></span>${badge(k)}</button>`).join('')}</div>
@@ -490,6 +506,15 @@ export async function renderSystem(main) {
       return;
     }
     if (b.dataset.guideSec) return void main.querySelectorAll('#sys-pane-guide .md h2')[Number(b.dataset.guideSec)]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if ('ctxRelearn' in b.dataset) {
+      b.disabled = true;
+      const m = await relearn(projCtx?.root ?? '').catch((x) => toast(x.message, 'bad'));
+      if (m) {
+        showMem(m);
+        watchMem();
+      }
+      return;
+    }
     if ('srcAdd' in b.dataset || 'srcDel' in b.dataset) {
       const list = main.querySelector('[data-src-list]');
       if ('srcDel' in b.dataset) b.closest('[data-src-row]').remove();
@@ -584,7 +609,10 @@ export async function renderSystem(main) {
       try {
         await postJson('/api/settings', v);
         prefs = { ...prefs, ...v };
-        toast('Đã lưu thư mục nguồn và Prompt');
+        projCtx = await getJson('/api/project-context').catch(() => projCtx);
+        showMem(projCtx?.memory);
+        if (projCtx?.memory?.state === 'learning') watchMem();
+        toast(projCtx?.memory?.state === 'learning' ? 'Đã lưu. AI đang đọc dự án để ghi nhớ (chạy nền)' : 'Đã lưu bối cảnh dự án');
       } catch (x) {
         err.hidden = false;
         err.textContent = x.message.replace(/^\d{3}: /, ''); // 400 của server: đường dẫn không tồn tại, quá dài…
@@ -618,4 +646,5 @@ export async function renderSystem(main) {
       toast(x.message, 'bad');
     }
   });
+  return () => stopMem(); // rời trang: thôi hỏi trạng thái AI ghi nhớ
 }
