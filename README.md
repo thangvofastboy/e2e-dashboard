@@ -306,7 +306,7 @@ Truyền qua pipe: `curl … | bash -s -- --init --app-url http://localhost:5173
 /reload-plugins
 ```
 
-**2️⃣ Mở dashboard** ở thư mục project e2e:
+**2️⃣ Mở dashboard** ở thư mục project e2e. Project còn thiếu gì (thư viện, gói AI, reporter, `.env`, API key…) thì dashboard hiện popup **Thiết lập project**: liệt kê các bước theo thứ tự, bấm **Cài tất cả** là cài ngay trong popup (từng bước có trạng thái Chờ / Đang cài / Xong / Lỗi, kèm log), API key nhập luôn trong popup. Mở một project khác từ trang *Projects* cũng được hỏi như vậy. *Để sau* thì không hỏi lại trong phiên trình duyệt đó; *Không hỏi lại cho project này* thì nhớ hẳn (vẫn cài được ở *Cài đặt hệ thống › Project › Quick Setup*).
 
 ```text
 /e2e-dashboard

@@ -403,7 +403,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return send(res, 200, { machine, app: { dashboard: dashboardResources(), runner: run } });
       }
       if (p === '/api/settings') return send(res, 200, { ...(await readSettings(projectRoot)), autoWorkers: autoWorkers(), browsers: { installed: installedBrowsers(env), configReadsBrowser: configSupport(findConfigPath(projectRoot)) } });
-      if (p === '/api/info') return send(res, 200, { version: VERSION, pid: process.pid, project: basename(projectRoot), reporter: reporterStatus(projectRoot), lastArchive: lastArchive(), thresholds: readConfig(projectRoot).thresholds ?? null, runner: runner.state() });
+      if (p === '/api/info') return send(res, 200, { version: VERSION, pid: process.pid, project: basename(projectRoot), root: projectRoot, reporter: reporterStatus(projectRoot), lastArchive: lastArchive(), thresholds: readConfig(projectRoot).thresholds ?? null, runner: runner.state() });
       if (p === '/api/runs') return send(res, 200, await listRuns(projectRoot));
       if (p === '/api/tests') {
         // ?root=: test của project khác trong danh sách Projects (form Lịch chạy); thư mục lạ thì từ chối

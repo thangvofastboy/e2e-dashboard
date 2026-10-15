@@ -1417,3 +1417,26 @@ body:has(.ai-fab) #main { padding-bottom: 88px; }
 .ai-warn ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 /* đoạn văn mang tone (vd. "Máy đã đủ mọi thứ", trạng thái Linear): chữ theo màu tone của theme đang dùng */
 p.tone-good, p.tone-warn, p.tone-bad { color: var(--tone-ink); }
+/* popup 1 click setup: mở dashboard mà project chưa cài đủ. Màu lấy từ biến theme nên đúng cả sáng / tối */
+.setup-prompt { width: min(720px, calc(100vw - 32px)); }
+.setup-prompt h3 { margin: 4px 0 0; color: var(--text-secondary); }
+.sp-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: 46vh; overflow: auto; }
+.sp-step { display: grid; grid-template-columns: 20px 1fr auto; gap: 10px; align-items: start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.sp-step code { word-break: break-all; }
+.sp-state { color: var(--text-secondary); padding-top: 2px; }
+.sp-label { color: var(--text-secondary); white-space: nowrap; }
+.sp-step[data-state="run"] { border-color: var(--series-1); }
+.sp-step[data-state="run"] .sp-state, .sp-step[data-state="run"] .sp-label { color: var(--series-1); }
+.sp-step[data-state="run"] .sp-state .icon { animation: spin 1s linear infinite; }
+.sp-step[data-state="ok"] .sp-state, .sp-step[data-state="ok"] .sp-label { color: var(--good-ink); }
+.sp-step[data-state="fail"] { border-color: var(--bad); }
+.sp-step[data-state="fail"] .sp-state, .sp-step[data-state="fail"] .sp-label { color: var(--bad-ink); }
+.sp-step[data-state="manual"] .sp-state, .sp-step[data-state="manual"] .sp-label { color: var(--warn-ink); }
+.sp-log pre { max-height: 220px; overflow: auto; margin: 6px 0 0; }
+.setup-prompt footer { flex-wrap: wrap; }
+.setup-prompt .sp-spacer { flex: 1; }
+@media (prefers-reduced-motion: reduce) { .sp-step[data-state="run"] .sp-state .icon { animation: none; } }
+.setup-prompt [data-progress]:empty { display: none; }
+.setup-prompt .run-form > p { margin: 0; }
+.sp-key { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.sp-key input { flex: 1 1 220px; font: inherit; padding: 6px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-primary); }

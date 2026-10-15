@@ -42,6 +42,7 @@ import { renderTraceability } from './views/traceability.js';
 import { renderLifecycle } from './views/lifecycle.js';
 import { initI18n, setLang, currentLang, translate } from './i18n.js';
 import { openModal } from './analysis.js';
+import { maybePromptSetup } from './setup-prompt.js';
 import { renderMarkdown } from './markdown.js';
 import { getJson, postJson, isExport, liveStream } from './api.js';
 import { attachTooltips } from './charts.js';
@@ -200,6 +201,8 @@ async function footer() {
     e.preventDefault();
     whatsNew(info.version, true);
   });
+  // project chưa cài đủ (lần đầu mở, hoặc mở project khác từ trang Projects): popup 1 click setup trước "Có gì mới"
+  if (await maybePromptSetup(info).catch(() => false)) return;
   whatsNew(info.version, false);
 }
 

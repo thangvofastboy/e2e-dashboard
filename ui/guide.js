@@ -48,7 +48,7 @@ Sửa \`e2e.config.ts\` sau này: *Cài đặt hệ thống › Project › Cấ
 /reload-plugins
 \`\`\`
 
-**Bước 2.** Đứng ở thư mục project e2e, gõ \`/e2e-dashboard\`: server chạy nền và mở trình duyệt. Lần sau gõ lại chỉ mở trình duyệt.
+**Bước 2.** Đứng ở thư mục project e2e, gõ \`/e2e-dashboard\`: server chạy nền và mở trình duyệt. Lần sau gõ lại chỉ mở trình duyệt. Project còn thiếu phần cài đặt thì dashboard hiện popup **Thiết lập project**: bấm **Cài tất cả** để cài theo thứ tự ngay trong popup, API key nhập luôn ở đó.
 
 **Bước 3** (tuỳ chọn). \`/e2e-dashboard setup\`: gắn reporter vào \`e2e.config.ts\` để xem tiến độ live. Hãy commit 2 file reporter được tạo ra; trên CI (\`CI=true\`) reporter tự tắt.
 
