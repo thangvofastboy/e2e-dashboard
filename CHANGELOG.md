@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.16.1 — 2026-10-15
+
+- **Sửa project** (*Projects*): nút bút chì để đổi tên hiển thị và chuyển sang thư mục mới khi project đã đổi chỗ; tên đã sửa giữ nguyên khi mở lại dashboard. Project đang mở chỉ đổi được tên.
+- **Ẩn mục menu** (*Cài đặt hệ thống → Giao diện → Menu hiển thị*): bỏ tick trang ít dùng (Model & ngân sách, Gợi ý locator, Lint agent…), lưu trên trình duyệt; trang ẩn vẫn mở được bằng Tìm kiếm.
+- **Xuất trang tĩnh tải về luôn**: xuất xong trình duyệt tải `e2e-report.zip`.
+- **Live gọn hơn**: dải CPU / RAM / disk nằm cùng hàng tiêu đề, sau "tối đa x worker"; ô Pass / Fail / Đang chạy / Còn lại nhỏ lại. Run xong không còn báo "Đang chạy 0", phần chưa chạy hiện là "Không chạy".
+- **Sửa giao diện**: cuộn trang dài (vd. Coverage) không còn lộ vùng trống bên dưới; ô lọc "Lọc theo tên, file, tag" trong hộp chọn test không còn cao bất thường; ô nhập / lọc không kéo hết hàng; form Email / Status của Issue Linear xếp lại cho dễ nhìn; ô nội dung Mẫu prompt QC không dính hàng nút chèn biến; Digest rộng hết màn hình.
+
 ## v0.16.0 — 2026-10-15
 
 - **Quick Setup** (*Cài đặt hệ thống*): kiểm tra máy (git, gh, Node, e2e + `@e2e-dev/web`, thư viện của project, Chromium + headless shell, Claude CLI), hiện kế hoạch các phần thiếu, bấm một lần để cài hết. Có thêm lệnh `e2e-dashboard setup --quick [--yes]`. Chọn npm / pnpm / yarn / bun theo lockfile; khi đang cài thì không chạy test (kể cả chạy tay, lịch, MCP); *Huỷ* dừng cả cây tiến trình.
