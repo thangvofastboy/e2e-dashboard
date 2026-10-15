@@ -40,6 +40,7 @@ $AiProviders = [ordered]@{
   'copilot' = @('login', '', 'GitHub Copilot (đăng nhập)')
   'opencode-console' = @('login', '', 'OpenCode Console (đăng nhập)')
   'grok' = @('login', '', 'SuperGrok / X Premium+ (đăng nhập)')
+  'claude-code' = @('cli', '', 'Claude Code CLI: đăng nhập Pro/Max của `claude` (THỬ NGHIỆM)')
   'openai-compatible' = @('local', '', 'Model local / OpenAI-compatible (Ollama, LM Studio…)')
   'none' = @('none', '', 'Không dùng AI (chỉ test bằng locator)')
 }
@@ -139,7 +140,7 @@ if ($PSBoundParameters.Count -eq 0 -and (Can-Ask)) {
     Write-Host "     Đã có $($cfg.FullName)" -ForegroundColor DarkGray
     if ($src -match "url\s*:[^'`"]*['`"]([^'`"]*)['`"]") { $curUrl = $Matches[1] }
     if ($src -match "(?m)^\s*command\s*:\s*\{\s*executable:\s*'([^']*)',\s*args:\s*\[([^\]]*)\]") { $curCmd = ("$($Matches[1]) " + ($Matches[2] -replace "[',]", '')).Trim() }
-    $curAi = if ($src -notmatch 'agents\s*:') { 'none' } elseif ($src -match 'e2e/oauth/chatgpt') { 'chatgpt' } elseif ($src -match 'e2e/oauth/copilot') { 'copilot' } elseif ($src -match 'e2e/oauth/opencode-console') { 'opencode-console' } elseif ($src -match 'e2e/oauth/grok') { 'grok' } elseif ($src -match '@openrouter/ai-sdk-provider') { 'openrouter' } elseif ($src -match 'createOpenAICompatible') { 'openai-compatible' } elseif ($src -match 'import \{ anthropic \}') { 'anthropic' } elseif ($src -match 'import \{ openai \}') { 'openai' } elseif ($src -match 'import \{ gateway \}') { 'vercel' } else { '' }
+    $curAi = if ($src -notmatch 'agents\s*:') { 'none' } elseif ($src -match 'e2e/oauth/chatgpt') { 'chatgpt' } elseif ($src -match 'e2e/oauth/copilot') { 'copilot' } elseif ($src -match 'e2e/oauth/opencode-console') { 'opencode-console' } elseif ($src -match 'e2e/oauth/grok') { 'grok' } elseif ($src -match '@openrouter/ai-sdk-provider') { 'openrouter' } elseif ($src -match 'createOpenAICompatible') { 'openai-compatible' } elseif ($src -match 'e2e-dashboard\.claude-code') { 'claude-code' } elseif ($src -match 'import \{ anthropic \}') { 'anthropic' } elseif ($src -match 'import \{ openai \}') { 'openai' } elseif ($src -match 'import \{ gateway \}') { 'vercel' } else { '' }
   } elseif (Ask-YN "   Chưa có e2e.config.ts ở đó. Tạo mới bằng ``e2e init``?") { $Init = [switch]$true } else { $SkipProject = [switch]$true }
   if (-not $SkipProject) {
     $AppUrl = Ask '2. URL app đang test' $(if ($curUrl) { $curUrl } else { 'http://localhost:3000' })
@@ -163,6 +164,17 @@ if ($PSBoundParameters.Count -eq 0 -and (Can-Ask)) {
         $ApiKey = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))
       }
       'login' { if (Ask-YN "   Đăng nhập $($AiProviders[$Ai][2] -replace ' \(đăng nhập\)$', '') ngay trong lúc cài?") { $AiLogin = [switch]$true } }
+      'cli' {
+        Write-Host '     ! THỬ NGHIỆM: e2e không hỗ trợ chính thức; e2e khuyên dùng API key cho gói Claude (chọn anthropic).' -ForegroundColor Yellow
+        Write-Host '     ! Điều khoản Anthropic không cho sản phẩm bên thứ ba dùng đăng nhập claude.ai nếu chưa được duyệt: chỉ tự dùng trên máy mình.' -ForegroundColor Yellow
+        Write-Host '     ! Test ăn chung hạn mức với Claude Code của bạn và chậm hơn API key.' -ForegroundColor Yellow
+        if (Ask-YN '   Vẫn dùng claude-code?' $false) { $AiModel = Ask '   Model của Claude Code (haiku | sonnet | opus)' 'sonnet' }
+        else {
+          $Ai = 'anthropic'; Write-Host '     Đổi sang anthropic.'
+          $sec = Read-Host '     Dán ANTHROPIC_API_KEY (Enter để bỏ qua)' -AsSecureString
+          $ApiKey = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))
+        }
+      }
       'local' { $AiBaseUrl = Ask '   URL server model' 'http://127.0.0.1:11434/v1'; $AiModel = Ask '   Model id' 'gpt-6-luna' }
     }
   }

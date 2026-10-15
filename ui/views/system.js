@@ -237,6 +237,7 @@ function aiPanelHtml(c) {
   const status = [];
   if (ai.packages.length) status.push(ai.missing.length ? `<span class="tone-warn">Thiếu gói ${escapeHtml(ai.missing.join(', '))}</span>: bấm Quick Setup ở trên để cài (<code>${escapeHtml(ai.installDisplay)}</code>)` : `<span class="tone-good">Đủ gói</span> ${escapeHtml(ai.packages.join(', '))}`);
   if (ai.env && ai.kind === 'key') status.push(ai.keyState === 'set' ? `<span class="tone-good">${escapeHtml(ai.env)} đã có</span> (${escapeHtml(ai.keySource)})` : `<span class="tone-warn">Chưa có ${escapeHtml(ai.env)}</span>${ai.keyUrl ? `: tạo key ở <a href="${escapeHtml(ai.keyUrl)}" target="_blank" rel="noreferrer">${escapeHtml(ai.keyUrl)}</a>` : ''}`);
+  if (ai.kind === 'cli') status.push(`${ai.claude ? '<span class="tone-good">Có lệnh claude</span>' : '<span class="tone-warn">Không thấy lệnh claude</span>'}: đăng nhập một lần bằng <code>claude</code>${ai.adapterMissing ? ' · <span class="tone-warn">thiếu e2e-dashboard.claude-code.mjs</span>: bấm Quick Setup' : ''}`, ...ai.warning.map((w) => `<span class="tone-warn">${escapeHtml(w)}</span>`));
   if (ai.kind === 'login') status.push(ai.loggedIn ? '<span class="tone-good">Đã đăng nhập</span> trên máy này' : `<span class="tone-warn">Chưa đăng nhập</span>: chạy trong terminal <code>${escapeHtml(ai.loginDisplay)}</code> <button type="button" class="icon-btn" data-copy-cmd="${escapeHtml(ai.loginDisplay)}" aria-label="Copy lệnh">${icon('copy', { size: 13 })}</button>`);
   return `<form data-ai-config>
       <div class="form-row"><span class="form-label">Model AI (bước agent)</span><select name="provider" aria-label="Model AI cho bước agent">${ai.provider === 'custom' ? '<option value="" selected>Model tuỳ chỉnh (giữ nguyên)</option>' : ''}${opts}</select>
@@ -688,6 +689,8 @@ export async function renderSystem(main) {
     if (f.matches('[data-ai-config]')) {
       const msg = f.querySelector('[data-ai-msg]');
       if (!f.provider.value) return;
+      const chosen = e2eCfg?.providers?.find((x) => x.id === f.provider.value);
+      if (chosen?.experimental && f.provider.value !== e2eCfg?.ai?.provider && !(await confirmDialog({ title: 'Dùng Claude Code CLI cho bước agent (thử nghiệm)?', message: 'Chạy agent.act / agent.assert bằng đăng nhập của Claude Code CLI thay cho API key. Lưu ý:', items: chosen.warning, confirmLabel: 'Vẫn dùng claude-code' }))) return;
       try {
         const r = await postJson('/api/system/ai', { provider: f.provider.value, apiKey: f.apiKey.value.trim() || undefined, baseURL: f.baseURL.value.trim() || undefined, modelId: f.modelId.value.trim() || undefined });
         toast(r.changed || r.keySaved ? `Đã lưu model AI${r.keySaved ? ' và API key' : ''}${r.missing.length ? ': bấm Quick Setup để cài gói' : ''}` : 'Không có gì thay đổi', 'good');

@@ -17,6 +17,7 @@ const MODEL_IMPORTS = [
   [/copilot/i, 'GitHub Copilot'],
   [/opencode/i, 'OpenCode Console'],
   [/grok|spacexai|xai/i, 'Grok'],
+  [/e2e-dashboard\.claude-code/, 'Claude Code CLI (thử nghiệm)'],
   [/@ai-sdk\/anthropic/, 'Anthropic'],
   [/@ai-sdk\/openai/, 'OpenAI'],
   [/@ai-sdk\/google/, 'Google'],

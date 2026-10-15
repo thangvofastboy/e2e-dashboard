@@ -114,3 +114,19 @@ test('danh sách provider của install.sh / install.ps1 khớp AI_PROVIDERS', (
   const ps = readFileSync(join(import.meta.dirname, '..', 'install.ps1'), 'utf8');
   assert.deepEqual([...ps.matchAll(/^ {2}'([\w-]+)' = @\('(\w+)'/gm)].map((m) => [m[1], m[2]]), AI_IDS.map((id) => [id, AI_PROVIDERS[id].kind]));
 });
+
+test('claude-code (thử nghiệm): config import lớp bọc của dashboard, setAiProvider copy file vào project, aiStatus kèm cảnh báo', async () => {
+  const r = applyAiProvider(NONE, 'claude-code', { modelId: 'haiku' });
+  assert.match(r.source, /import \{ claudeCodeAgent \} from '\.\/e2e-dashboard\.claude-code\.mjs';/);
+  assert.match(r.source, /model: claudeCodeAgent\('haiku'\),/);
+  assert.doesNotMatch(r.source, /loadEnvFile/); // không cần API key
+  assert.equal(detectProvider(r.source), 'claude-code');
+  const root = project(NONE);
+  const st = await setAiProvider(root, 'claude-code');
+  assert.equal(st.kind, 'cli');
+  assert.equal(st.experimental, true);
+  assert.equal(st.adapterMissing, false);
+  assert.ok(st.warning.some((w) => /Điều khoản Anthropic/.test(w)));
+  assert.ok(st.packages.includes('ai-sdk-provider-claude-code'));
+  assert.equal(readFileSync(join(root, 'e2e-dashboard.claude-code.mjs'), 'utf8'), readFileSync(join(import.meta.dirname, '..', 'reporter', 'e2e-dashboard.claude-code.mjs'), 'utf8'));
+});

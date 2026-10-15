@@ -270,8 +270,12 @@ Model AI chọn được:
 | `openrouter` | OpenRouter | `OPENROUTER_API_KEY` |
 | `openai` | OpenAI | `OPENAI_API_KEY` |
 | `chatgpt`, `copilot`, `opencode-console`, `grok` | Gói ChatGPT, GitHub Copilot, OpenCode Console, SuperGrok | Đăng nhập một lần: `npx e2e login …` |
+| `claude-code` 🧪 | **Thử nghiệm:** Claude dùng đăng nhập Pro/Max của Claude Code CLI, không cần API key | `claude` đã đăng nhập; model `haiku` / `sonnet` / `opus` |
 | `openai-compatible` | Model local (Ollama, LM Studio…) | URL server + model id |
 | `none` | Không dùng AI, chỉ test bằng locator | |
+
+> [!WARNING]
+> **`claude-code` là thử nghiệm.** e2e không hỗ trợ chính thức (e2e khuyên gói Claude Max/Team dùng API key từ credit API hằng tháng, tức `anthropic`). Điều khoản của Anthropic không cho sản phẩm bên thứ ba dùng đăng nhập claude.ai nếu chưa được duyệt: chỉ nên tự dùng trên máy mình, không bật cho cả team. Test ăn chung hạn mức với Claude Code của bạn và chậm hơn API key. Cách chạy: gói cộng đồng [`ai-sdk-provider-claude-code`](https://www.npmjs.com/package/ai-sdk-provider-claude-code) bỏ qua tool của AI SDK, nên dashboard copy vào project file `e2e-dashboard.claude-code.mjs` (commit cùng reporter): file này mô tả tool trong prompt, buộc Claude trả JSON theo schema rồi đổi thành tool call cho agent của e2e. Phiên Claude Code của các lượt này nằm ở thư mục tạm riêng, không lẫn vào `/resume` của project.
 
 Tham số (bash / PowerShell):
 

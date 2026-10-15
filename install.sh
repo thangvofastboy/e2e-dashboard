@@ -30,7 +30,8 @@ Không có tuỳ chọn nào: hỏi từng thông tin (Enter = giá trị mặc 
                          copilot | opencode-console | grok | openai-compatible | none
   --api-key KEY          API key của model (lưu vào .env); hoặc đặt biến E2E_AI_API_KEY
   --ai-base-url URL      openai-compatible: URL server model (vd. http://127.0.0.1:11434/v1)
-  --ai-model ID          openai-compatible: model id server đó phục vụ
+  --ai-model ID          openai-compatible: model id server đó phục vụ; claude-code: haiku | sonnet | opus
+                         (claude-code: THỬ NGHIỆM, dùng đăng nhập của Claude Code CLI thay cho API key)
   --ai-login             Gói subscription (chatgpt, copilot…): đăng nhập ngay trong lúc cài
   --gateway ID           Như --ai (tên cũ)
   --app-url URL          URL app đang test, ghi vào e2e.config.ts
@@ -44,13 +45,14 @@ EOF
 
 STEPS=("Phát hiện hệ điều hành" "git" "Node.js ≥ 22.22.3 (hoặc ≥ 24.8)" "Claude Code CLI" "Plugin e2e-dashboard" "Cấu hình e2e.config.ts" "AI cho e2e: model, gói npm, API key / đăng nhập" "Quick Setup: e2e, thư viện, trình duyệt, reporter" "Mở dashboard")
 # model AI cho bước agent: giống AI_PROVIDERS của server/e2eai.mjs (test kiểm tra hai danh sách khớp nhau)
-AI_IDS=(vercel anthropic openrouter openai chatgpt copilot opencode-console grok openai-compatible none)
-AI_LABELS=("Vercel AI Gateway (một key, nhiều model)" "Anthropic Claude (API key, kể cả credit API của gói Max/Team)" "OpenRouter (API key)" "OpenAI (API key)" "Gói ChatGPT Plus / Pro (đăng nhập)" "GitHub Copilot (đăng nhập)" "OpenCode Console (đăng nhập)" "SuperGrok / X Premium+ (đăng nhập)" "Model local / OpenAI-compatible (Ollama, LM Studio…)" "Không dùng AI (chỉ test bằng locator)")
+AI_IDS=(vercel anthropic openrouter openai chatgpt copilot opencode-console grok claude-code openai-compatible none)
+AI_LABELS=("Vercel AI Gateway (một key, nhiều model)" "Anthropic Claude (API key, kể cả credit API của gói Max/Team)" "OpenRouter (API key)" "OpenAI (API key)" "Gói ChatGPT Plus / Pro (đăng nhập)" "GitHub Copilot (đăng nhập)" "OpenCode Console (đăng nhập)" "SuperGrok / X Premium+ (đăng nhập)" "Claude Code CLI: đăng nhập Pro/Max của \`claude\` (THỬ NGHIỆM)" "Model local / OpenAI-compatible (Ollama, LM Studio…)" "Không dùng AI (chỉ test bằng locator)")
 ai_kind() {
   case "$1" in
     vercel|anthropic|openrouter|openai) echo key ;;
     chatgpt|copilot|opencode-console|grok) echo login ;;
     openai-compatible) echo local ;;
+    claude-code) echo cli ;;
     *) echo none ;;
   esac
 }
@@ -207,6 +209,7 @@ detect_ai() {
   elif grep -q "e2e/oauth/grok" "$f"; then echo grok
   elif grep -q "@openrouter/ai-sdk-provider" "$f"; then echo openrouter
   elif grep -q "createOpenAICompatible" "$f"; then echo openai-compatible
+  elif grep -q "e2e-dashboard.claude-code" "$f"; then echo claude-code
   elif grep -q "import { anthropic }" "$f"; then echo anthropic
   elif grep -q "import { openai }" "$f"; then echo openai
   elif grep -q "import { gateway }" "$f"; then echo vercel
@@ -278,6 +281,14 @@ wizard() {
       login)
         local lbl; lbl="$(ai_label "$AI")"
         if ask_yn "   Đăng nhập ${lbl% (đăng nhập)} ngay trong lúc cài?" y; then AI_LOGIN=1; fi ;;
+      cli)
+        printf '     %s! THỬ NGHIỆM: e2e không hỗ trợ chính thức; e2e khuyên dùng API key cho gói Claude (chọn anthropic).%s\n' "$Y" "$N" >/dev/tty
+        printf '     %s! Điều khoản Anthropic không cho sản phẩm bên thứ ba dùng đăng nhập claude.ai nếu chưa được duyệt: chỉ tự dùng trên máy mình.%s\n' "$Y" "$N" >/dev/tty
+        printf '     %s! Test ăn chung hạn mức với Claude Code của bạn và chậm hơn API key.%s\n' "$Y" "$N" >/dev/tty
+        if ! ask_yn "   Vẫn dùng claude-code?" n; then AI=anthropic; printf '     Đổi sang anthropic.\n' >/dev/tty
+          printf '     %sCần ANTHROPIC_API_KEY. Key lưu vào .env của project (git-ignore, quyền 600).%s\n' "$D" "$N" >/dev/tty
+          API_KEY="$(ask_secret "   Dán ANTHROPIC_API_KEY (Enter để bỏ qua, điền sau trong dashboard)")"
+        else AI_MODEL="$(ask "   Model của Claude Code (haiku | sonnet | opus)" "sonnet")"; fi ;;
       local)
         AI_BASE_URL="$(ask "   URL server model" "http://127.0.0.1:11434/v1")"
         AI_MODEL="$(ask "   Model id" "gpt-6-luna")" ;;

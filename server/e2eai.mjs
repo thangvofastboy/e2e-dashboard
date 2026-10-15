@@ -2,12 +2,22 @@
 // Đoạn import / model giống hệt `e2e init --gateway <id>` (e2e 0.21) sinh ra, thêm Anthropic (Claude API key).
 // e2e không tự đọc .env: provider dùng API key thì config được thêm một dòng process.loadEnvFile('.env').
 import { existsSync, readFileSync } from 'node:fs';
-import { readFile, writeFile, lstat } from 'node:fs/promises';
+import { readFile, writeFile, lstat, copyFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { findConfig } from '../bin/project.mjs';
 import { jsPm } from './quicksetup.mjs';
-import { parseEnv, valueState, readEnvFile, writeEnvFile } from './system.mjs';
+import { parseEnv, valueState, readEnvFile, writeEnvFile, tools } from './system.mjs';
+
+// claude-code (thử nghiệm): lớp bọc giả lập tool call, copy vào project như reporter
+export const CLAUDE_CODE_ADAPTER = 'e2e-dashboard.claude-code.mjs';
+const ADAPTER_SRC = fileURLToPath(new URL(`../reporter/${CLAUDE_CODE_ADAPTER}`, import.meta.url));
+export const CLAUDE_CODE_WARNING = [
+  'THỬ NGHIỆM: e2e không hỗ trợ chính thức (e2e khuyên dùng API key cho gói Claude: chọn anthropic).',
+  'Điều khoản Anthropic không cho sản phẩm bên thứ ba dùng đăng nhập claude.ai nếu chưa được duyệt: chỉ nên tự dùng trên máy mình, không bật cho cả team.',
+  'Test e2e ăn chung hạn mức với Claude Code của bạn; mỗi lượt model khởi động một tiến trình Claude Code nên chậm hơn API key.',
+];
 
 const SYSTEM = "system: 'You are a thorough QA agent. Verify every outcome.',";
 const BASE = ['ai', 'zod'];
@@ -22,6 +32,7 @@ export const AI_PROVIDERS = {
   copilot: { label: 'GitHub Copilot (đăng nhập)', kind: 'login', login: 'github-copilot', packages: [...BASE, '@ai-sdk/openai-compatible', '@ai-sdk/openai'], from: 'e2e/oauth/copilot', ident: 'copilot', model: () => "copilot('claude-sonnet-5')" },
   'opencode-console': { label: 'OpenCode Console (đăng nhập)', kind: 'login', login: 'opencode-console', packages: [...BASE, '@ai-sdk/openai-compatible', '@ai-sdk/openai', '@ai-sdk/anthropic', '@ai-sdk/google'], from: 'e2e/oauth/opencode-console', ident: 'opencodeConsole', model: () => "opencodeConsole('deepseek-v4.1-flash')" },
   grok: { label: 'SuperGrok / X Premium+ (đăng nhập)', kind: 'login', login: 'spacexai', packages: [...BASE, '@ai-sdk/xai'], from: 'e2e/oauth/grok', ident: 'grok', model: () => "grok('grok-4')" },
+  'claude-code': { label: 'Claude Code CLI: đăng nhập Pro/Max của `claude` (THỬ NGHIỆM)', kind: 'cli', experimental: true, packages: [...BASE, 'ai-sdk-provider-claude-code'], from: `./${CLAUDE_CODE_ADAPTER}`, ident: 'claudeCodeAgent', model: ({ modelId = 'sonnet' } = {}) => `claudeCodeAgent(${q(modelId)})` },
   'openai-compatible': {
     label: 'Model local / OpenAI-compatible (Ollama, LM Studio…)', kind: 'local', env: 'LLM_API_KEY', packages: [...BASE, '@ai-sdk/openai-compatible'], from: '@ai-sdk/openai-compatible', ident: 'createOpenAICompatible',
     model: ({ baseURL = 'http://127.0.0.1:11434/v1', modelId = 'gpt-6-luna' } = {}) => `createOpenAICompatible({\n        name: 'openai-compatible',\n        baseURL: ${q(baseURL)},\n        supportsStructuredOutputs: true,\n        apiKey: process.env.LLM_API_KEY,\n      }).chatModel(${q(modelId)})`,
@@ -156,6 +167,12 @@ export async function aiStatus(root, { env = process.env, os = process.platform 
     out.keySource = dot != null ? '.env' : env[p.env] != null ? 'biến môi trường' : null;
     out.loadsEnv = /loadEnvFile/.test(source);
   }
+  if (p?.kind === 'cli') {
+    out.experimental = true;
+    out.warning = CLAUDE_CODE_WARNING;
+    out.claude = Boolean(tools().claude);
+    out.adapterMissing = !existsSync(join(root, CLAUDE_CODE_ADAPTER));
+  }
   if (p?.kind === 'login') {
     out.login = p.login;
     out.loggedIn = oauthLogins(env).includes(p.login);
@@ -184,8 +201,17 @@ export async function setAiProvider(root, id, { apiKey, baseURL, modelId } = {})
   if (modelId !== undefined && !/^[\w.:/@-]{1,100}$/.test(modelId)) throw Object.assign(new Error('Model id không hợp lệ'), { status: 400 });
   const r = applyAiProvider(await readFile(path, 'utf8'), id, { baseURL, modelId });
   if (r.problem) throw Object.assign(new Error(r.problem), { status: 422 });
+  if (id === 'claude-code') await copyAdapter(root);
   if (r.changed) await writeFile(path, r.source);
   const env = AI_PROVIDERS[id].env;
   if (apiKey && env) await setEnvKey(root, env, apiKey);
   return { changed: r.changed, keySaved: Boolean(apiKey && env), ...(await aiStatus(root)) };
+}
+
+// copy (hoặc làm mới) lớp bọc claude-code vào project; không ghi qua symlink
+export async function copyAdapter(root) {
+  const dest = join(root, CLAUDE_CODE_ADAPTER);
+  if (existsSync(dest) && (await lstat(dest)).isSymbolicLink()) throw new Error(`Từ chối ghi qua symlink: ${dest}`);
+  await copyFile(ADAPTER_SRC, dest);
+  return dest;
 }

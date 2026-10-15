@@ -145,6 +145,7 @@ export async function quickSetupPlan(root, opts = {}) {
   else if (ai.missing.length) add({ id: 'ai', label: aiLabel, ok: false, detail: `Thiếu gói ${ai.missing.join(', ')}`, cmd: ai.install, display: ai.installDisplay, ...(js.pnp ? { manual: true } : {}) });
   else add({ id: 'ai', label: aiLabel, ok: true, detail: `Đủ gói: ${ai.packages.join(', ')}` });
   if (ai.env && ai.kind === 'key') add({ id: 'ai-key', label: `API key ${ai.env}`, ok: ai.keyState === 'set', manual: true, detail: ai.keyState === 'set' ? `Đã có (${ai.keySource})${ai.loadsEnv || ai.keySource !== '.env' ? '' : ' · config chưa đọc .env: chọn lại provider để thêm'}` : 'Chưa có: điền vào .env (ở mục File .env bên dưới) hoặc /e2e-dashboard ai --api-key …', display: `${ai.env}=… trong .env${ai.keyUrl ? ` (lấy key ở ${ai.keyUrl})` : ''}` });
+  if (ai.kind === 'cli') add({ id: 'ai-cli', label: 'Claude Code CLI đã đăng nhập (model claude-code, thử nghiệm)', ok: ai.claude, manual: true, detail: ai.claude ? 'Có lệnh claude; đăng nhập kiểm tra bằng claude auth status' : 'Không thấy lệnh claude trên PATH', display: 'npm install -g @anthropic-ai/claude-code && claude' });
   if (ai.kind === 'login') add({ id: 'ai-login', label: `Đăng nhập ${ai.label.replace(/ \(đăng nhập\)$/, '')}`, ok: ai.loggedIn, manual: true, detail: ai.loggedIn ? 'Đã đăng nhập trên máy này' : 'Chưa đăng nhập: chạy lệnh trong terminal (mở trình duyệt / mã thiết bị)', display: ai.loginDisplay });
 
   // 3. trình duyệt: chromium và chromium-headless-shell kiểm tra riêng (installedBrowsers gộp hai cái làm một)
@@ -184,6 +185,7 @@ export async function quickSetupPlan(root, opts = {}) {
   // 5. reporter, .env, .gitignore: setup() sẵn có
   const setupItems = opts.setupItems ?? (await setupStatus(root, { reporter: typeof opts.reporter === 'function' ? opts.reporter() : opts.reporter }));
   const todo = setupItems.filter((x) => !x.ok && x.fix === 'setup');
+  if (ai.adapterMissing) todo.push({ label: 'e2e-dashboard.claude-code.mjs' }); // config dùng claude-code mà thiếu lớp bọc
   add({ id: 'project', label: 'Reporter, .env, .gitignore', ok: !todo.length, detail: todo.length ? todo.map((x) => x.label).join(', ') : 'Đã xong', internal: true, display: '/e2e-dashboard setup' });
 
   return { os: sys, items, steps: items.filter((x) => !x.ok && !x.manual && (x.cmd || x.internal)).map((x) => x.id), canSudo, interactive };

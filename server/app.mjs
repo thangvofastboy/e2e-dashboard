@@ -381,8 +381,8 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       }
       if (p === '/api/system/e2e-config') {
         const { e2eConfigStatus } = await import('./e2econfig.mjs');
-        const { aiStatus, AI_PROVIDERS } = await import('./e2eai.mjs');
-        return send(res, 200, { ...(await e2eConfigStatus(projectRoot)), ai: await aiStatus(projectRoot), providers: Object.entries(AI_PROVIDERS).map(([id, x]) => ({ id, label: x.label, kind: x.kind, env: x.env ?? null })) });
+        const { aiStatus, AI_PROVIDERS, CLAUDE_CODE_WARNING } = await import('./e2eai.mjs');
+        return send(res, 200, { ...(await e2eConfigStatus(projectRoot)), ai: await aiStatus(projectRoot), providers: Object.entries(AI_PROVIDERS).map(([id, x]) => ({ id, label: x.label, kind: x.kind, env: x.env ?? null, ...(x.experimental ? { experimental: true, warning: CLAUDE_CODE_WARNING } : {}) })) });
       }
       if (p === '/api/ai/chats') {
         const { listChats, getChat } = await import('./aichats.mjs');

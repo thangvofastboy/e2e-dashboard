@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Entry for /e2e-dashboard: start | setup | doctor | export | stop | status | digest | report | gate | fix | triage | quarantine | import | share | publish | mark | ci-sync | projects | statusline.
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { readFile, writeFile, copyFile, mkdir, rm, appendFile, lstat } from 'node:fs/promises';
 import { existsSync, openSync, closeSync } from 'node:fs';
 import { join, basename, dirname, resolve, relative } from 'node:path';
@@ -103,6 +103,12 @@ export async function setup(root) {
     lines.push(`Đã thêm browser: process.env.E2E_BROWSER ?? 'chromium' vào web({...}) trong ${basename(configPath)}: chọn được trình duyệt khi chạy test.`);
   } else if (b.reason === 'unknown-shape') lines.push(`Không tìm thấy web({...}) trong ${basename(configPath)}: thêm tay browser: process.env.E2E_BROWSER ?? 'chromium' để chọn trình duyệt khi chạy test.`);
   lines.push(...(await ensureEnvFile(root)));
+  // model claude-code (thử nghiệm): config import lớp bọc của dashboard → copy / làm mới theo bản plugin
+  if ((await readFile(configPath, 'utf8')).includes('e2e-dashboard.claude-code')) {
+    const { copyAdapter } = await import('../server/e2eai.mjs');
+    await copyAdapter(root);
+    lines.push('Đã cập nhật e2e-dashboard.claude-code.mjs (model claude-code, thử nghiệm) — commit cùng reporter.');
+  }
   return lines;
 }
 
@@ -547,7 +553,7 @@ async function configCli(args, cwd) {
 // `/e2e-dashboard ai [--provider ID] [--api-key KEY] [--base-url URL] [--model ID] [--no-install] [--login] [--yes]`
 // AI cho bước agent của e2e: chọn provider (sửa e2e.config), cài gói npm của provider, API key vào .env hoặc đăng nhập subscription.
 async function aiCli(args, cwd) {
-  const { AI_PROVIDERS, AI_IDS, aiStatus, setAiProvider, setEnvKey, loginArgv } = await import('../server/e2eai.mjs');
+  const { AI_PROVIDERS, AI_IDS, aiStatus, setAiProvider, setEnvKey, loginArgv, CLAUDE_CODE_WARNING } = await import('../server/e2eai.mjs');
   const { spawnStep } = await import('../server/quicksetup.mjs');
   const { ask, askHidden, confirm, choose, canAsk } = await import('./prompt.mjs');
   const val = (name) => {
@@ -563,9 +569,14 @@ async function aiCli(args, cwd) {
   if (id && !AI_PROVIDERS[id]) return { code: 1, out: `--provider phải là một trong: ${AI_IDS.join(', ')}` };
   if (!id && interactive) id = await choose('Chọn model AI cho bước agent', AI_IDS.map((k) => ({ id: k, label: `${k.padEnd(18)} ${AI_PROVIDERS[k].label}` })), st.provider === 'custom' ? undefined : st.provider);
   const lines = [];
+  if (id && AI_PROVIDERS[id].experimental && id !== st.provider) {
+    console.log(CLAUDE_CODE_WARNING.map((w) => `! ${w}`).join('\n'));
+    if (interactive && !(await confirm('Vẫn dùng claude-code?', false))) return { code: 1, out: 'Đã giữ nguyên model AI.' };
+  }
   if (id && (id !== st.provider || val('--base-url') || val('--model'))) {
     let baseURL = val('--base-url');
     let modelId = val('--model');
+    if (id === 'claude-code' && interactive) modelId ??= await ask('Model của Claude Code (haiku | sonnet | opus)', 'sonnet');
     if (id === 'openai-compatible' && interactive) {
       baseURL ??= await ask('URL của server model (OpenAI-compatible)', 'http://127.0.0.1:11434/v1');
       modelId ??= await ask('Model id server đó phục vụ', 'gpt-6-luna');
@@ -606,12 +617,21 @@ async function aiCli(args, cwd) {
   if (st.missing.length) todo.push(`cài gói: ${st.installDisplay}`);
   if (st.kind === 'key' && st.keyState !== 'set') todo.push(`điền ${st.env} vào .env${st.keyUrl ? ` (${st.keyUrl})` : ''}`);
   if (st.kind === 'login' && !st.loggedIn) todo.push(`đăng nhập: ${st.loginDisplay}`);
+  if (st.kind === 'cli' && !claudeLoggedIn()) todo.push('đăng nhập Claude Code: gõ `claude` rồi /login');
   lines.push(
     `- Model AI: ${st.label}`,
     `- Gói npm: ${st.packages.length ? (st.missing.length ? `thiếu ${st.missing.join(', ')}` : 'đủ') : 'không cần'}`,
     ...(st.env ? [`- ${st.env}: ${st.keyState === 'set' ? `đã có (${st.keySource})` : st.kind === 'local' ? 'không có (chỉ cần khi server yêu cầu)' : 'chưa có'}`] : []),
     ...(st.kind === 'login' ? [`- Đăng nhập: ${st.loggedIn ? 'đã đăng nhập' : 'chưa'}`] : []),
+    ...(st.kind === 'cli' ? [`- Claude Code CLI: ${claudeLoggedIn() ? 'đã đăng nhập' : 'chưa đăng nhập: gõ `claude` một lần'} · lớp bọc ${st.adapterMissing ? 'thiếu' : 'e2e-dashboard.claude-code.mjs'} (thử nghiệm)`] : []),
     ...(todo.length ? [`Còn phải làm: ${todo.join('; ')}`] : []),
   );
   return { code: todo.length && st.kind !== 'local' ? 1 : 0, out: lines.join('\n') };
+}
+
+// `claude auth status` thoát 0 khi đã đăng nhập (đo một lần mỗi lệnh). Nhớ trên chính hàm: biến `let` khai báo
+// cuối file chưa khởi tạo khi top-level await ở trên gọi main()
+function claudeLoggedIn() {
+  claudeLoggedIn.cached ??= spawnSync('claude', ['auth', 'status', '--text'], { stdio: 'ignore', timeout: 10000, shell: process.platform === 'win32' }).status === 0;
+  return claudeLoggedIn.cached;
 }
