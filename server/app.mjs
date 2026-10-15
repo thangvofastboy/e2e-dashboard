@@ -1,6 +1,7 @@
 import { RUN_OPTION_KEYS } from './runner.mjs';
 import { readFile, readdir, stat, lstat, rm, mkdir, writeFile } from 'node:fs/promises';
 import { installedBrowsers, configSupport, validBrowser } from './browsers.mjs';
+import { quickSetupPlan, runQuickSetup, quickSetupRunning } from './quicksetup.mjs';
 import { findConfig as findConfigPath } from '../bin/project.mjs';
 import { indexedTestHistory, syncIndex, sqliteSupport, closeIndex, indexPath } from './runindex.mjs';
 import { failuresEvidence, runSummaryEvidence, whySlowEvidence, groupEvidence, triageEvidence, parseTriage, summaryState, testFiles, ticketEvidence, writeNewTest, selectTestsEvidence, locatorBatchEvidence, duplicateEvidence, releaseEvidence, visualEvidence } from './aiextra.mjs';
@@ -135,8 +136,6 @@ export function reporterStatus(projectRoot) {
     return { installed: false, version: null, latest: VERSION };
   }
 }
-
-let quickSetupBusy = false; // một Quick Setup mỗi server: hai npm install cùng lúc giẫm lên node_modules
 
 const NO_AI = { run: async ({ onEvent }) => onEvent({ type: 'error', message: 'AI chưa sẵn sàng trên server này.' }) };
 
@@ -378,8 +377,14 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       }
       if (p === '/api/system/envfile') return send(res, 200, await readEnvFile(projectRoot, url.searchParams.get('name') ?? ''));
       if (p === '/api/system/quick-setup') {
-        const { quickSetupPlan } = await import('./quicksetup.mjs');
         return send(res, 200, await quickSetupPlan(projectRoot, { reporter: reporterStatus(projectRoot) }));
+      }
+      if (p === '/api/ai/chats') {
+        const { listChats, getChat } = await import('./aichats.mjs');
+        const id = url.searchParams.get('id');
+        if (!id) return send(res, 200, await listChats(projectRoot));
+        const chat = await getChat(projectRoot, id);
+        return chat ? send(res, 200, chat) : send(res, 404, { error: 'chat not found' });
       }
       if (p === '/api/ai/summary') {
         const runId = url.searchParams.get('runId') ?? '';
@@ -741,6 +746,15 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         onEvent(event);
         res.writeHead(204);
         return res.end();
+      }
+      // lịch sử chat AI (server/aichats.mjs): trước khối /api/ai/<action> vì khối đó trả 404 cho tên lạ
+      if (p === '/api/ai/chats') {
+        const { appendChat } = await import('./aichats.mjs');
+        return send(res, 200, await appendChat(projectRoot, await readBody(req))); // dữ liệu sai: aichats ném lỗi status 400
+      }
+      if (p === '/api/ai/chats/delete') {
+        const { deleteChat } = await import('./aichats.mjs');
+        return send(res, 200, await deleteChat(projectRoot, (await readBody(req)).id));
       }
       if (p.startsWith('/api/ai/')) {
         const action = /^\/api\/ai\/(analyze-failure|analyze-run|suggest-locator|why-flaky|explore-to-test|route-test|ask|followup|run-summary|why-slow|explain-group|ticket-test|select-tests|locator-batch|duplicate-tests|release-notes|explain-visual|repro-steps|severity|dedupe-failures|quality-review)$/.exec(p)?.[1];
@@ -1160,19 +1174,15 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         // body chỉ là id bước; lệnh lấy từ kế hoạch server dựng lại lúc bấm
         const ids = (await readBody(req)).ids;
         if (!Array.isArray(ids) || !ids.every((x) => typeof x === 'string' && /^[a-z0-9-]{1,30}$/.test(x))) return send(res, 400, { error: 'invalid ids' });
-        if (quickSetupBusy) return send(res, 409, { error: 'Quick Setup đang chạy' });
         if (runner.state().running || live.snapshot().status === 'running') return send(res, 409, { error: 'Đang có run chạy: dừng run trước khi cài (npm install dưới run đang chạy dễ làm hỏng run)' });
-        quickSetupBusy = true;
+        if (quickSetupRunning(projectRoot)) return send(res, 409, { error: 'Quick Setup đang chạy' }); // hai npm install cùng lúc giẫm lên node_modules
         const ac = new AbortController();
         res.on('close', () => !res.writableEnded && ac.abort()); // tab đóng: dừng lệnh đang cài
         const write = startSse(res);
         try {
-          const { runQuickSetup } = await import('./quicksetup.mjs');
           await runQuickSetup(projectRoot, ids, { onEvent: write, signal: ac.signal, reporter: () => reporterStatus(projectRoot) });
         } catch (e) {
           write({ type: 'error', message: e.message });
-        } finally {
-          quickSetupBusy = false;
         }
         return res.end();
       }
@@ -1271,6 +1281,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return send(res, 200, { removed: await forgetProject(root, env) });
       }
       if (p === '/api/run') {
+        if (quickSetupRunning(projectRoot)) return send(res, 409, { error: 'Quick Setup đang cài thư viện: chờ cài xong rồi chạy test' });
         const body = await readBody(req);
         if (body.rerunOf !== undefined && !RUN_ID.test(String(body.rerunOf))) return send(res, 400, { error: 'invalid rerunOf' });
         let out;

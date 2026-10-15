@@ -598,7 +598,10 @@ export async function renderSystem(main) {
             if (!e.ok) failed++;
             push(e.ok ? '✓ Xong' : `✗ Lỗi (mã ${e.code})`);
           }
-          if (e.type === 'error') push(`✗ ${e.message}`);
+          if (e.type === 'error') {
+            failed++;
+            push(`✗ ${e.message}`);
+          }
         });
         toast(failed ? `Quick Setup: ${failed} bước lỗi, xem log` : 'Quick Setup xong', failed ? 'bad' : 'good');
         const log = lines.join('\n');
@@ -609,6 +612,7 @@ export async function renderSystem(main) {
       }
     } catch (x) {
       b.removeAttribute('aria-busy');
+      b.disabled = false; // nút Cài tất cả bị khoá khi bắt đầu: 409 / lỗi mạng thì mở lại để bấm lần nữa
       toast(x.message, 'bad');
     }
   });

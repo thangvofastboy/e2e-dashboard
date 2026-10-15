@@ -113,7 +113,7 @@ function shell() {
         <button type="button" class="icon-btn nav-collapse" aria-pressed="false" aria-label="Thu gọn menu" title="Thu gọn menu">${icon('columns', { size: 16 })}</button>
         <button type="button" class="icon-btn nav-toggle" aria-expanded="false" aria-controls="nav-body" aria-label="Mở menu">${icon('list', { size: 18 })}</button></div>
       <div class="nav-body" id="nav-body">
-      ${isExport() ? '' : `<div class="nav-tools"><button type="button" class="nav-search" data-search title="Tìm kiếm (Ctrl K)">${icon('search', { size: 15 })}<span class="nl">Tìm kiếm</span> <kbd>Ctrl K</kbd></button><button type="button" class="nav-ask btn-ai" data-ask title="Hỏi AI về bộ test">${icon('sparkles', { size: 15 })}<span class="nl">Hỏi AI</span></button></div>`}
+      ${isExport() ? '' : `<div class="nav-tools"><button type="button" class="nav-search" data-search title="Tìm kiếm (Ctrl K)">${icon('search', { size: 15 })}<span class="nl">Tìm kiếm</span> <kbd>Ctrl K</kbd></button></div>`}
       <nav aria-label="Điều hướng">${nav}</nav>
       <div class="nav-foot"><div class="foot-btns"><button class="theme-toggle" type="button" aria-label="Chuyển giao diện sáng / tối" title="Sáng / Tối">${icon('sun')}<span class="nl">Sáng / Tối</span></button>${isExport() ? '' : `<button type="button" class="icon-btn" data-keys title="Phím tắt (?)" aria-label="Phím tắt">${icon('bolt', { size: 15 })}</button>`}<button type="button" class="icon-btn lang-btn" data-lang title="Tiếng Việt / English" aria-label="Ngôn ngữ">${currentLang() === 'en' ? 'VI' : 'EN'}</button></div><div id="nav-foot"></div></div>
       </div>
@@ -149,6 +149,8 @@ function shell() {
     }
   });
   document.querySelector('[data-search]')?.addEventListener('click', openSearch);
+  // Hỏi AI: nút tròn nổi góc phải dưới (ẩn khi khung AI đang mở, xem style.css .ai-fab); bản export chỉ đọc nên không có
+  if (!isExport()) document.body.insertAdjacentHTML('beforeend', `<button type="button" class="ai-fab" data-ask title="Hỏi AI về bộ test" aria-label="Hỏi AI về bộ test">${icon('sparkles', { size: 22 })}</button>`);
   document.querySelector('[data-ask]')?.addEventListener('click', openAskPanel);
   document.querySelector('[data-keys]')?.addEventListener('click', shortcutHelp);
   document.querySelector('[data-lang]').addEventListener('click', () => setLang(currentLang() === 'en' ? 'vi' : 'en'));

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { failedRows, matchResultId, failedHtml, formatResources, runsHref } from '../ui/views/live.js';
+import { failedRows, matchResultId, failedHtml, resourcesHtml, pushSample, sparkPoints, runsHref } from '../ui/views/live.js';
 
 const live = (o) => ({ key: `${o.testId}|${o.target}|${o.agent ?? 'default'}|${o.repeat ?? 0}`, agent: 'default', repeat: 0, file: 'a.e2e.ts', title: o.testId, ...o });
 const report = {
@@ -53,13 +53,28 @@ test('runsHref trỏ thẳng run khi có runId', () => {
   assert.equal(runsHref(null), '#/runs');
 });
 
-test('formatResources: máy + app, runner null thì bỏ phần app', () => {
-  const res = { machine: { cores: 8, cpuPct: 42.4, memTotalMb: 16384, memFreeMb: 4096, diskTotalGb: 500, diskFreeGb: 120.5 }, app: { dashboard: { rssMb: 80, cpuPct: 1 }, runner: { rssMb: 1200.4, cpuPct: 150.2, procs: 7 } } };
-  const html = formatResources(res);
-  assert.match(html, /CPU máy 42%/);
-  assert.match(html, /RAM 12\.0\/16\.0 GB/);
-  assert.match(html, /Disk trống 121 GB/);
-  assert.match(html, /App: 1200 MB · 150% CPU · 7 tiến trình/);
-  assert.doesNotMatch(formatResources({ ...res, app: { dashboard: res.app.dashboard, runner: null } }), /App:/);
-  assert.equal(formatResources(null), '');
+test('resourcesHtml: thẻ máy + app có giá trị, màu theo ngưỡng, sparkline; runner null thì thẻ app chờ', () => {
+  const res = { machine: { cores: 8, cpuPct: 42.4, loadavg: [1.5, 1, 1], memTotalMb: 16384, memFreeMb: 2048, diskTotalGb: 500, diskFreeGb: 120.5 }, app: { runner: { rssMb: 1200.4, cpuPct: 150.2, procs: 7 } } };
+  const html = resourcesHtml([res, res]);
+  assert.match(html, /42%/);
+  assert.match(html, /14\.0\/16\.0 GB/);
+  assert.match(html, /tone-bad/); // RAM 87.5%
+  assert.match(html, /121 GB/);
+  assert.match(html, /1200 MB/);
+  assert.match(html, /7 tiến trình/);
+  assert.match(html, /<polyline/);
+  assert.match(resourcesHtml([{ ...res, app: { runner: null } }]), /Chưa chạy/);
+  assert.match(resourcesHtml([{ ...res, app: { runner: { unavailable: 'không đo được' } } }]), /không đo được/);
+  assert.equal(resourcesHtml([]), '');
+  assert.equal(resourcesHtml([{ machine: null }]), '');
+});
+
+test('pushSample giữ tối đa max mẫu; sparkPoints chuẩn hoá 0..100 vào khung', () => {
+  let h = [];
+  for (let i = 0; i < 70; i++) h = pushSample(h, { i }, 60);
+  assert.equal(h.length, 60);
+  assert.equal(h[0].i, 10);
+  assert.equal(sparkPoints([0, 100]), '0,32 120,0');
+  assert.equal(sparkPoints([50]), '118,16 120,16'); // một mẫu: vẽ đoạn ngắn ở mép phải
+  assert.equal(sparkPoints([150, -5]), '0,0 120,32'); // kẹp ngoài 0..100
 });
