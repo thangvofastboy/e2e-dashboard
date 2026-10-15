@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.16.3 — 2026-10-15
+
+- **Bảng sửa testcase của issue Linear dễ nhìn hơn**: mỗi testcase là một thẻ có số `TC 1`, ô tiêu đề rộng và nút xoá; các bước và kết quả mong đợi chia hai cột, nhãn nằm trên ô, ô tự cao theo nội dung. Nút *Lưu testcase* là nút chính; *Gen e2e* báo rõ cần lưu trước.
+- **Nút Hỏi AI nổi** không còn che nút cuối trang.
+- **Test của plugin không còn gọi Linear thật**: một test từng đọc `~/.e2e-dashboard/config.json` của máy và dùng Linear API key thật; giờ mọi request tới Linear trong lúc chạy test đều bị chặn.
+
 ## v0.16.2 — 2026-10-15
 
 - **Chat với AI có cảm giác trò chuyện**: avatar và tên Claude, lời chào khi mở khung Hỏi AI, tin nhắn trượt lên khi xuất hiện, chữ AI hiện dần như đang gõ (bấm Dừng thì hiện hết ngay). Khung chỉ tự cuộn xuống khi bạn đang ở cuối.
