@@ -3,7 +3,7 @@ import './_home.mjs';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { mkdtempSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -76,4 +76,29 @@ test('bundle UI (/app.js) và CSS có khung chat + Quick Setup', async () => {
   assert.match(js, /data-quick-run/);
   const css = await (await fetch(`${base}/style.css`, { headers: auth })).text();
   assert.match(css, /\.chat-input/);
+});
+
+test('Quick Setup: kế hoạch có hệ điều hành đang chạy', async () => {
+  const plan = await (await fetch(`${base}/api/system/quick-setup`, { headers: auth })).json();
+  assert.ok(plan.os?.label);
+  assert.equal(plan.items[0].id, 'os');
+});
+
+test('e2e.config: GET đọc URL app / lệnh, POST sửa đúng hai giá trị, kiểu sai bị 400', async () => {
+  const cfgPath = join(root, 'e2e.config.ts');
+  const before = readFileSync(cfgPath, 'utf8');
+  writeFileSync(cfgPath, before.replace("defineConfig({", "defineConfig({\n  targets: [{ engine: web(), app: {\n    url: process.env.APP_URL ?? 'http://localhost:3000',\n  } }],"));
+  try {
+    const cur = await (await fetch(`${base}/api/system/e2e-config`, { headers: auth })).json();
+    assert.equal(cur.exists, true);
+    assert.equal(cur.appUrl, 'http://localhost:3000');
+    const r = await (await fetch(`${base}/api/system/e2e-config`, { method: 'POST', headers: auth, body: JSON.stringify({ appUrl: 'http://localhost:5173', command: 'npm run dev' }) })).json();
+    assert.deepEqual(r.changed, ['URL app', 'lệnh khởi động']);
+    assert.equal(r.command, 'npm run dev');
+    assert.match(readFileSync(cfgPath, 'utf8'), /command: \{ executable: 'npm', args: \['run', 'dev'\] \}/);
+    const bad = await fetch(`${base}/api/system/e2e-config`, { method: 'POST', headers: auth, body: JSON.stringify({ appUrl: 42 }) });
+    assert.equal(bad.status, 400);
+  } finally {
+    writeFileSync(cfgPath, before);
+  }
 });

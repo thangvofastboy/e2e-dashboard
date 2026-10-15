@@ -245,18 +245,34 @@ curl -fsSL https://raw.githubusercontent.com/thangvofastboy/e2e-dashboard/main/i
 irm https://raw.githubusercontent.com/thangvofastboy/e2e-dashboard/main/install.ps1 | iex
 ```
 
-Script cài lần lượt, phần nào đã có thì bỏ qua (chạy lại bao nhiêu lần cũng được):
+Script in trước danh sách 8 bước, rồi chạy lần lượt với tiêu đề `[n/8]` và dòng *→ Đang …* cho biết đang cài gì, lệnh nào. Phần nào đã có thì bỏ qua (chạy lại bao nhiêu lần cũng được). Cuối cùng là bảng **Tổng kết**: mỗi bước *đã có / đã cài / bỏ qua / làm tay / lỗi* kèm thời gian.
 
-| Bước | Cài gì | Cách cài |
+| Bước | Việc | Cách làm |
 |:-:|---|---|
-| 1 | git | brew / apt-get / dnf / pacman (Windows: winget) |
-| 2 | Node ≥ 22.22.3 (hoặc ≥ 24.8) | [nvm](https://github.com/nvm-sh/nvm), không cần sudo, không đụng Node hệ thống (Windows: winget `OpenJS.NodeJS.LTS`) |
-| 3 | Claude Code CLI | `npm install -g @anthropic-ai/claude-code` |
-| 4 | Plugin e2e-dashboard | `claude plugin marketplace add` + `claude plugin install` (đã cài thì cập nhật) |
-| 5 | Phần của project | Quick Setup: e2e + `@e2e-dev/web`, `node_modules`, Chromium + headless shell, reporter, `.env`, `.gitignore` |
-| 6 | Mở dashboard | Như gõ `/e2e-dashboard` |
+| 1 | Phát hiện hệ điều hành | macOS (phiên bản, Apple Silicon / Intel, Homebrew), distro Linux qua `/etc/os-release` (Debian/Ubuntu, Fedora/RHEL, Arch, openSUSE, Alpine), WSL, musl; Windows 10 / 11. Quyết định trình quản lý gói và cách cài Node |
+| 2 | git | `apt-get` / `dnf` / `yum` / `pacman` / `zypper` / `apk` theo distro, `brew` (macOS chưa có brew: Command Line Tools), `winget` (Windows) |
+| 3 | Node ≥ 22.22.3 (hoặc ≥ 24.8) | [nvm](https://github.com/nvm-sh/nvm), không cần sudo, không đụng Node hệ thống; Alpine (musl): `apk`; Windows: winget `OpenJS.NodeJS.LTS` |
+| 4 | Claude Code CLI | `npm install -g @anthropic-ai/claude-code` |
+| 5 | Plugin e2e-dashboard | `claude plugin marketplace add` + `claude plugin install` (đã cài thì cập nhật) |
+| 6 | Cấu hình `e2e.config.ts` | Chưa có: tạo bằng `e2e init` (web, skill + MCP cho Claude Code). Có rồi: hỏi URL app và lệnh khởi động app (Enter giữ nguyên) |
+| 7 | Quick Setup | e2e + `@e2e-dev/web`, `node_modules`, Chromium + headless shell (`--with-deps` chỉ trên Debian/Ubuntu), reporter, `.env`, `.gitignore`; mỗi mục in `[bước i/n]` |
+| 8 | Mở dashboard | Như gõ `/e2e-dashboard` |
 
-Tham số: `--project <thư mục>`, `--no-open`, `--skip-project` (chỉ cài máy + plugin), `--dry-run` (chỉ in các bước). Truyền qua pipe: `curl … | bash -s -- --project ~/code/my-app`. Windows: `-Project`, `-NoOpen`, `-SkipProject`, `-DryRun` (tải file về rồi chạy `.\install.ps1 -DryRun`). Xong thì gõ `claude` một lần để đăng nhập nếu chưa đăng nhập, và `/reload-plugins` trong phiên Claude Code đang mở.
+Tham số (bash / PowerShell):
+
+| bash | PowerShell | Ý nghĩa |
+|---|---|---|
+| `--project DIR` | `-Project DIR` | Thư mục project (mặc định: thư mục hiện tại) |
+| `--init` | `-Init` | Chưa có `e2e.config.ts` thì tạo, không hỏi |
+| `--gateway ID` | `-Gateway ID` | Model cho bước agent khi tạo config: `vercel`, `openrouter`, `openai-compatible`, `chatgpt`, `copilot`, `opencode-console`, `grok`, `none` |
+| `--app-url URL` | `-AppUrl URL` | URL app đang test |
+| `--app-command "npm run dev"` | `-AppCommand "npm run dev"` | Lệnh khởi động app để runner tự chạy (`""` để bỏ) |
+| `-y`, `--yes` | `-Yes` | Không hỏi gì |
+| `--no-open` | `-NoOpen` | Cài xong không mở dashboard |
+| `--skip-project` | `-SkipProject` | Chỉ cài máy + plugin |
+| `--dry-run` | `-DryRun` | Phát hiện hệ điều hành và in các bước, không cài gì |
+
+Truyền qua pipe: `curl … | bash -s -- --init --app-url http://localhost:5173 --app-command "npm run dev"`. Windows: tải file về rồi chạy `.\install.ps1 -DryRun`. Trên Windows, e2e khuyên chạy trong WSL: mở WSL và dùng `install.sh`. Xong thì gõ `claude` một lần để đăng nhập nếu chưa, và `/reload-plugins` trong phiên Claude Code đang mở.
 
 ### Hoặc cài từng bước
 
@@ -375,6 +391,8 @@ Lệnh này copy `e2e-dashboard.reporter.mjs` (kèm `.d.mts`) vào project và t
 |---|:-:|---|
 | `/e2e-dashboard` | 🖥️ | Bật server nền nếu chưa chạy, mở trình duyệt, in URL |
 | `/e2e-dashboard setup` | 🔌 | Gắn reporter vào `e2e.config.ts` để xem live; chọn trình duyệt mặc định (`E2E_BROWSER`) |
+| `/e2e-dashboard config [--init] [--app-url URL] [--app-command "npm run dev"\|--no-command] [--yes]` | 🧩 | Cấu hình `e2e.config.ts`: chưa có thì tạo bằng `e2e init` (`--gateway`, `--engine`); sửa URL app và lệnh khởi động app (hỏi khi có terminal, Enter giữ nguyên); in engine, model, reporter. Trong dashboard: *Cài đặt hệ thống › Project › Cấu hình e2e.config.ts* |
+| `/e2e-dashboard os` | 🖥️ | Hệ điều hành đang chạy (distro, phiên bản, CPU, WSL) và trình quản lý gói Quick Setup sẽ dùng |
 | `/e2e-dashboard setup --quick [--yes]` | ⚡ | Quick Setup: kiểm tra Git, gh, Node, e2e ([tester-army/e2e](https://github.com/tester-army/e2e)) + `@e2e-dev/web`, `node_modules`, Chromium + headless shell, Claude CLI, reporter/.env; hiện lệnh rồi cài phần thiếu (sudo hỏi mật khẩu trong terminal). Trong dashboard: *Cài đặt hệ thống › Project › Quick Setup* |
 | `/e2e-dashboard doctor [--dry-run]` | 🩺 | Chuyển dữ liệu theo bố cục cũ sang bố cục mới (runs theo ngày, `state/`, `runtime/`), dựng lại chỉ mục SQLite nếu đã bật. `--dry-run` chỉ liệt kê, không ghi |
 | `/e2e-dashboard export [runId]` | 📤 | Xuất một run (mặc định là run mới nhất) thành HTML tự chứa |

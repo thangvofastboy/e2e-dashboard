@@ -191,18 +191,41 @@ function userHtml(u, linear = null) {
 
 // kế hoạch Quick Setup: mục thiếu, lệnh sẽ chạy (tự cài) hoặc lệnh để copy (chạy tay: cần mật khẩu sudo, Node…)
 export function quickPlanHtml(plan) {
+  const osLine = plan.os ? `<p class="small">${icon('cpu', { size: 14 })} <strong>Hệ điều hành:</strong> ${escapeHtml(plan.os.label)} <span class="muted">· cách cài chọn theo hệ điều hành này</span></p>` : '';
   const todo = plan.items.filter((x) => !x.ok);
-  if (!todo.length) return `<p class="tone-good">${icon('check', { size: 14 })} Máy đã đủ mọi thứ, không cần cài gì.</p>`;
+  if (!todo.length) return `${osLine}<p class="tone-good">${icon('check', { size: 14 })} Máy đã đủ mọi thứ, không cần cài gì.</p>`;
+  // thứ tự: các bước tự cài chạy lần lượt theo đúng số này
+  const order = new Map(plan.steps.map((id, i) => [id, i + 1]));
   const rows = todo.map((x) => {
     const auto = plan.steps.includes(x.id);
     return `<li class="setup-item"><span class="tone-${auto ? 'warn' : 'muted'}">${icon(auto ? 'download' : 'terminal', { size: 15 })}</span>
-      <span><strong>${escapeHtml(x.label)}</strong>${x.optional ? ' <span class="muted small">(tuỳ chọn)</span>' : ''}<br><span class="muted small">${escapeHtml(x.detail)}</span><br>
+      <span>${auto ? `<span class="chip">Bước ${order.get(x.id)}/${plan.steps.length}</span> ` : ''}<strong>${escapeHtml(x.label)}</strong>${x.optional ? ' <span class="muted small">(tuỳ chọn)</span>' : ''}<br><span class="muted small">${escapeHtml(x.detail)}</span><br>
       <code>${escapeHtml(x.display ?? '')}</code> <span class="chip tone-${auto ? 'warn' : 'muted'}">${auto ? 'Tự cài' : 'Chạy tay'}</span>${auto ? '' : ` <button type="button" class="icon-btn" data-copy-cmd="${escapeHtml(x.display ?? '')}" aria-label="Copy lệnh">${icon('copy', { size: 13 })}</button>`}</span></li>`;
   }).join('');
   const sudoNote = !plan.canSudo && todo.some((x) => !plan.steps.includes(x.id) && /^sudo /.test(x.display ?? '')) ? '<p class="muted small">Lệnh cần mật khẩu sudo không chạy được từ trình duyệt: copy chạy trong terminal, hoặc chạy <code>/e2e-dashboard setup --quick</code> để cài hết (sudo sẽ hỏi mật khẩu).</p>' : '';
-  return `<ul class="setup-list">${rows}</ul>${sudoNote}
+  return `${osLine}<ul class="setup-list">${rows}</ul>${sudoNote}
     ${plan.steps.length ? `<p><button type="button" class="primary" data-quick-run="${escapeHtml(plan.steps.join(','))}">${icon('download', { size: 14 })}Cài tất cả (${plan.steps.length})</button></p>` : ''}
     <pre class="log" data-quick-log hidden></pre>`;
+}
+
+// e2e.config.ts: xem nhanh và sửa URL app / lệnh khởi động (server chỉ sửa đúng hai giá trị này)
+export function e2eConfigHtml(c) {
+  if (!c) return '';
+  if (!c.exists) return `<section class="panel"><h2>${icon('file', { size: 18 })} e2e.config.ts</h2><p class="muted">Không tìm thấy e2e.config.*. Tạo bằng <code>/e2e-dashboard config --init</code> trong terminal.</p></section>`;
+  const row = (k, v, tone = '') => `<li class="setup-item"><span class="tone-${tone || 'muted'}">${icon(tone === 'good' ? 'check' : 'info', { size: 15 })}</span><span><strong>${escapeHtml(k)}</strong><br><span class="muted small">${escapeHtml(v)}</span></span></li>`;
+  return `<section class="panel"><h2>${icon('file', { size: 18 })} Cấu hình ${escapeHtml(c.file)}</h2>
+    <ul class="setup-list">
+      ${row('Engine', `${c.engine ?? 'không rõ'} · ${c.targets} target`)}
+      ${row('Model cho bước agent', c.model ?? 'Không (chỉ test bằng locator)', c.model ? 'good' : '')}
+      ${row('Reporter dashboard', c.reporter ? 'Đã gắn' : 'Chưa gắn: bấm Quick Setup', c.reporter ? 'good' : '')}
+      ${row('Chọn trình duyệt khi chạy', c.browserEnv ? 'Có (E2E_BROWSER)' : 'Chưa: bấm Quick Setup', c.browserEnv ? 'good' : '')}
+    </ul>
+    <form data-e2e-config>
+      <div class="form-row"><span class="form-label">URL app đang test</span><input type="url" name="appUrl" value="${escapeHtml(c.appUrl ?? '')}" placeholder="http://localhost:3000" required aria-label="URL app đang test"><small class="fld-hint">${c.appUrlEnv ? `Biến <code>${escapeHtml(c.appUrlEnv)}</code> lúc chạy vẫn đè được giá trị này.` : 'Trang mà app.open() mở.'}</small></div>
+      <div class="form-row"><span class="form-label">Lệnh khởi động app</span><input type="text" name="command" value="${escapeHtml(c.command ?? '')}" placeholder="npm run dev" spellcheck="false" aria-label="Lệnh khởi động app"><small class="fld-hint">Runner tự chạy lệnh này trước test và tắt sau đó. Để trống nếu bạn tự chạy app.</small></div>
+      <p><button type="submit" class="primary">${icon('check', { size: 14 })}Lưu vào ${escapeHtml(c.file)}</button> <span class="muted small" data-e2e-config-msg></span></p>
+    </form>
+  </section>`;
 }
 
 function setupHtml(items) {
@@ -364,6 +387,7 @@ export async function renderSystem(main) {
     getJson('/api/settings').catch(() => null),
     getJson('/api/resources').catch(() => null), // chưa có endpoint (404) → "không đo được"
   ]);
+  let e2eCfg = await getJson('/api/system/e2e-config').catch(() => null);
   let editing = null; // file env đang mở
   const urlTab = () => new URLSearchParams(location.hash.split('?')[1] ?? '').get('tab');
   let tab = SYS_TABS.some(([k]) => k === urlTab()) ? urlTab() : 'appearance';
@@ -372,7 +396,7 @@ export async function renderSystem(main) {
     return todo ? `<span class="sys-badge" title="Cần xem">${todo}</span>` : '';
   };
   const draw = () => {
-    const panes = { appearance: appearanceHtml(), project: setupHtml(d.setup) + envHtml(d.env), integrations: userHtml(d.user, linearInfo) + linearIssuesFormHtml(prefs?.linear ?? { emails: [], statuses: [] }), ai: healHtml(heal, d.user.selfHeal, d.user.ai), about: infoHtml(d, resources, prefs?.browsers?.installed), reset: junkHtml(junkInfo) + resetHtml(resetInfo), sources: projectSourcesHtml(prefs), guide: guideHtml() };
+    const panes = { appearance: appearanceHtml(), project: setupHtml(d.setup) + e2eConfigHtml(e2eCfg) + envHtml(d.env), integrations: userHtml(d.user, linearInfo) + linearIssuesFormHtml(prefs?.linear ?? { emails: [], statuses: [] }), ai: healHtml(heal, d.user.selfHeal, d.user.ai), about: infoHtml(d, resources, prefs?.browsers?.installed), reset: junkHtml(junkInfo) + resetHtml(resetInfo), sources: projectSourcesHtml(prefs), guide: guideHtml() };
     main.innerHTML = `${pageHead('Cài đặt hệ thống', 'settings', 'Giao diện, biến môi trường của project, key của dashboard và tình trạng setup.')}
       <div class="sys">
         <div class="sys-nav" role="tablist" aria-orientation="vertical" aria-label="Nhóm cài đặt">${SYS_TABS.map(([k, label, ic, sub]) => `<button type="button" role="tab" id="sys-tab-${k}" data-sys-tab="${k}" aria-selected="${k === tab}" aria-controls="sys-pane-${k}" tabindex="${k === tab ? 0 : -1}"><span class="sys-nav-ic">${icon(ic, { size: 20 })}</span><span class="sys-nav-t"><strong>${label}</strong><span class="small">${sub}</span></span>${badge(k)}</button>`).join('')}</div>
@@ -390,7 +414,7 @@ export async function renderSystem(main) {
     replaceParams({ tab: k === 'appearance' ? '' : k });
   };
   const reload = async () => {
-    [d, heal, junkInfo] = await Promise.all([getJson('/api/system'), getJson('/api/selfheal').catch(() => heal), getJson('/api/junk').catch(() => junkInfo)]);
+    [d, heal, junkInfo, e2eCfg] = await Promise.all([getJson('/api/system'), getJson('/api/selfheal').catch(() => heal), getJson('/api/junk').catch(() => junkInfo), getJson('/api/system/e2e-config').catch(() => e2eCfg)]);
     const ta = main.querySelector('.env-text');
     const keep = editing && ta ? { name: editing, value: ta.value, saved: ta.dataset.saved } : null;
     draw();
@@ -602,8 +626,9 @@ export async function renderSystem(main) {
           out.scrollTop = out.scrollHeight;
         };
         let failed = 0;
-        await postStream('/api/system/quick-setup/run', { ids: b.dataset.quickRun.split(',') }, (e) => {
-          if (e.type === 'step') push(`\n▶ ${e.label}\n$ ${e.display}`);
+        const ids = b.dataset.quickRun.split(',');
+        await postStream('/api/system/quick-setup/run', { ids }, (e) => {
+          if (e.type === 'step') push(`\n▶ [${ids.indexOf(e.id) + 1}/${ids.length}] Đang cài: ${e.label}\n$ ${e.display}`);
           if (e.type === 'log') push(e.text);
           if (e.type === 'step-done') {
             if (!e.ok) failed++;
@@ -630,6 +655,21 @@ export async function renderSystem(main) {
   main.addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = e.target;
+    if (f.matches('[data-e2e-config]')) {
+      const msg = f.querySelector('[data-e2e-config-msg]');
+      try {
+        const r = await postJson('/api/system/e2e-config', { appUrl: f.appUrl.value.trim(), command: f.command.value.trim() });
+        msg.textContent = r.problems.join(' · ');
+        toast(r.problems.length ? 'Có mục chưa lưu được, xem lưu ý' : r.changed.length ? `Đã lưu: ${r.changed.join(', ')}` : 'Không có gì thay đổi', r.problems.length ? 'bad' : 'good');
+        if (!r.problems.length) {
+          e2eCfg = r;
+          await reload();
+        }
+      } catch (x) {
+        msg.textContent = x.message.replace(/^\d{3}: /, '');
+      }
+      return;
+    }
     if (f.matches('[data-sources-form]')) {
       const err = f.querySelector('[data-sources-err]');
       const v = readSourcesForm(f);

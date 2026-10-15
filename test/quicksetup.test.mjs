@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { quickSetupPlan, runQuickSetup, pickPm, spawnStep, jsPm, quickSetupRunning } from '../server/quicksetup.mjs';
+import { quickSetupPlan, runQuickSetup, pickPm, spawnStep, jsPm, quickSetupRunning, nodeOkForE2e } from '../server/quicksetup.mjs';
+import { osInfo } from '../server/osinfo.mjs';
 
 const project = (pkg, installed = []) => {
   const root = mkdtempSync(join(tmpdir(), 'e2ed-qs-'));
@@ -173,4 +174,29 @@ test('setup --quick qua CLI chạy hết bước project, không treo ở top-le
   const out = r.stdout + r.stderr;
   assert.doesNotMatch(out, /unsettled top-level await/);
   assert.match(out, /Đã thêm reporter vào e2e\.config\.ts/);
+});
+
+test('kế hoạch theo hệ điều hành: Fedora dùng dnf, Alpine dùng apk (gh là github-cli), --with-deps chỉ khi có apt-get', async () => {
+  const root = project({ devDependencies: { e2e: '1', '@e2e-dev/web': '1' } }, ['e2e', '@e2e-dev/web']);
+  const sys = (osRelease) => osInfo({ platform: 'linux', arch: 'x64', env: {}, osRelease, procVersion: '', exists: () => false });
+  const noTools = { ...base, canSudo: true, tools: { git: 'git 2', gh: null, claude: '1' }, browserEntries: [] };
+  const fedora = await quickSetupPlan(root, { ...noTools, osInfo: sys('ID=fedora\nPRETTY_NAME="Fedora Linux 40"'), which: (c) => ['dnf', 'apt-get'].includes(c) });
+  assert.equal(fedora.os.family, 'rhel');
+  assert.deepEqual(item(fedora, 'gh').cmd, ['sudo', '-n', 'dnf', 'install', '-y', 'gh']); // distro Fedora: dnf dù máy có apt-get
+  assert.ok(!item(fedora, 'browsers').cmd.includes('--with-deps'));
+  assert.match(item(fedora, 'os').detail, /Fedora Linux 40.*dnf/);
+  const alpine = await quickSetupPlan(root, { ...noTools, osInfo: sys('ID=alpine'), which: (c) => c === 'apk' });
+  assert.deepEqual(item(alpine, 'gh').cmd, ['sudo', '-n', 'apk', 'add', 'github-cli']);
+  assert.match(item(alpine, 'node').display, /apk add nodejs/);
+  const ubuntu = await quickSetupPlan(root, { ...noTools, osInfo: sys('ID=ubuntu'), which: (c) => c === 'apt-get' });
+  assert.ok(item(ubuntu, 'browsers').cmd.includes('--with-deps'));
+  assert.ok(!ubuntu.steps.includes('os')); // mục hệ điều hành chỉ để hiện
+});
+
+test('Node: ngưỡng của e2e (22.22.3 / 24.8), không phải chỉ ≥ 22', async () => {
+  const root = project({ devDependencies: { e2e: '1', '@e2e-dev/web': '1' } }, ['e2e', '@e2e-dev/web']);
+  for (const [v, ok] of [['22.22.0', false], ['22.22.3', true], ['24.7.0', false], ['24.8.0', true], ['25.0.0', true]]) {
+    assert.equal(item(await quickSetupPlan(root, { ...base, nodeVersion: v }), 'node').ok, ok, v);
+    assert.equal(nodeOkForE2e(v), ok, v);
+  }
 });

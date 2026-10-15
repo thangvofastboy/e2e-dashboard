@@ -34,7 +34,9 @@ curl -fsSL https://raw.githubusercontent.com/thangvofastboy/e2e-dashboard/main/i
 \`\`\`
 
 Windows (PowerShell): \`irm https://raw.githubusercontent.com/thangvofastboy/e2e-dashboard/main/install.ps1 | iex\`.
-Script cài phần còn thiếu theo thứ tự: git → Node ≥ 22.22.3 (qua nvm, không cần sudo) → Claude Code CLI → plugin → Quick Setup của project (e2e, thư viện, Chromium, reporter, .env) → mở dashboard. Phần đã có thì bỏ qua. Thêm \`--dry-run\` để xem trước các bước. Muốn làm tay thì theo các bước dưới.
+Script in trước 8 bước rồi chạy lần lượt (\`[n/8]\`, dòng *Đang …* cho biết đang cài gì): phát hiện hệ điều hành (macOS, distro Linux, WSL, Windows) để chọn đúng cách cài → git → Node ≥ 22.22.3 (qua nvm, không cần sudo) → Claude Code CLI → plugin → cấu hình \`e2e.config.ts\` (chưa có thì tạo bằng \`e2e init\`, hỏi URL app và lệnh khởi động app) → Quick Setup của project (e2e, thư viện, Chromium, reporter, .env) → mở dashboard. Cuối cùng in bảng tổng kết từng bước. Phần đã có thì bỏ qua. Thêm \`--dry-run\` để xem trước, \`--init --yes --app-url … --app-command "npm run dev"\` để không phải trả lời câu hỏi. Muốn làm tay thì theo các bước dưới.
+
+Sửa \`e2e.config.ts\` sau này: *Cài đặt hệ thống › Project › Cấu hình e2e.config.ts* (URL app, lệnh khởi động app), hoặc \`/e2e-dashboard config\`.
 
 **Bước 1.** Trong Claude Code, thêm marketplace và cài plugin:
 

@@ -283,6 +283,12 @@ export async function fixContext(root, runId, resultId) {
 
 export async function main(argv, cwd) {
   const [first] = argv;
+  if (first === 'os') {
+    const { osInfo } = await import('../server/osinfo.mjs');
+    const o = osInfo();
+    return { code: 0, out: [`Hệ điều hành: ${o.label}`, `Trình quản lý gói: ${o.pms.join(' / ')}`].join('\n') };
+  }
+  if (first === 'config') return configCli(argv.slice(1), cwd); // chạy được cả khi chưa có e2e.config (tạo bằng --init)
   if (first === 'projects') {
     const list = await projectSummaries(findProjectRoot(cwd) ?? cwd);
     if (!list.length) return { code: 0, out: 'Chưa có project nào mở dashboard.' };
@@ -438,7 +444,7 @@ export async function main(argv, cwd) {
     const label = { new: '🆕 Mới', investigating: '🔍 Đang xem', known: '📌 Đã biết', fixed: '✅ Đã sửa', ignored: '🙈 Bỏ qua' };
     return { code: 0, out: b.rows.map((r) => `${label[r.status]} ${r.title} [${r.target ?? '?'}]${r.assignee ? ` · ${r.assignee}` : ''}${r.failingNow ? ` · fail ${r.streak} run` : ' · không còn fail'}`).join('\n') };
   }
-  return { code: 1, out: 'Dùng: /e2e-dashboard [setup|doctor [--dry-run]|export [runId]|stop|status|digest [ngày]|report [week|month] [--send]|publish [dir]|mark <loại> <mô tả>|triage|ci-sync|projects|statusline [install]|quarantine|import …|share push|pull [dir]|fix [runId] [resultId]|gate]' };
+  return { code: 1, out: 'Dùng: /e2e-dashboard [setup [--quick]|config [--init] [--app-url URL] [--app-command CMD]|os|doctor [--dry-run]|export [runId]|stop|status|digest [ngày]|report [week|month] [--send]|publish [dir]|mark <loại> <mô tả>|triage|ci-sync|projects|statusline [install]|quarantine|import …|share push|pull [dir]|fix [runId] [resultId]|gate]' };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -457,7 +463,11 @@ async function quickSetupCli(root, yes) {
   const { quickSetupPlan, runQuickSetup } = await import('../server/quicksetup.mjs');
   const { reporterStatus } = await import('../server/app.mjs');
   const plan = await quickSetupPlan(root, { interactive: true, reporter: reporterStatus(root) });
-  for (const x of plan.items) console.log(`${x.ok ? '✓' : plan.steps.includes(x.id) ? '↓' : '!'} ${x.label}: ${x.detail}${x.ok ? '' : `\n    $ ${x.display}`}`);
+  console.log(`Hệ điều hành: ${plan.os.label}\nKiểm tra (✓ đã có · ↓ sẽ cài · ! làm tay):`);
+  for (const x of plan.items.filter((i) => !i.info)) {
+    const n = plan.steps.indexOf(x.id);
+    console.log(`${x.ok ? '✓' : n >= 0 ? '↓' : '!'} ${n >= 0 ? `[bước ${n + 1}/${plan.steps.length}] ` : ''}${x.label}: ${x.detail}${x.ok ? '' : `\n    $ ${x.display}`}`);
+  }
   const manual = plan.items.filter((x) => !x.ok && !plan.steps.includes(x.id));
   if (!plan.steps.length) return { code: manual.length ? 1 : 0, out: manual.length ? 'Không có gì tự cài được; các mục "!" cần làm tay.' : 'Máy đã đủ mọi thứ.' };
   if (!yes) {
@@ -469,13 +479,72 @@ async function quickSetupCli(root, yes) {
     if (!/^y(es)?$/i.test(ans.trim())) return { code: 1, out: 'Đã huỷ.' };
   }
   const { results } = await runQuickSetup(root, plan.steps, {
-    interactive: true, inherit: true, reporter: () => reporterStatus(root), setup,
+    interactive: true, inherit: true, reporter: () => reporterStatus(root), setup, plan,
     onEvent: (e) => {
-      if (e.type === 'step') console.log(`\n▶ ${e.label}\n$ ${e.display}`);
+      if (e.type === 'step') console.log(`\n▶ [${plan.steps.indexOf(e.id) + 1}/${plan.steps.length}] Đang cài: ${e.label}\n$ ${e.display}`);
       if (e.type === 'log') console.log(e.text);
       if (e.type === 'step-done') console.log(e.ok ? '✓ Xong' : `✗ Lỗi (mã ${e.code})`);
     },
   });
   const bad = results.filter((r) => !r.ok).length;
   return { code: bad ? 1 : 0, out: bad ? `${bad} bước lỗi.` : 'Quick Setup xong.' };
+}
+
+// `/e2e-dashboard config [--init] [--engine web] [--gateway ID] [--app-url URL] [--app-command "npm run dev"|--no-command] [--yes]`
+// Chưa có e2e.config.*: tạo bằng `e2e init`. Có terminal và không --yes: hỏi URL app và lệnh khởi động (Enter giữ nguyên).
+async function configCli(args, cwd) {
+  const { e2eConfigStatus, updateE2eConfig, e2eInitArgv, GATEWAYS } = await import('../server/e2econfig.mjs');
+  const { spawnStep } = await import('../server/quicksetup.mjs');
+  const val = (name) => {
+    const i = args.indexOf(name);
+    return i >= 0 && i + 1 < args.length ? args[i + 1] : undefined;
+  };
+  const yes = args.includes('--yes');
+  const ask = !yes && process.stdin.isTTY;
+  let rl = null;
+  const question = async (q, def = '') => {
+    if (!rl) rl = (await import('node:readline/promises')).createInterface({ input: process.stdin, output: process.stdout });
+    const a = (await rl.question(`${q}${def ? ` [${def}]` : ''}: `)).trim();
+    return a || def;
+  };
+  try {
+    let root = findProjectRoot(cwd);
+    if (!root) {
+      let init = args.includes('--init');
+      if (!init && ask) init = /^y(es)?$|^c(ó|o)?$/i.test(await question('Chưa có e2e.config.ts. Tạo mới bằng `e2e init`? (y/N)', 'N'));
+      if (!init) return { code: 1, out: 'Không tìm thấy e2e.config.(ts|mts|js|mjs). Chạy lại với --init để tạo bằng `e2e init`.' };
+      let gateway = val('--gateway');
+      if (!gateway && ask) {
+        console.log(`Model cho bước agent: ${GATEWAYS.map((g, i) => `${i + 1}) ${g}`).join('  ')}`);
+        const a = await question('Chọn số hoặc tên', 'vercel');
+        gateway = GATEWAYS[Number(a) - 1] ?? a;
+      }
+      const argv = e2eInitArgv(cwd, { engine: val('--engine') ?? 'web', gateway: gateway ?? 'vercel' });
+      console.log(`$ ${argv.join(' ')}`);
+      const code = await spawnStep(cwd, argv, { inherit: true });
+      if (code !== 0 || !findConfig(cwd)) return { code: 1, out: `e2e init lỗi (mã ${code}).` };
+      root = cwd;
+    }
+    const cur = await e2eConfigStatus(root);
+    let appUrl = val('--app-url');
+    let command = args.includes('--no-command') ? '' : val('--app-command');
+    if (ask && appUrl === undefined) appUrl = await question(`URL app đang test${cur.appUrlEnv ? ` (biến ${cur.appUrlEnv} vẫn đè được)` : ''}`, cur.appUrl ?? '');
+    if (ask && command === undefined) {
+      const a = await question('Lệnh khởi động app để runner tự chạy (vd. npm run dev; "-" = không dùng)', cur.command ?? '');
+      command = a === '-' ? '' : a || undefined;
+    }
+    const r = await updateE2eConfig(root, { appUrl, command });
+    const lines = [
+      r.changed.length ? `Đã cập nhật ${r.file}: ${r.changed.join(', ')}.` : `${r.file}: không có gì thay đổi.`,
+      ...r.problems.map((p) => `Lưu ý: ${p}`),
+      `- Engine: ${r.engine ?? '?'} · ${r.targets} target`,
+      `- URL app: ${r.appUrl ?? '(không đọc được)'}${r.appUrlEnv ? ` (đè bằng biến ${r.appUrlEnv})` : ''}`,
+      `- Lệnh khởi động app: ${r.command ?? 'không (tự chạy app trước khi test)'}`,
+      `- Model cho bước agent: ${r.model ?? 'không (chỉ test bằng locator)'}`,
+      `- Reporter dashboard: ${r.reporter ? 'đã gắn' : 'chưa: chạy /e2e-dashboard setup'} · chọn trình duyệt: ${r.browserEnv ? 'có (E2E_BROWSER)' : 'chưa'}`,
+    ];
+    return { code: r.problems.length ? 1 : 0, out: lines.join('\n') };
+  } finally {
+    rl?.close();
+  }
 }

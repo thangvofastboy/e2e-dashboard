@@ -379,6 +379,10 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       if (p === '/api/system/quick-setup') {
         return send(res, 200, await quickSetupPlan(projectRoot, { reporter: reporterStatus(projectRoot) }));
       }
+      if (p === '/api/system/e2e-config') {
+        const { e2eConfigStatus } = await import('./e2econfig.mjs');
+        return send(res, 200, await e2eConfigStatus(projectRoot));
+      }
       if (p === '/api/ai/chats') {
         const { listChats, getChat } = await import('./aichats.mjs');
         const id = url.searchParams.get('id');
@@ -1172,6 +1176,13 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       if (p === '/api/selfheal/retry') return send(res, 200, { ok: Boolean(await selfHeal?.retry(String((await readBody(req)).fingerprint ?? ''))) });
       if (p === '/api/selfheal/approve') return send(res, 200, { ok: Boolean(await selfHeal?.approve(String((await readBody(req)).fingerprint ?? ''))) });
       if (p === '/api/selfheal/reject') return send(res, 200, { ok: Boolean(await selfHeal?.reject(String((await readBody(req)).fingerprint ?? ''))) });
+      if (p === '/api/system/e2e-config') {
+        // chỉ URL app và lệnh khởi động; e2econfig kiểm tra URL (http/https) và lệnh (không nháy, không ; | & $)
+        const { appUrl, command } = await readBody(req);
+        if ((appUrl !== undefined && typeof appUrl !== 'string') || (command !== undefined && typeof command !== 'string') || String(appUrl ?? '').length > 2000 || String(command ?? '').length > 500) return send(res, 400, { error: 'invalid body' });
+        const { updateE2eConfig } = await import('./e2econfig.mjs');
+        return send(res, 200, await updateE2eConfig(projectRoot, { appUrl, command }));
+      }
       if (p === '/api/system/doctor') {
         const { doctor } = await import('./doctor.mjs');
         return send(res, 200, await doctor(projectRoot, { dryRun: Boolean((await readBody(req)).dryRun), reporter: reporterStatus(projectRoot) }));

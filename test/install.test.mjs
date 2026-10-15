@@ -34,15 +34,21 @@ test('install.sh: cú pháp bash hợp lệ, --help thoát 0, tham số lạ tho
   assert.equal(spawnSync('bash', [SCRIPT, '--xyz']).status, 2);
 });
 
-test('install.sh --dry-run: Node cũ → nvm, chưa có claude → npm -g, cài plugin, Quick Setup trong project', { skip }, () => {
-  const r = dryRun('20.11.0');
+test('install.sh --dry-run: in thứ tự 8 bước, hệ điều hành, Node cũ → nvm, cài claude + plugin, cấu hình config, Quick Setup', { skip }, () => {
+  const r = dryRun('20.11.0', { args: ['--app-url', 'http://localhost:5173', '--app-command', 'npm run dev'] });
   assert.equal(r.status, 0, r.stderr);
+  for (let i = 1; i <= 8; i++) assert.ok(r.stdout.includes(`[${i}/8]`), `bước ${i}`);
+  assert.match(r.stdout, /Các bước sẽ chạy theo thứ tự/);
+  assert.match(r.stdout, /\[1\/8\] Phát hiện hệ điều hành\n {2}✓ \S+/);
+  assert.match(r.stdout, /Trình quản lý gói: /);
   assert.match(r.stdout, /nvm install 22/);
   assert.match(r.stdout, /npm install -g @anthropic-ai\/claude-code/);
   assert.match(r.stdout, /claude plugin marketplace add thangvofastboy\/e2e-dashboard/);
   assert.match(r.stdout, /claude plugin install e2e-dashboard@e2e-dashboard/);
+  assert.match(r.stdout, /dashboard\.mjs config --yes --app-url http:\/\/localhost:5173 --app-command npm run dev/);
   assert.match(r.stdout, /dashboard\.mjs setup --quick --yes/);
-  assert.ok(r.stdout.includes(`Project ${r.cwd}`));
+  assert.match(r.stdout, /Tổng kết\n {2}1\. ✓ đã có/);
+  assert.match(r.stdout, /3\. · sẽ chạy +Node\.js/);
 });
 
 test('install.sh: ngưỡng Node của e2e (≥ 22.22.3 hoặc ≥ 24.8)', { skip }, () => {
@@ -52,18 +58,26 @@ test('install.sh: ngưỡng Node của e2e (≥ 22.22.3 hoặc ≥ 24.8)', { ski
   }
 });
 
-test('install.sh: không có e2e.config thì không chạy Quick Setup; --skip-project bỏ qua project', { skip }, () => {
+test('install.sh: chưa có e2e.config thì báo làm tay; --init tạo bằng `config --init`; --skip-project bỏ qua project', { skip }, () => {
   const none = dryRun('22.22.3', { config: false });
   assert.match(none.stdout, /Không thấy e2e\.config/);
   assert.doesNotMatch(none.stdout, /setup --quick/);
+  assert.match(none.stdout, /6\. ! làm tay +Cấu hình e2e\.config\.ts/);
+  const init = dryRun('22.22.3', { config: false, args: ['--init', '--gateway', 'none'] });
+  assert.match(init.stdout, /config --init --yes --gateway none/);
+  assert.match(init.stdout, /setup --quick --yes/);
   const skipped = dryRun('22.22.3', { args: ['--skip-project'] });
-  assert.match(skipped.stdout, /bỏ qua \(--skip-project\)/);
+  assert.match(skipped.stdout, /Bỏ qua \(--skip-project\)/);
   assert.doesNotMatch(skipped.stdout, /setup --quick/);
 });
 
 test('install.ps1 có cùng các bước và tham số', () => {
   const ps = readFileSync(join(import.meta.dirname, '..', 'install.ps1'), 'utf8');
-  for (const s of ['-Project', '-NoOpen', '-SkipProject', '-DryRun', "'plugin', 'install', $PluginId", "'setup', '--quick', '--yes'", "[version]'22.22.3'"]) {
-    assert.ok(ps.includes(s.replace(/^-/, '[switch]$').replace('[switch]$Project', '[string]$Project')) || ps.includes(s), s);
+  for (const s of ['[string]$Project', '[switch]$Init', '[string]$Gateway', '[string]$AppUrl', '[string]$AppCommand', '[switch]$Yes', '[switch]$NoOpen', '[switch]$SkipProject', '[switch]$DryRun',
+    "'plugin', 'install', $PluginId", "'setup', '--quick', '--yes'", "'config', '--init'", "[version]'22.22.3'", 'Summary']) {
+    assert.ok(ps.includes(s), s);
   }
+  const sh = readFileSync(SCRIPT, 'utf8');
+  const steps = (src, re) => [...re.exec(src)[1].matchAll(/'([^']+)'|"([^"]+)"/g)].map((m) => (m[1] ?? m[2]).replace(/≥/g, '>='));
+  assert.deepEqual(steps(ps, /\$Steps = @\(([^)]*\([^)]*\)[^)]*)\)/), steps(sh, /STEPS=\(([^)]*\([^)]*\)[^)]*)\)/)); // cùng 8 bước, cùng thứ tự
 });
