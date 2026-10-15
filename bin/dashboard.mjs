@@ -56,6 +56,15 @@ export function patchConfig(source) {
   return { source: out, patched: true };
 }
 
+// Trace mặc định của e2e là 'on' (ghi mọi lượt, tốn CPU / ổ đĩa): config chưa nói gì thì chỉ giữ trace của lượt fail.
+// Đã có `trace:` ở bất kỳ đâu (gốc hoặc target) thì để nguyên lựa chọn của project.
+export function patchTrace(source) {
+  if (/\btrace\s*:/.test(source)) return { source, patched: false, reason: 'already' };
+  const head = /export\s+default\s+(defineConfig\s*\(\s*)?\{/;
+  if (!head.test(source)) return { source, patched: false, reason: 'unknown-shape' };
+  return { source: source.replace(head, (m) => `${m}\n  trace: 'retain-on-failure', // chỉ giữ trace của lượt fail (mặc định e2e: ghi mọi lượt)`), patched: true };
+}
+
 // The project is someone else's repo: never follow a symlink it planted where we write.
 async function refuseSymlink(p) {
   const st = await lstat(p).catch(() => null);
@@ -102,6 +111,12 @@ export async function setup(root) {
     await writeFile(configPath, b.source);
     lines.push(`Đã thêm browser: process.env.E2E_BROWSER ?? 'chromium' vào web({...}) trong ${basename(configPath)}: chọn được trình duyệt khi chạy test.`);
   } else if (b.reason === 'unknown-shape') lines.push(`Không tìm thấy web({...}) trong ${basename(configPath)}: thêm tay browser: process.env.E2E_BROWSER ?? 'chromium' để chọn trình duyệt khi chạy test.`);
+  const t = patchTrace(await readFile(configPath, 'utf8'));
+  if (t.patched) {
+    await refuseSymlink(configPath);
+    await writeFile(configPath, t.source);
+    lines.push(`Đã thêm trace: 'retain-on-failure' vào ${basename(configPath)}: chỉ giữ trace của test fail, chạy nhẹ hơn.`);
+  }
   lines.push(...(await ensureEnvFile(root)));
   // model claude-code (thử nghiệm): config import lớp bọc của dashboard → copy / làm mới theo bản plugin
   if ((await readFile(configPath, 'utf8')).includes('e2e-dashboard.claude-code')) {
