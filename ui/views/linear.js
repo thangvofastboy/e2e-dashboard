@@ -4,6 +4,7 @@ import { copyToClipboard } from '../analysis.js';
 import { renderMarkdown } from '../markdown.js';
 import { escapeHtml } from '../format.js';
 import { icon } from '../icons.js';
+import { thinkingHtml } from './ai-panel.js';
 
 // Prompt "Copy cho Claude" từ bản đang sửa: giữ phần chỉ dẫn của server, còn tiêu đề và mô tả (dữ liệu từ
 // report, có thể chứa câu lệnh giả) nằm hẳn trong khối rào, không lọt ra ngoài thành chỉ dẫn.
@@ -197,7 +198,7 @@ export async function openLinearDialog({ runId, resultId }) {
     b.disabled = true;
     b.setAttribute('aria-busy', 'true');
     desc.disabled = true; // đang viết lại: không sửa tay (bản AI sẽ ghi đè)
-    status(`${icon('loader', { size: 14 })} AI đang viết lại…`);
+    status(thinkingHtml('AI đang viết lại'));
     try {
       const r = await postJson('/api/linear/rewrite', { runId, resultId, description: edit.description });
       edit = { ...edit, description: r.description };
@@ -231,7 +232,7 @@ export async function openLinearDialog({ runId, resultId }) {
     pull();
     b.disabled = true;
     b.setAttribute('aria-busy', 'true');
-    status(`${icon('loader', { size: 14 })} AI đang viết theo mẫu QC…`);
+    status(thinkingHtml('AI đang viết theo mẫu QC'));
     try {
       const fpLine = original.description.split('\n').filter((l) => l.includes('fingerprint:')).pop() ?? '';
       const r = await postJson('/api/qc/generate', { templateId: qcSel.value, runId, resultId, fingerprintLine: fpLine });

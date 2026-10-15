@@ -1362,3 +1362,29 @@ form[data-linear-issues] button { justify-self: start; }
 .live-top .res-card { gap: 4px; padding: 3px 7px; }
 .live-top .res-card .spark, .live-top .res-bar { width: 38px; }
 @media (max-width: 1700px) { .live-top .res-name { display: none; } } /* màn hẹp: chỉ icon + số (tên ở tooltip) để vẫn cùng hàng tiêu đề */
+/* AI "đang suy nghĩ": quả cầu phát sáng + sao xoay, chữ có vệt sáng chạy qua, ba chấm nhảy */
+.think { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.think-orb { flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: #a855f7; background: radial-gradient(circle, color-mix(in srgb, #a855f7 30%, transparent) 0%, transparent 70%); animation: think-pulse 1.6s ease-in-out infinite; }
+.think-orb .icon { animation: think-spin 3.2s linear infinite; }
+.think-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: linear-gradient(90deg, var(--text-secondary) 0%, var(--text-secondary) 35%, #c084fc 50%, var(--text-secondary) 65%, var(--text-secondary) 100%); background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: think-shimmer 2s linear infinite; }
+.think-dots { flex: none; display: inline-flex; gap: 3px; }
+.think-dots i { width: 5px; height: 5px; border-radius: 50%; background: #a855f7; animation: think-bounce 1.2s ease-in-out infinite; }
+.think-dots i:nth-child(2) { animation-delay: 0.15s; } .think-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes think-pulse { 0%, 100% { transform: scale(0.92); box-shadow: 0 0 0 0 color-mix(in srgb, #a855f7 35%, transparent); } 50% { transform: scale(1.06); box-shadow: 0 0 0 6px transparent; } }
+@keyframes think-spin { to { transform: rotate(360deg); } }
+@keyframes think-shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+@keyframes think-bounce { 0%, 60%, 100% { transform: translateY(0); opacity: 0.45; } 30% { transform: translateY(-4px); opacity: 1; } }
+/* khung chat: avatar, tên, tin nhắn trượt lên khi xuất hiện, viền AI sáng nhẹ khi đang trả lời */
+.msg { align-items: flex-end; gap: 8px; animation: msg-in 0.28s ease-out; }
+.msg-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; max-width: 88%; }
+.msg-body .bubble { max-width: 100%; }
+.msg-name { font-size: calc(11.5px * var(--fs)); font-weight: 600; color: #a855f7; }
+.avatar { flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; font-size: calc(10.5px * var(--fs)); font-weight: 700; }
+.avatar.ai-av { align-self: flex-start; margin-top: 18px; color: #fff; background: linear-gradient(135deg, #a855f7, #6366f1); box-shadow: 0 2px 8px color-mix(in srgb, #a855f7 35%, transparent); }
+.avatar.me { color: #fff; background: var(--series-1); }
+.msg.ai.typing .avatar.ai-av { animation: think-pulse 1.6s ease-in-out infinite; }
+.msg.ai.typing .bubble { border-color: color-mix(in srgb, #a855f7 45%, var(--border)); box-shadow: 0 0 0 3px color-mix(in srgb, #a855f7 10%, transparent); }
+.msg.ai .chat-status { margin: 6px 0 0; }
+.msg.ai .bubble > .chat-status:only-child { margin: 0; }
+@keyframes msg-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .think-orb, .think-orb .icon, .think-text, .think-dots i, .msg, .msg.ai.typing .avatar.ai-av { animation: none; } .think-text { color: var(--text-secondary); background: none; } }

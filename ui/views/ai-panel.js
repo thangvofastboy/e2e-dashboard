@@ -5,6 +5,48 @@ import { icon } from '../icons.js';
 
 let aiAbort = null;
 
+// Hiệu ứng "đang suy nghĩ": quả cầu tím phát sáng + chữ có vệt sáng chạy + ba chấm nhảy (CSS .think)
+export const thinkingHtml = (label = 'Đang suy nghĩ') => `<span class="think"><span class="think-orb" aria-hidden="true">${icon('sparkles', { size: 13 })}</span><span class="think-text">${escapeHtml(label)}</span><span class="think-dots" aria-hidden="true"><i></i><i></i><i></i></span></span>`;
+const reducedMotion = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+// Chữ hiện dần như đang gõ: Claude CLI trả cả đoạn một lần, nên tách thành từng bước nhỏ (~25 bước / đoạn, mỗi 30ms).
+// paint(text, typing) vẽ phần đã hiện; finish() chờ hiện hết rồi trả về
+export function typewriter(paint, { step = 30, now = reducedMotion() } = {}) {
+  let target = '';
+  let shown = 0;
+  let timer = null;
+  let waiters = [];
+  const tick = () => {
+    const left = target.length - shown;
+    if (left <= 0) {
+      clearInterval(timer);
+      timer = null;
+      waiters.forEach((r) => r());
+      waiters = [];
+      return;
+    }
+    shown = now ? target.length : shown + Math.max(3, Math.ceil(left / 25));
+    paint(target.slice(0, shown), shown < target.length);
+  };
+  return {
+    // văn bản mới không nối tiếp phần đã hiện (vd. kết quả cuối khác bản stream) thì vẽ lại từ đầu phần chung
+    set(text) {
+      let common = 0;
+      while (common < shown && common < text.length && text[common] === target[common]) common++;
+      target = text;
+      shown = Math.min(shown, common);
+      if (!timer) timer = setInterval(tick, step);
+    },
+    finish: () => (timer ? new Promise((r) => waiters.push(r)) : Promise.resolve()),
+    stop() {
+      clearInterval(timer);
+      timer = null;
+      waiters.forEach((r) => r());
+      waiters = [];
+      return target;
+    },
+  };
+}
+
 // một lượt hỏi–đáp → bản ghi gửi lên /api/ai/chats (server/aichats.mjs). Không có session (lỗi trước khi claude chạy,
 // kết quả cache) hoặc không có gì để lưu thì trả null. chatId cố định theo session đầu tiên; sessionId là session mới nhất
 export function chatEntry({ chatId, sessionId, title, source = null, question, answer = '', error = '' }) {
@@ -55,12 +97,13 @@ export function openAiPanel({ action, runId, resultId = null, title, saved = nul
     let failure = '';
     err.hidden = true;
     actions.innerHTML = '';
-    status.innerHTML = `${icon('loader', { size: 14 })} Đang phân tích…`;
+    status.innerHTML = thinkingHtml('Đang phân tích');
     try {
       await postStream(path, payload, (e) => {
         if (e.type === 'session') sessionId = e.sessionId;
-        if (e.type === 'tool') status.innerHTML = `${icon('eye', { size: 14 })} ${escapeHtml(e.name)} ${escapeHtml(e.detail)}`;
+        if (e.type === 'tool') status.innerHTML = thinkingHtml(`${e.name} ${e.detail ?? ''}`.trim());
         if (e.type === 'text') {
+          if (!text) status.innerHTML = thinkingHtml('Đang trả lời');
           text += `${e.text}\n`;
           body.innerHTML = append + renderMarkdown(text);
         }
@@ -132,10 +175,13 @@ export function historyHtml(list = []) {
 }
 const IDEAS = ['Tuần này test nào tệ đi và vì sao?', 'Test nào nên chuyển agent.act thành locator trước?', 'Lỗi nào ảnh hưởng nhiều test nhất, nên sửa gì trước?'];
 
-function msgHtml(m) {
-  if (m.role === 'user') return `<div class="msg user"><div class="bubble md">${escapeHtml(m.text)}</div></div>`;
-  return `<div class="msg ai"><div class="bubble md">${m.text ? renderMarkdown(m.text) : ''}${m.error ? `<p class="err">${escapeHtml(m.error)}</p>` : ''}</div></div>`;
+const aiInner = (m) => `${m.text ? renderMarkdown(m.text) : ''}${m.error ? `<p class="err">${escapeHtml(m.error)}</p>` : ''}`;
+// tin nhắn kiểu chat: avatar + tên cho AI, bong bóng phải cho người hỏi
+export function msgHtml(m) {
+  if (m.role === 'user') return `<div class="msg user"><div class="bubble md">${escapeHtml(m.text)}</div><span class="avatar me" aria-hidden="true">Bạn</span></div>`;
+  return `<div class="msg ai"><span class="avatar ai-av" aria-hidden="true">${icon('sparkles', { size: 15 })}</span><div class="msg-body"><span class="msg-name">Claude</span><div class="bubble md">${aiInner(m)}</div></div></div>`;
 }
+const GREETING = 'Chào bạn 👋 Mình là **Claude**. Mình đã đọc tóm tắt 30 run gần nhất (pass/fail, flaky, nhóm lỗi, lỗi app, chi phí) và có thể đọc code của project (chỉ đọc). Bạn muốn hỏi gì về bộ test?';
 
 // Khung chat tự do về cả bộ test: lịch sử tin nhắn, ô nhập luôn ở dưới, Enter gửi, đang trả lời thì bấm để dừng.
 export function openAskPanel() {
@@ -158,7 +204,7 @@ export function openAskPanel() {
   const render = () => {
     log.innerHTML = chat.msgs.length
       ? chat.msgs.map(msgHtml).join('')
-      : `<p class="muted small">Claude nhận tóm tắt 30 run gần nhất (pass/fail, flaky, nhóm lỗi, lỗi app, chi phí) và có thể đọc code (chỉ đọc).</p>
+      : `${msgHtml({ role: 'ai', text: GREETING })}
         <ul class="ask-ideas">${IDEAS.map((q) => `<li><button type="button" data-idea>${escapeHtml(q)}</button></li>`).join('')}</ul><div data-history></div>`;
     log.querySelectorAll('[data-idea]').forEach((b) => b.addEventListener('click', () => send(b.textContent)));
     log.scrollTop = log.scrollHeight;
@@ -195,40 +241,63 @@ export function openAskPanel() {
     if (!q || busy) return;
     input.value = '';
     const ai = { role: 'ai', text: '' };
-    chat.msgs.push({ role: 'user', text: q }, ai);
-    render();
-    const bubble = log.lastElementChild.querySelector('.bubble');
-    const paint = (status) => {
+    const user = { role: 'user', text: q };
+    chat.msgs.push(user, ai);
+    // chỉ thêm 2 tin mới (không vẽ lại cả log): tin cũ không chạy lại hiệu ứng xuất hiện
+    if (chat.msgs.length === 2) render();
+    else log.insertAdjacentHTML('beforeend', msgHtml(user) + msgHtml(ai));
+    const msgEl = log.lastElementChild;
+    msgEl.classList.add('typing');
+    const bubble = msgEl.querySelector('.bubble');
+    // tự cuộn xuống chỉ khi đang ở gần cuối: người dùng cuộn lên đọc lại thì không bị kéo xuống
+    const nearBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+    let status = thinkingHtml();
+    const paint = () => {
+      const stick = nearBottom();
       bubble.innerHTML = `${ai.text ? renderMarkdown(ai.text) : ''}<p class="chat-status muted small">${status}</p>`;
-      log.scrollTop = log.scrollHeight;
+      if (stick) log.scrollTop = log.scrollHeight;
     };
-    const thinking = `${icon('loader', { size: 14 })} Đang suy nghĩ…`;
-    paint(thinking);
+    log.scrollTop = log.scrollHeight;
+    paint();
+    const tw = typewriter((t) => {
+      ai.text = t;
+      paint();
+    });
     setBusy(true);
     const { path, payload } = chatRequest(chat.sessionId, q);
     const mine = chat;
     aiAbort = new AbortController();
+    aiAbort.signal.addEventListener('abort', () => tw.stop()); // Dừng / đóng panel: bỏ phần gõ dở, không bắt chờ
     let streamed = '';
     try {
       await postStream(path, payload, (e) => {
         if (e.type === 'session') mine.sessionId = e.sessionId;
-        if (e.type === 'tool') paint(`${icon('eye', { size: 14 })} ${escapeHtml(e.name)} ${escapeHtml(e.detail)}`);
+        if (e.type === 'tool') {
+          status = thinkingHtml(`${e.name} ${e.detail ?? ''}`.trim());
+          paint();
+        }
         if (e.type === 'text') {
           streamed += `${e.text}\n`;
-          ai.text = streamed;
-          paint(thinking);
+          status = thinkingHtml('Đang trả lời');
+          tw.set(streamed);
         }
         if (e.type === 'done') {
           if (e.sessionId) mine.sessionId = e.sessionId;
-          if (e.result && !e.isError) ai.text = e.result;
+          if (e.result && !e.isError) {
+            streamed = e.result;
+            tw.set(streamed);
+          }
         }
         if (e.type === 'error') ai.error = e.message;
       }, aiAbort.signal);
+      await tw.finish(); // chữ hiện hết rồi mới chốt tin nhắn
     } catch (x) {
       if (x.name !== 'AbortError') ai.error = x.message;
-      else if (!ai.text) ai.text = '_Đã dừng._';
+      else if (!streamed) ai.text = '_Đã dừng._';
       else ai.error = 'Đã dừng giữa chừng';
     }
+    tw.stop();
+    if (streamed) ai.text = streamed; // lịch sử lưu đủ câu trả lời, kể cả phần chưa kịp hiện
     if (!ai.text && !ai.error) ai.text = '_(Không có câu trả lời)_';
     setBusy(false);
     mine.title ??= shortTitle(q);
@@ -237,8 +306,10 @@ export function openAskPanel() {
     // đã bấm "+" trong lúc trả lời: danh sách lịch sử đang hiện, nạp lại khi chat này đã ghi xong
     saveChat(entry).then(() => panel.isConnected && !chat.msgs.length && loadHistory());
     if (mine !== chat || !panel.isConnected) return; // đã bấm "Cuộc trò chuyện mới" hoặc đóng panel
-    bubble.parentElement.outerHTML = msgHtml(ai);
-    log.scrollTop = log.scrollHeight;
+    const stick = nearBottom();
+    bubble.innerHTML = aiInner(ai);
+    msgEl.classList.remove('typing');
+    if (stick) log.scrollTop = log.scrollHeight;
     input.focus();
   };
 

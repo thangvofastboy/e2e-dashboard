@@ -3,7 +3,7 @@ import { confirmDialog } from '../confirm.js';
 import { renderMarkdown } from '../markdown.js';
 import { isFailed, flattenResults } from '../model.js';
 import { openRunDialog } from './run-dialog.js';
-import { openAiPanel } from './ai-panel.js';
+import { openAiPanel, thinkingHtml } from './ai-panel.js';
 import { openLinearDialog } from './linear.js';
 import { openBisectDialog } from './actions.js';
 import { copyToClipboard } from '../analysis.js';
@@ -411,7 +411,7 @@ export async function renderLive(main) {
         ${blockersHtml(snap.tests)}`,
       ai: aiSum.runId === snap.runId && aiSum.md
         ? `<h2>${icon('sparkles', { size: 15 })} Tóm tắt AI</h2><div class="md">${renderMarkdown(aiSum.md)}</div>`
-        : aiSum.runId === snap.runId && aiSum.state === 'pending' ? `<p class="muted small">${icon('sparkles', { size: 13 })} AI đang tóm tắt run…</p>` : '',
+        : aiSum.runId === snap.runId && aiSum.state === 'pending' ? `<p class="small">${thinkingHtml('AI đang tóm tắt run')}</p>` : '',
       res: resHtml,
       running: isRunning ? runningHtml(snap.tests) : '', // run xong: bỏ cột, cột fail rộng hết hàng
       failed: failedHtml(snap.tests, { runId: snap.runId, finished: !isRunning, results: rep.runId === snap.runId ? rep.results : {} }) || `<h2>${icon('x', { size: 15 })} Test fail <strong>0</strong></h2><p class="muted small tone-good">${icon('check', { size: 13 })} Chưa có test nào fail.</p>`,

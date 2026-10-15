@@ -5,6 +5,7 @@ import { toast } from '../toast.js';
 import { escapeHtml } from '../format.js';
 import { icon } from '../icons.js';
 import { pickerHtml, bindPicker } from '../test-picker.js';
+import { thinkingHtml } from './ai-panel.js';
 
 // Mẫu prompt QC: sửa mẫu, chọn một test hoặc cả run, rồi chép prompt hoặc để AI viết nội dung (bug report, báo cáo, mô tả Linear).
 const ALL_RUN = 'Cả run mới nhất';
@@ -94,11 +95,14 @@ export async function renderQcTemplates(main) {
           const r = await postJson('/api/qc/render', body);
           showOut(r.prompt, r.missing);
         } else {
+          out.innerHTML = thinkingHtml('AI đang viết theo mẫu'); // showOut thay bằng kết quả
+          out.hidden = false;
           const r = await postJson('/api/qc/generate', body);
           showOut(r.text, r.missing);
         }
         actions.hidden = false;
       } catch (x) {
+        if (out.querySelector('.think')) out.textContent = ''; // lỗi: không để hiệu ứng chờ đứng mãi
         toast(x.message.replace(/^\d{3}: /, ''), 'bad');
       } finally {
         b.removeAttribute('aria-busy');

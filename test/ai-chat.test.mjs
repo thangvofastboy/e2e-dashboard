@@ -28,3 +28,40 @@ test('historyHtml: mỗi chat một dòng (tiêu đề, loại, số tin), có n
   assert.match(html, /Phân tích lỗi · 4 tin/);
   assert.equal(historyHtml([]), '');
 });
+
+test('typewriter: hiện dần tới hết, đổi văn bản giữa chừng thì giữ phần chung, stop trả toàn văn', async () => {
+  const { typewriter } = await import('../ui/views/ai-panel.js');
+  const frames = [];
+  const tw = typewriter((t, typing) => frames.push([t, typing]), { step: 1, now: false });
+  const text = 'x'.repeat(100);
+  tw.set(text);
+  await tw.finish();
+  assert.ok(frames.length > 5, 'nhiều bước, không hiện một lần');
+  assert.deepEqual(frames.at(-1), [text, false]);
+  assert.ok(frames.every(([t], i) => i === 0 || t.length >= frames[i - 1][0].length)); // chỉ tăng
+  frames.length = 0;
+  tw.set(`${'x'.repeat(50)}y`); // kết quả cuối khác bản stream: vẽ lại từ phần chung
+  await tw.finish();
+  assert.equal(frames.at(-1)[0], `${'x'.repeat(50)}y`);
+  const tw2 = typewriter(() => {}, { step: 1000, now: false });
+  tw2.set('abc');
+  const done = tw2.finish();
+  assert.equal(tw2.stop(), 'abc');
+  await done; // stop giải phóng người đang chờ
+  const fast = [];
+  const tw3 = typewriter((t) => fast.push(t), { step: 1, now: true }); // giảm chuyển động: hiện ngay
+  tw3.set('hello world');
+  await tw3.finish();
+  assert.deepEqual(fast, ['hello world']);
+});
+
+test('thinkingHtml + msgHtml: escape nhãn, avatar + tên Claude, bong bóng người hỏi', async () => {
+  const { thinkingHtml, msgHtml } = await import('../ui/views/ai-panel.js');
+  const t = thinkingHtml('Read <x>');
+  assert.match(t, /class="think"/);
+  assert.match(t, /Read &lt;x&gt;/);
+  assert.equal((t.match(/<i><\/i>/g) ?? []).length, 3);
+  assert.match(msgHtml({ role: 'ai', text: '**hi**' }), /avatar ai-av[^]*msg-name">Claude[^]*<strong>hi<\/strong>/);
+  assert.match(msgHtml({ role: 'user', text: '<b>' }), /&lt;b&gt;[^]*avatar me/);
+  assert.match(msgHtml({ role: 'ai', text: '', error: 'Đã dừng' }), /class="err">Đã dừng/);
+});
