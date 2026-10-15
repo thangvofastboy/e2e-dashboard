@@ -28,3 +28,12 @@ process.on('exit', () => {
     }
   }
 });
+
+// Test không bao giờ được gọi Linear thật: máy dev có thể có API key trong ~/.e2e-dashboard/config.json, một test quên
+// cô lập HOME sẽ tạo issue thật (đã xảy ra với autobug.test). Mọi request tới api.linear.app đều bị từ chối.
+const realFetch = globalThis.fetch;
+globalThis.fetch = (input, init) => {
+  const url = String(input?.url ?? input);
+  if (/^https?:\/\/api\.linear\.app\b/i.test(url)) return Promise.reject(new Error(`test chặn request Linear thật: ${url}`));
+  return realFetch(input, init);
+};

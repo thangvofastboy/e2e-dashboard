@@ -114,7 +114,8 @@ test('no Linear key and no injected client: nothing is attempted', async () => {
   const root = tmp();
   const { meta, report: rep } = report();
   await archive(root, { source: 'hook', report: rep });
-  const r = await autoLogBugs({ projectRoot: root, runId: meta.runId, env: {}, cfg: {} });
+  // HOME tạm: không đọc ~/.e2e-dashboard/config.json thật (máy dev có thể có Linear API key)
+  const r = await autoLogBugs({ projectRoot: root, runId: meta.runId, env: { E2E_DASHBOARD_HOME: tmp() }, cfg: {} });
   assert.equal(r.status, 'no-key');
   assert.deepEqual(r.rows, []);
 });

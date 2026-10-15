@@ -1388,3 +1388,23 @@ form[data-linear-issues] button { justify-self: start; }
 .msg.ai .bubble > .chat-status:only-child { margin: 0; }
 @keyframes msg-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .think-orb, .think-orb .icon, .think-text, .think-dots i, .msg, .msg.ai.typing .avatar.ai-av { animation: none; } .think-text { color: var(--text-secondary); background: none; } }
+/* Testcase của issue Linear: mỗi testcase một thẻ — đầu thẻ (số + tiêu đề + xoá), thân 2 cột (các bước | kết quả mong đợi) */
+.tc-editor h2 { display: flex; align-items: center; gap: 8px; }
+.tc-list { display: flex; flex-direction: column; gap: 12px; margin: 12px 0; }
+.tc-card { border: 1px solid var(--border); border-left: 3px solid var(--series-1); border-radius: 10px; background: var(--surface-2); padding: 10px 12px 12px; transition: border-color 0.15s, box-shadow 0.15s; }
+.tc-card:focus-within { border-color: color-mix(in srgb, var(--series-1) 55%, var(--border)); border-left-color: var(--series-1); box-shadow: 0 0 0 3px color-mix(in srgb, var(--series-1) 14%, transparent); }
+.tc-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.tc-no { flex: none; padding: 2px 8px; border-radius: 999px; font-size: calc(11.5px * var(--fs)); font-weight: 700; color: var(--info-ink, var(--series-1)); background: var(--info-bg, color-mix(in srgb, var(--series-1) 15%, transparent)); font-variant-numeric: tabular-nums; }
+.tc-head .tc-title { flex: 1; min-width: 0; max-width: none; font-weight: 600; font-size: calc(14px * var(--fs)); }
+.tc-head .tc-del { flex: none; color: var(--bad); }
+.tc-body { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 12px; }
+.tc-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.tc-label { display: inline-flex; align-items: center; gap: 6px; font-size: calc(12px * var(--fs)); font-weight: 600; color: var(--text-secondary); }
+.tc-label .icon { color: var(--series-1); }
+.tc-field textarea { width: 100%; box-sizing: border-box; font: inherit; line-height: 1.55; resize: vertical; field-sizing: content; min-height: 6.5em; max-height: 24em; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-primary); }
+.tc-field textarea:focus-visible, .tc-head .tc-title:focus-visible { outline: none; border-color: var(--series-1); }
+.tc-actions { display: flex; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+.tc-spacer { flex: 1; }
+@media (max-width: 900px) { .tc-body { grid-template-columns: 1fr; } }
+/* chừa chỗ cho nút Hỏi AI nổi: cuộn hết trang thì nút cuối (Lưu, Gửi…) không bị che */
+body:has(.ai-fab) #main { padding-bottom: 88px; }
