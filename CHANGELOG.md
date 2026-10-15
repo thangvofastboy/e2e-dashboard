@@ -7,6 +7,8 @@
 - **AI cho bước agent của e2e**: chọn model (Vercel AI Gateway, Anthropic, OpenRouter, OpenAI, gói ChatGPT / Copilot / OpenCode / Grok, model local), dashboard sửa `agents` trong config, cài gói npm của provider, lưu API key vào `.env` hoặc chạy `npx e2e login`. Lệnh `/e2e-dashboard ai`, `/e2e-dashboard config`, `/e2e-dashboard os`.
 - **Model `claude-code` (thử nghiệm)**: chạy `agent.act` / `agent.assert` bằng đăng nhập Pro/Max của Claude Code CLI qua gói cộng đồng `ai-sdk-provider-claude-code`, kèm lớp bọc giả lập tool call. Có cảnh báo về điều khoản và hạn mức; không phải mặc định.
 - **AI ghi nhớ dự án**: Thêm / Sửa project cho chọn thư mục chứa test và các thư mục khác kèm mô tả. Mỗi lần lưu, Claude đọc các thư mục đó và viết bản ghi nhớ về hệ thống; bản ghi nhớ đi kèm mọi lần gọi AI. Có trạng thái và nút *AI đọc lại dự án*.
+- **Tự cập nhật plugin**: script cài và trang 1 Click Setup bật auto-update của marketplace `e2e-dashboard` trong `settings.json` của Claude Code (mặc định Claude Code tắt với marketplace bên thứ ba); lệnh `/e2e-dashboard autoupdate [on|off]`.
+- **`/e2e-dashboard` ở thư mục chưa có e2e**: tự chạy `npx e2e init` trước rồi mở dashboard (không chạy ở thư mục home hay `/`; bỏ qua bằng `--no-init`).
 - **Sửa lỗi**: `setup --quick` trong terminal treo ở bước gắn reporter; Quick Setup đòi cài lại mãi khi project không có `.env.example` hoặc `.env` chưa vào `.gitignore`; Quick Setup kiểm tra Node theo đúng ngưỡng của e2e; phần Model AI hiển thị đúng ở chế độ tối; bộ đóng gói giao diện báo lỗi ngay khi gặp cú pháp làm trắng trang.
 
 ## v0.16.3 — 2026-10-15
