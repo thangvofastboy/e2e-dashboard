@@ -321,12 +321,21 @@ export async function main(argv, cwd) {
     if (r.reason === 'already') return { code: 0, out: 'Status line đã được cài.' };
     return { code: 0, out: [`Đã copy script vào ${r.target}.`, r.reason === 'unreadable' ? `Không đọc được ${r.settingsPath}: tự thêm statusLine.` : `Bạn đã có statusLine trong ${r.settingsPath}, nên không ghi đè.`, `Lệnh: ${r.command}`].join('\n') };
   }
-  const root = findProjectRoot(cwd);
-  if (!root) return { code: 1, out: 'Không tìm thấy e2e.config.(ts|mts|js|mjs) từ thư mục hiện tại trở lên. Chạy `npx e2e init` trước.' };
+  let root = findProjectRoot(cwd);
   const [cmd = 'start'] = argv;
-  if (cmd === 'start' || cmd === 'open') {
+  const opening = cmd === 'start' || cmd === 'open';
+  // mở dashboard ở thư mục chưa có e2e: chạy `npx e2e init` trước (bỏ qua bằng --no-init)
+  let initLines = [];
+  if (!root && opening && !argv.includes('--no-init')) {
+    const r = await autoInit(cwd);
+    if (!r.ok) return { code: 1, out: r.lines.join('\n') };
+    root = cwd;
+    initLines = r.lines;
+  }
+  if (!root) return { code: 1, out: 'Không tìm thấy e2e.config.(ts|mts|js|mjs) từ thư mục hiện tại trở lên. Gõ `/e2e-dashboard` để tự tạo bằng `npx e2e init`, hoặc chạy `npx e2e init`.' };
+  if (opening) {
     const { url, reused, staleVersion } = await start(root, { open: !process.env.E2E_DASHBOARD_NO_OPEN });
-    const lines = [`Dashboard${reused ? ' (đang chạy sẵn)' : ''}: ${url}`];
+    const lines = [...initLines, `Dashboard${reused ? ' (đang chạy sẵn)' : ''}: ${url}`];
     if (staleVersion) lines.push(`Dashboard đang chạy bản ${staleVersion} và có run chưa xong — giữ nguyên để không cắt run. Chạy lại \`/e2e-dashboard\` sau khi run xong để lên bản ${VERSION}.`);
     if (!existsSync(join(root, 'e2e-dashboard.reporter.mjs'))) lines.push('Gợi ý: chạy `/e2e-dashboard setup` để xem tiến độ live.');
     return { code: 0, out: lines.join('\n') };
@@ -645,4 +654,38 @@ async function aiCli(args, cwd) {
 function claudeLoggedIn() {
   claudeLoggedIn.cached ??= spawnSync('claude', ['auth', 'status', '--text'], { stdio: 'ignore', timeout: 10000, shell: process.platform === 'win32' }).status === 0;
   return claudeLoggedIn.cached;
+}
+
+// Chưa có e2e.config.*: chạy `npx --yes e2e init --yes …` ở thư mục hiện tại (web, skill + MCP cho Claude Code, chưa cài
+// thư viện — popup 1 Click Setup của dashboard cài tiếp). Không chạy ở thư mục home hoặc thư mục gốc: init ở đó rải
+// package.json / tests vào chỗ không phải project. deps tiêm được để test: run(argv, onLine) → mã thoát, home
+export async function autoInit(cwd, { run, home } = {}) {
+  const { homedir } = await import('node:os');
+  const { parse, resolve: abs } = await import('node:path');
+  const dir = abs(cwd);
+  const h = abs(home ?? homedir());
+  if (dir === h || dir === parse(dir).root) {
+    return { ok: false, lines: [`Không tìm thấy e2e.config.* và đang ở ${dir === h ? 'thư mục home' : 'thư mục gốc'} (${dir}): không tự chạy \`e2e init\` ở đây.`, 'cd vào thư mục project rồi gõ lại /e2e-dashboard (dashboard sẽ tự chạy npx e2e init).'] };
+  }
+  const { e2eInitArgv } = await import('../server/e2econfig.mjs');
+  const argv = e2eInitArgv(dir, { engine: 'web', gateway: 'vercel' });
+  const tail = [];
+  const onLine = (l) => {
+    const t = l.replace(/\x1b\[[0-9;]*m/g, '').trim();
+    if (t && t !== '|') tail.push(t);
+  };
+  let code;
+  if (run) code = await run(argv, onLine);
+  else {
+    const { spawnStep } = await import('../server/quicksetup.mjs');
+    code = await spawnStep(dir, argv, { onLine });
+  }
+  if (code !== 0 || !findConfig(dir)) {
+    return { ok: false, lines: [`Chưa có e2e.config.*: đã chạy \`${argv.join(' ')}\` nhưng lỗi (mã ${code}).`, ...tail.slice(-12), 'Sửa lỗi trên rồi gõ lại /e2e-dashboard, hoặc chạy tay: npx e2e init'] };
+  }
+  return { ok: true, lines: [
+    `Chưa có e2e.config.*: đã chạy \`${argv.join(' ')}\` ở ${dir}.`,
+    ...tail.filter((t) => /^[*•—]/.test(t)).slice(0, 12).map((t) => `  ${t}`),
+    'Dashboard sẽ hiện popup Thiết lập project để cài thư viện, trình duyệt, chọn model AI (hoặc mở trang 1 Click Setup).',
+  ] };
 }

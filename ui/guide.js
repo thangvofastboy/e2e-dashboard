@@ -50,7 +50,7 @@ Sửa \`e2e.config.ts\` sau này: *trang 1 Click Setup* (model AI + API key, URL
 /reload-plugins
 \`\`\`
 
-**Bước 2.** Đứng ở thư mục project e2e, gõ \`/e2e-dashboard\`: server chạy nền và mở trình duyệt. Lần sau gõ lại chỉ mở trình duyệt. Project còn thiếu phần cài đặt thì dashboard hiện popup **Thiết lập project**: bấm **Cài tất cả** để cài theo thứ tự ngay trong popup, API key nhập luôn ở đó.
+**Bước 2.** Đứng ở thư mục project, gõ \`/e2e-dashboard\`: server chạy nền và mở trình duyệt. Chưa có \`e2e.config.ts\` thì lệnh tự chạy \`npx e2e init\` trước. Lần sau gõ lại chỉ mở trình duyệt. Project còn thiếu phần cài đặt thì dashboard hiện popup **Thiết lập project**: bấm **Cài tất cả** để cài theo thứ tự ngay trong popup, API key nhập luôn ở đó.
 
 **Bước 3** (tuỳ chọn). \`/e2e-dashboard setup\`: gắn reporter vào \`e2e.config.ts\` để xem tiến độ live. Hãy commit 2 file reporter được tạo ra; trên CI (\`CI=true\`) reporter tự tắt.
 

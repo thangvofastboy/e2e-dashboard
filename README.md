@@ -309,7 +309,7 @@ Truyền qua pipe: `curl … | bash -s -- --init --app-url http://localhost:5173
 /reload-plugins
 ```
 
-**2️⃣ Mở dashboard** ở thư mục project e2e. Project còn thiếu gì (thư viện, gói AI, reporter, `.env`, API key…) thì dashboard hiện popup **Thiết lập project**: liệt kê các bước theo thứ tự, bấm **Cài tất cả** là cài ngay trong popup (từng bước có trạng thái Chờ / Đang cài / Xong / Lỗi, kèm log), API key nhập luôn trong popup. Mở một project khác từ trang *Projects* cũng được hỏi như vậy. *Để sau* thì không hỏi lại trong phiên trình duyệt đó; *Không hỏi lại cho project này* thì nhớ hẳn (vẫn cài được ở *trang 1 Click Setup*).
+**2️⃣ Mở dashboard** ở thư mục project e2e. Thư mục chưa có `e2e.config.*` (tìm từ thư mục hiện tại trở lên) thì `/e2e-dashboard` tự chạy `npx e2e init` trước (web, skill + MCP cho Claude Code, chưa cài thư viện) rồi mới mở; không tự chạy ở thư mục home hay `/`, bỏ qua bằng `/e2e-dashboard start --no-init`. Project còn thiếu gì (thư viện, gói AI, reporter, `.env`, API key…) thì dashboard hiện popup **Thiết lập project**: liệt kê các bước theo thứ tự, bấm **Cài tất cả** là cài ngay trong popup (từng bước có trạng thái Chờ / Đang cài / Xong / Lỗi, kèm log), API key nhập luôn trong popup. Mở một project khác từ trang *Projects* cũng được hỏi như vậy. *Để sau* thì không hỏi lại trong phiên trình duyệt đó; *Không hỏi lại cho project này* thì nhớ hẳn (vẫn cài được ở *trang 1 Click Setup*).
 
 ```text
 /e2e-dashboard
