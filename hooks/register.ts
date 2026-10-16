@@ -105,7 +105,7 @@ async function updatePlugin($: EngineInterface) {
   }
   // The new version is only on disk: have the engine re-read plugins once this command has returned.
   $.clock.after(500, () => void $.command.run({ command: 'reload-plugins' }).catch(() => undefined))
-  return [...outputs, `✓ v${current} → v${installed ?? latest ?? 'mới nhất'}`, '🔄 Đang nạp lại plugin (/reload-plugins)...'].join('\n')
+  return [...outputs, `✓ v${current} → v${installed ?? latest ?? 'mới nhất'}`, '🔄 Đang nạp lại plugin (/reload-plugins)...', 'Mở lại /e2e-dashboard trong project: dashboard chạy bản mới và tự cập nhật reporter + config (không cần /e2e-dashboard setup).'].join('\n')
 }
 
 // start | setup | stop | status | export [runId] | digest | projects | statusline: the same CLI the markdown command runs, argv without a shell.

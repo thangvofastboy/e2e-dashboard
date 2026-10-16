@@ -177,3 +177,19 @@ test('start replaces a running server from an older plugin version (after an upd
   }
   assert.ok(a.url);
 });
+
+test('refreshSetup: reporter của bản cũ → tự chạy lại setup khi mở dashboard; đã mới / chưa setup thì không đụng', async () => {
+  const { refreshSetup } = await import('../bin/dashboard.mjs');
+  const { VERSION } = await import('../reporter/e2e-dashboard.reporter.mjs');
+  const root = project();
+  assert.equal(await refreshSetup(root), null); // chưa setup lần nào
+  assert.equal(existsSync(join(root, 'e2e-dashboard.reporter.mjs')), false);
+  await setup(root);
+  assert.equal(await refreshSetup(root), null); // đã là bản mới
+  writeFileSync(join(root, 'e2e-dashboard.reporter.mjs'), "export const VERSION = '0.0.1';\n");
+  const r = await refreshSetup(root);
+  assert.equal(r.from, '0.0.1');
+  assert.ok(r.lines.length);
+  assert.match(readFileSync(join(root, 'e2e-dashboard.reporter.mjs'), 'utf8'), new RegExp(`VERSION = '${VERSION.replace(/\./g, '\\.')}'`));
+  assert.equal(await refreshSetup(root), null);
+});

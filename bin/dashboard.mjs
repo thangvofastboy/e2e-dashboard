@@ -160,13 +160,32 @@ function openBrowser(url) {
   }
 }
 
+// Sau /e2e-dashboard update: project đã setup nhưng reporter (và các dòng setup thêm vào config) còn của bản cũ.
+// Mở dashboard thì tự chạy lại setup, khỏi phải gõ /e2e-dashboard setup. Project chưa setup lần nào: không đụng.
+export async function refreshSetup(root) {
+  let src;
+  try {
+    src = await readFile(join(root, 'e2e-dashboard.reporter.mjs'), 'utf8');
+  } catch {
+    return null;
+  }
+  const from = src.match(/VERSION = '([^']+)'/)?.[1] ?? '?';
+  if (from === VERSION) return null;
+  try {
+    return { from, lines: await setup(root) };
+  } catch (e) {
+    return { from, error: e.message };
+  }
+}
+
 export async function start(root, { open = true } = {}) {
+  const refreshed = await refreshSetup(root);
   const existing = await running(root);
   // bản cũ nhưng đang chạy run do dashboard khởi động: tắt server sẽ đứt stdout của run, nên giữ đến khi run xong
   if (existing && (existing.version === VERSION || existing.busy)) {
     const url = `http://127.0.0.1:${existing.port}/?token=${existing.token}`;
     if (open) openBrowser(url);
-    return { url, reused: true, ...(existing.version !== VERSION ? { staleVersion: existing.version ?? '?' } : {}) };
+    return { url, reused: true, refreshed, ...(existing.version !== VERSION ? { staleVersion: existing.version ?? '?' } : {}) };
   }
   // server của bản plugin cũ (vd. trước khi update): vẫn chạy code ở thư mục cache cũ, phải tắt rồi chạy lại
   if (existing) await stop(root);
@@ -203,7 +222,7 @@ export async function start(root, { open = true } = {}) {
   child.unref();
   const { url } = JSON.parse(line);
   if (open) openBrowser(url);
-  return { url, reused: false };
+  return { url, reused: false, refreshed };
 }
 
 export async function stop(root) {
@@ -353,8 +372,11 @@ export async function main(argv, cwd) {
   }
   if (!root) return { code: 1, out: 'Không tìm thấy e2e.config.(ts|mts|js|mjs) từ thư mục hiện tại trở lên. Gõ `/e2e-dashboard` để tự tạo bằng `npx e2e init`, hoặc chạy `npx e2e init`.' };
   if (opening) {
-    const { url, reused, staleVersion } = await start(root, { open: !process.env.E2E_DASHBOARD_NO_OPEN });
-    const lines = [...initLines, `Dashboard${reused ? ' (đang chạy sẵn)' : ''}: ${url}`];
+    const { url, reused, staleVersion, refreshed } = await start(root, { open: !process.env.E2E_DASHBOARD_NO_OPEN });
+    const lines = [...initLines];
+    if (refreshed?.error) lines.push(`Không tự cập nhật được reporter (bản ${refreshed.from} → ${VERSION}): ${refreshed.error}. Chạy \`/e2e-dashboard setup\`.`);
+    else if (refreshed) lines.push(`Đã cập nhật reporter và config của project theo bản ${VERSION} (trước là ${refreshed.from}):`, ...refreshed.lines.map((l) => `  ${l}`));
+    lines.push(`Dashboard${reused ? ' (đang chạy sẵn)' : ''}: ${url}`);
     if (staleVersion) lines.push(`Dashboard đang chạy bản ${staleVersion} và có run chưa xong — giữ nguyên để không cắt run. Chạy lại \`/e2e-dashboard\` sau khi run xong để lên bản ${VERSION}.`);
     if (!existsSync(join(root, 'e2e-dashboard.reporter.mjs'))) lines.push('Gợi ý: chạy `/e2e-dashboard setup` để xem tiến độ live.');
     return { code: 0, out: lines.join('\n') };
