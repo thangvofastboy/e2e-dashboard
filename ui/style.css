@@ -1057,14 +1057,14 @@ figure:fullscreen figcaption { font-size: calc(17px * var(--fs)); }
 :root { --violet: #7c3aed; --teal: #0d9488; --orange: #ea580c; --pink: #db2777; }
 @media (prefers-color-scheme: dark) { :root:where(:not([data-theme="light"])) { --violet: #a78bfa; --teal: #2dd4bf; --orange: #fb923c; --pink: #f472b6; } }
 :root[data-theme="dark"] { --violet: #a78bfa; --teal: #2dd4bf; --orange: #fb923c; --pink: #f472b6; }
-.icon:where(.ic-check, .ic-play, .ic-upload, .ic-unlock, .ic-heart) { color: var(--good); }
-.icon:where(.ic-x, .ic-close, .ic-stop, .ic-ban, .ic-square, .ic-pin, .ic-ticket) { color: var(--bad); }
-.icon:where(.ic-alert, .ic-timer, .ic-clock, .ic-skip, .ic-bolt, .ic-zap, .ic-bulb, .ic-star, .ic-lock, .ic-coins, .ic-sun) { color: var(--warn); }
-.icon:where(.ic-info, .ic-search, .ic-eye, .ic-file, .ic-table, .ic-list, .ic-columns, .ic-copy, .ic-edit, .ic-external, .ic-download, .ic-arrow, .ic-send, .ic-loader, .ic-settings) { color: var(--info); }
-.icon:where(.ic-sparkles, .ic-flask, .ic-layers, .ic-code, .ic-terminal, .ic-cpu, .ic-lint, .ic-crosshair, .ic-moon) { color: var(--violet); }
-.icon:where(.ic-route, .ic-branch, .ic-commit, .ic-folder, .ic-grid, .ic-filter, .ic-shuffle, .ic-recycle, .ic-rerun, .ic-activity, .ic-gauge, .ic-image, .ic-video, .ic-newspaper, .ic-users) { color: var(--teal); }
-.icon:where(.ic-up, .ic-down) { color: var(--muted); }
-.icon:where(.ic-expand) { color: var(--info); }
+.icon:where(.ic-check, .ic-play, .ic-upload, .ic-unlock, .ic-heart, .ic-plus) { color: var(--good); --ic: var(--good); }
+.icon:where(.ic-x, .ic-close, .ic-stop, .ic-ban, .ic-square, .ic-pin, .ic-ticket) { color: var(--bad); --ic: var(--bad); }
+.icon:where(.ic-alert, .ic-timer, .ic-clock, .ic-skip, .ic-bolt, .ic-zap, .ic-bulb, .ic-star, .ic-lock, .ic-coins, .ic-sun) { color: var(--warn); --ic: var(--warn); }
+.icon:where(.ic-info, .ic-search, .ic-eye, .ic-file, .ic-table, .ic-list, .ic-columns, .ic-copy, .ic-edit, .ic-external, .ic-download, .ic-arrow, .ic-send, .ic-loader, .ic-settings) { color: var(--info); --ic: var(--info); }
+.icon:where(.ic-sparkles, .ic-flask, .ic-layers, .ic-code, .ic-terminal, .ic-cpu, .ic-lint, .ic-crosshair, .ic-moon) { color: var(--violet); --ic: var(--violet); }
+.icon:where(.ic-route, .ic-branch, .ic-commit, .ic-folder, .ic-grid, .ic-filter, .ic-shuffle, .ic-recycle, .ic-rerun, .ic-activity, .ic-gauge, .ic-image, .ic-video, .ic-newspaper, .ic-users) { color: var(--teal); --ic: var(--teal); }
+.icon:where(.ic-up, .ic-down) { color: var(--muted); --ic: var(--muted); }
+.icon:where(.ic-expand) { color: var(--info); --ic: var(--info); }
 :is(.primary, .btn-ai.primary, [aria-selected="true"], .ni, .toast, .sys-badge) .icon { color: inherit; }
 button:disabled .icon { opacity: 0.5; }
 
@@ -1480,7 +1480,7 @@ p.tone-good, p.tone-warn, p.tone-bad { color: var(--tone-ink); }
 :where(button, a.button):not(.primary, [aria-selected="true"]) :is(.ic-close, .ic-x, .ic-ban) { color: var(--bad); }
 :where(button, a.button):not(.primary, [aria-selected="true"]) :is(.ic-copy, .ic-download, .ic-external, .ic-rerun) { color: var(--info); }
 :where(button, a.button):not(.primary, [aria-selected="true"]) :is(.ic-edit, .ic-alert) { color: var(--warn); }
-:where(button, a.button):not(.primary, [aria-selected="true"]) :is(.ic-plus, .ic-folder, .ic-crosshair) { color: #6366f1; }
+:where(button, a.button):not(.primary, [aria-selected="true"]) :is(.ic-folder, .ic-crosshair) { color: #6366f1; }
 :where(button, a.button):not(.primary, .ai-fab, [aria-selected="true"]) .ic-sparkles { color: var(--ai-ink); }
 
 /* Nút copy ở góc khối code (Markdown: hướng dẫn, trả lời AI) */
@@ -1723,17 +1723,14 @@ select { border: 1px solid var(--border); }
 }
 /* nhóm theo icon: good (check, play, upload…) xanh lá · bad (x, stop, ban…) đỏ · warn (alert, timer…) cam · info (search, copy…) xanh dương ·
    violet (sparkles, flask, terminal…) tím · teal (route, folder, grid…) xanh ngọc. Nút chính không đổi màu. */
-:is(button, a.button):not(.primary):has(> .icon:is(.ic-check, .ic-play, .ic-upload, .ic-unlock, .ic-heart, .ic-star)) { --btn-hue: var(--btn-good); }
+:is(button, a.button):not(.primary):has(> .icon:is(.ic-check, .ic-play, .ic-upload, .ic-unlock, .ic-heart, .ic-star, .ic-plus)) { --btn-hue: var(--btn-good); }
 :is(button, a.button):not(.primary):has(> .icon:is(.ic-x, .ic-close, .ic-stop, .ic-ban, .ic-square, .ic-pin, .ic-ticket, .ic-trash)) { --btn-hue: var(--btn-bad); }
 :is(button, a.button):not(.primary):has(> .icon:is(.ic-alert, .ic-timer, .ic-clock, .ic-skip, .ic-bolt, .ic-zap, .ic-bulb, .ic-lock, .ic-coins, .ic-sun)) { --btn-hue: var(--btn-warn); }
 :is(button, a.button):not(.primary):has(> .icon:is(.ic-info, .ic-search, .ic-eye, .ic-file, .ic-table, .ic-list, .ic-columns, .ic-copy, .ic-edit, .ic-external, .ic-download, .ic-arrow, .ic-send, .ic-loader, .ic-settings)) { --btn-hue: var(--btn-info); }
 :is(button, a.button):not(.primary):has(> .icon:is(.ic-sparkles, .ic-flask, .ic-layers, .ic-code, .ic-terminal, .ic-cpu, .ic-lint, .ic-crosshair, .ic-moon)) { --btn-hue: var(--btn-violet); }
 :is(button, a.button):not(.primary):has(> .icon:is(.ic-route, .ic-branch, .ic-commit, .ic-folder, .ic-grid, .ic-filter, .ic-shuffle, .ic-recycle, .ic-rerun, .ic-activity, .ic-gauge, .ic-image, .ic-video, .ic-newspaper, .ic-users)) { --btn-hue: var(--btn-teal); }
 /* chọn / đang bật: vòng sáng quanh nút */
-:is(button, a.button)[aria-pressed="true"], :is(button, a.button)[aria-selected="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--btn-hue, var(--series-1)); }
-/* nút chỉ có icon: ô màu vuông, không lề thừa */
-:is(button, a.button).icon-btn { padding: 3px; min-height: 0; }
-:is(button, a.button).icon-btn > .icon { padding: 5px; }
+:is(button, a.button):not(.ct-btn, .icon-btn):is([aria-pressed="true"], [aria-selected="true"]) { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--btn-hue, var(--series-1)); }
 :is(button, a.button):disabled { opacity: 0.45; }
 
 /* Tab Cài đặt hệ thống / Tự động & lưu trữ theo kiểu mục menu trái: nền trong suốt, icon trong ô tô nhạt theo màu tab (--hue),
@@ -1748,3 +1745,42 @@ select { border: 1px solid var(--border); }
 .sys-nav button[role="tab"][aria-selected="true"] .sys-nav-ic { background: var(--hue); color: #fff; }
 .sys-nav button[role="tab"] .sys-nav-ic .icon { --icon-sw: 2.2; }
 .sys-nav button[role="tab"][aria-selected="true"] .sys-nav-ic .icon { --icon-sw: 2.6; }
+
+/* Tiêu đề trang (h1 có nút chú giải / ghim / phóng to): hàng flex căn giữa, nút không lệch theo vertical-align riêng của từng nút */
+:where(#main h1:has(> button, > a.button)) { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+#main h1 > :is(button, a.button) { margin: 0; }
+
+/* Nút chỉ có icon (chú giải, phóng to, ghim, đóng, copy / sửa…): chỉ hiện icon có màu, không nền ô; rê chuột có nền nhạt */
+:is(button, a.button).icon-btn { background: transparent; border-color: transparent; box-shadow: none; padding: 4px; min-height: 0; color: var(--text-secondary); }
+:is(button, a.button).icon-btn:hover, :is(button, a.button).icon-btn:focus-visible { background: var(--surface-2); color: var(--text-primary); }
+:is(button, a.button).icon-btn > .icon { background: transparent; padding: 0; --icon-sw: 2.4; }
+:is(button, a.button).icon-btn[aria-pressed="true"] > .icon { --icon-sw: 2.8; }
+:is(button, a.button).icon-btn:active { transform: scale(0.92); box-shadow: none; }
+
+/* Icon giữ màu riêng theo loại (--ic do nhóm màu ở trên đặt) ở các chỗ trước đây ép một màu chung: nút chỉ có icon,
+   tiêu đề trang / panel / dialog, chú thích chart, cột git. Icon theo trạng thái (chip, KPI, chú giải…) và icon trắng
+   trong nút màu đặc không đổi vì không nằm trực tiếp trong các chỗ này. */
+:is(button, a.button).icon-btn > .icon[class*="ic-"], :is(button, a.button).fs-btn > .icon[class*="ic-"] { color: var(--ic, var(--text-secondary)); }
+:is(#main h1, #main h2, #main h3, #main figcaption, dialog h2, #ai-panel h2, .git, .run-meta > span, .tc-label, a.small-btn):not(.slo h2, .danger-zone h2, .confirm-dialog.danger h2) > .icon[class*="ic-"] { color: var(--ic, var(--series-1)); }
+/* nút phóng to trong khung chart / panel: chỉ icon, không nền ô */
+.fs-btn:not(.fs-page) { background: transparent; border-color: transparent; box-shadow: none; }
+.fs-btn:not(.fs-page):hover { background: var(--surface-2); }
+
+/* Bộ lọc trạng thái (Triage): dạng chip không nền, không viền như bộ lọc; màu theo trạng thái, đang chọn gạch chân đậm */
+.tri-chips > button.pill { background: transparent; border: 0; box-shadow: none; color: var(--text-secondary); padding: 4px 6px; min-height: 0; font-weight: 600; text-decoration: none; }
+.tri-chips > button.pill:hover { background: transparent; color: var(--text-primary); text-decoration: underline; text-underline-offset: 4px; }
+.tri-chips > button.pill .icon { background: transparent; padding: 0; color: var(--tone, currentColor); }
+.tri-chips > button.pill strong { color: var(--text-primary); }
+.tri-chips > button.pill.on { box-shadow: inset 0 -2px 0 var(--series-1); color: var(--text-primary); }
+.tri-chips > button.pill.on:not(:focus-visible) { outline: 0; }
+
+/* nút icon đang bật (aria-pressed): nền tô nhạt màu nhấn, phân biệt rõ với lúc tắt */
+:is(button, a.button).icon-btn[aria-pressed="true"] { background: color-mix(in srgb, var(--series-1) 20%, transparent); }
+/* chip lọc đang chọn ở Triage: gạch chân theo màu trạng thái của chip bên trong */
+.tri-chips > button.pill.on:has(.tone-bad) { box-shadow: inset 0 -2px 0 var(--bad); }
+.tri-chips > button.pill.on:has(.tone-warn) { box-shadow: inset 0 -2px 0 var(--warn); }
+.tri-chips > button.pill.on:has(.tone-info) { box-shadow: inset 0 -2px 0 var(--info); }
+.tri-chips > button.pill.on:has(.tone-good) { box-shadow: inset 0 -2px 0 var(--good); }
+.tri-chips > button.pill.on:has(.tone-muted) { box-shadow: inset 0 -2px 0 var(--muted); }
+/* vùng nguy hiểm (Dọn dẹp): icon đỏ; trước đây .sys-pane .panel h2 .icon (màu nhấn) đè mất */
+.sys-pane .danger-zone h2 > .icon, .sys-pane .danger-zone > h2 .icon { color: var(--bad); }
