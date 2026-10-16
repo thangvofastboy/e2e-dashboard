@@ -90,5 +90,6 @@ export function stepVideoOffset(step, video, attempt) {
 export function selectionToRun(rows, ids) {
   const picked = rows.filter((r) => ids.has(r.id));
   const tests = [...new Set(picked.map((r) => (r.line ? `${r.file}:${r.line}` : r.file)))];
-  return { tests, targets: [...new Set(picked.map((r) => r.target))], agents: [...new Set(picked.map((r) => r.agent))] };
+  // test chưa chạy không có target / agent: không đưa vào bộ lọc (chạy theo config)
+  return { tests, targets: [...new Set(picked.map((r) => r.target).filter(Boolean))], agents: [...new Set(picked.map((r) => r.agent).filter(Boolean))] };
 }

@@ -12,6 +12,8 @@ import { readSettings } from './settings.mjs';
 import { osInfo } from './osinfo.mjs';
 import { aiStatus } from './e2eai.mjs';
 import { autoUpdateStatus, setAutoUpdate } from './autoupdate.mjs';
+import { findConfig } from '../bin/project.mjs';
+import { configEngines } from './engines.mjs';
 
 // lệnh thoát mã 0 trong 3 giây: async để không chặn event loop của dashboard (SSE Live, request khác) khi sudo / which treo
 const exitsZero = (cmd, args) => new Promise((done) => {
@@ -79,8 +81,23 @@ const readPkg = (root) => {
 };
 const show = (argv) => argv.map((a) => (/^[\w@./:=+-]+$/.test(a) ? a : `'${a}'`)).join(' ');
 
+// target mobile trong e2e.config.*: { platforms: ['android'] | ['ios', 'android']…, web: config có cả target web }; null = project web.
+// Config dùng @e2e-dev/mobile mà không ghi platform: init mặc định iOS trên macOS, Android ở chỗ khác
+export function mobileTargets(root, declared = {}, os = platform()) {
+  let src = '';
+  try {
+    const f = findConfig(root);
+    if (f) src = readFileSync(f, 'utf8');
+  } catch {}
+  const eng = configEngines(src);
+  if (!eng.mobile && !declared['@e2e-dev/mobile']) return null;
+  return { platforms: eng.platforms.length ? eng.platforms : [os === 'darwin' ? 'ios' : 'android'], web: eng.web };
+}
+
 // deps tiêm vào được để test: os, which(cmd), canSudo, tools, browserEntries, nodeMajor, setupItems, browser
 // reporter: giá trị hoặc hàm (hàm thì đo lại mỗi lần lập kế hoạch — sau khi cài, reporter đã khác)
+let probeMemo = null;
+let mobileMemo = null;
 export async function quickSetupPlan(root, opts = {}) {
   const os = opts.os ?? platform();
   // os truyền vào (test) mà không kèm osInfo: không đọc /etc/os-release của máy chạy test
@@ -88,10 +105,15 @@ export async function quickSetupPlan(root, opts = {}) {
   const interactive = Boolean(opts.interactive);
   // which / sudo -n chạy song song, không chặn server
   const cands = [...new Set([...sys.pms, ...(os === 'linux' ? LINUX_PMS : [])])];
-  const [found, sudoOk] = await Promise.all([
+  // kết quả gần như không đổi trong phiên: nhớ 60 giây, khỏi spawn ~8 tiến trình mỗi lần mở trang Setup
+  const probe = () => Promise.all([
     opts.which ? null : Promise.all(cands.map((c) => exitsZero(os === 'win32' ? 'where' : 'which', [c]))),
     opts.canSudo ?? (os === 'win32' ? false : exitsZero('sudo', ['-n', 'true'])),
   ]);
+  const memoKey = `${os}|${cands.join(',')}`;
+  const injected = opts.which || opts.canSudo !== undefined;
+  if (!injected && !(probeMemo?.key === memoKey && Date.now() - probeMemo.at < 60_000)) probeMemo = { key: memoKey, at: Date.now(), result: probe() };
+  const [found, sudoOk] = await (injected ? probe() : probeMemo.result);
   const which = opts.which ?? ((c) => found[cands.indexOf(c)] === true);
   const canSudo = sudoOk;
   const t = opts.tools ?? tools();
@@ -123,17 +145,20 @@ export async function quickSetupPlan(root, opts = {}) {
   const nodeOk = nodeOkForE2e(nodeVersion);
   add({ id: 'node', label: 'Node.js ≥ 22.22.3 (hoặc ≥ 24.8)', ok: nodeOk, detail: `v${nodeVersion}${nodeOk ? '' : ': e2e từ chối chạy trên bản này'}`, manual: true, display: nodeHint(sys) });
 
-  // 2. e2e (github.com/tester-army/e2e: gói npm `e2e` + engine `@e2e-dev/web`) và thư viện của project
+  // 2. e2e (github.com/tester-army/e2e: gói npm `e2e` + engine `@e2e-dev/web` hoặc `@e2e-dev/mobile`) và thư viện của project
   const pkg = readPkg(root);
   const declared = { ...(pkg?.dependencies ?? {}), ...(pkg?.devDependencies ?? {}) };
-  const needE2e = ['e2e', '@e2e-dev/web'].filter((n) => !declared[n]);
+  const mob = opts.mobile !== undefined ? opts.mobile : mobileTargets(root, declared, os);
+  const web = !mob || mob.web; // config trộn target web + mobile thì cần cả hai engine
+  const engines = [...(web ? ['@e2e-dev/web'] : []), ...(mob ? ['@e2e-dev/mobile'] : [])];
+  const needE2e = ['e2e', ...engines].filter((n) => !declared[n]);
   // Yarn PnP không có node_modules: không kiểm tra được từng gói
   const missingDeps = js.pnp ? [] : Object.keys(declared).filter((n) => !existsSync(join(root, 'node_modules', n, 'package.json')));
-  const e2eLabel = 'e2e (tester-army/e2e) + @e2e-dev/web';
+  const e2eLabel = `e2e (tester-army/e2e) + ${engines.join(' + ')}`;
   if (needE2e.length) {
     const argv = [js.bin, ...js.add, ...needE2e]; // add -D cũng cài luôn mọi thư viện còn thiếu
     add({ id: 'e2e', label: e2eLabel, ok: false, detail: `package.json chưa có ${needE2e.join(', ')}`, cmd: argv, display: show(argv) });
-  } else add({ id: 'e2e', label: e2eLabel, ok: true, detail: `e2e ${declared.e2e}, @e2e-dev/web ${declared['@e2e-dev/web']}` });
+  } else add({ id: 'e2e', label: e2eLabel, ok: true, detail: `e2e ${declared.e2e}, ${engines.map((n) => `${n} ${declared[n]}`).join(', ')}` });
   const depsLabel = 'Thư viện của project (node_modules)';
   if (!needE2e.length && missingDeps.length) {
     add({ id: 'deps', label: depsLabel, ok: false, detail: `Thiếu ${missingDeps.length}: ${missingDeps.slice(0, 6).join(', ')}${missingDeps.length > 6 ? '…' : ''}`, cmd: [js.bin, ...js.install], display: show([js.name, ...js.install]) });
@@ -145,14 +170,30 @@ export async function quickSetupPlan(root, opts = {}) {
   if (ai.provider === 'none' || ai.provider === 'custom') add({ id: 'ai', label: 'AI cho e2e (bước agent)', ok: true, optional: true, detail: ai.provider === 'none' ? 'Config chưa dùng model: chọn bằng /e2e-dashboard ai' : 'Model tuỳ chỉnh: tự kiểm tra gói npm', info: ai.provider === 'none' });
   else if (ai.missing.length) add({ id: 'ai', label: aiLabel, ok: false, detail: `Thiếu gói ${ai.missing.join(', ')}`, cmd: ai.install, display: ai.installDisplay, ...(js.pnp ? { manual: true } : {}) });
   else add({ id: 'ai', label: aiLabel, ok: true, detail: `Đủ gói: ${ai.packages.join(', ')}` });
-  if (ai.env && ai.kind === 'key') add({ id: 'ai-key', provider: ai.provider, env: ai.env, keyUrl: ai.keyUrl ?? null, label: `API key ${ai.env}`, ok: ai.keyState === 'set', manual: true, detail: ai.keyState === 'set' ? `Đã có (${ai.keySource})${ai.loadsEnv || ai.keySource !== '.env' ? '' : ' · config chưa đọc .env: chọn lại provider để thêm'}` : 'Chưa có: điền vào .env (ở mục File .env bên dưới) hoặc /e2e-dashboard ai --api-key …', display: `${ai.env}=… trong .env${ai.keyUrl ? ` (lấy key ở ${ai.keyUrl})` : ''}` });
+  // key chỉ cần cho bước agent (agent.act / agent.assert): thiếu không chặn "sẵn sàng", test bằng locator vẫn chạy
+  if (ai.env && ai.kind === 'key') add({ id: 'ai-key', provider: ai.provider, env: ai.env, keyUrl: ai.keyUrl ?? null, label: `API key ${ai.env} (cho bước agent)`, ok: ai.keyState === 'set', manual: true, optional: true, detail: ai.keyState === 'set' ? `Đã có (${ai.keySource})${ai.loadsEnv || ai.keySource !== '.env' ? '' : ' · config chưa đọc .env: chọn lại provider để thêm'}` : 'Chưa có: điền vào .env (ở mục File .env bên dưới) hoặc /e2e-dashboard ai --api-key …', display: `${ai.env}=… trong .env${ai.keyUrl ? ` (lấy key ở ${ai.keyUrl})` : ''}` });
   if (ai.kind === 'cli') add({ id: 'ai-cli', label: 'Claude Code CLI đã đăng nhập (model claude-code, thử nghiệm)', ok: ai.claude, manual: true, detail: ai.claude ? 'Có lệnh claude; đăng nhập kiểm tra bằng claude auth status' : 'Không thấy lệnh claude trên PATH', display: 'npm install -g @anthropic-ai/claude-code && claude' });
   if (ai.kind === 'login') add({ id: 'ai-login', label: `Đăng nhập ${ai.label.replace(/ \(đăng nhập\)$/, '')}`, ok: ai.loggedIn, manual: true, detail: ai.loggedIn ? 'Đã đăng nhập trên máy này' : 'Chưa đăng nhập: chạy lệnh trong terminal (mở trình duyệt / mã thiết bị)', display: ai.loginDisplay });
+
+  // 3. mobile: không cần trình duyệt; cần Android SDK (adb + emulator) và / hoặc Xcode (chỉ macOS) cho agent-device.
+  // ponytail: chỉ kiểm có lệnh; máy ảo đã boot / thiết bị đã cắm thì `agent-device doctor` (bước chạy tay) mới biết
+  if (mob) {
+    // nhớ 60 giây như which / sudo (mỗi lệnh có thể tới 3 giây)
+    if (!opts.mobileTools && !(mobileMemo && Date.now() - mobileMemo.at < 60_000)) mobileMemo = { at: Date.now(), result: Promise.all([exitsZero('adb', ['version']), os === 'darwin' ? exitsZero('xcrun', ['simctl', 'help']) : false]).then(([adb, xcrun]) => ({ adb, xcrun })) };
+    const has = opts.mobileTools ?? (await mobileMemo.result);
+    const doctor = (p) => show(['npx', 'agent-device', 'doctor', '--platform', p]);
+    if (mob.platforms.includes('android')) add({ id: 'android', label: 'Android SDK (adb, emulator) cho agent-device', ok: has.adb, manual: true,
+      detail: has.adb ? 'Có adb. Kiểm tra emulator / điện thoại bằng lệnh bên cạnh' : 'Không thấy adb trên PATH: cài Android Studio (hoặc command-line tools), thêm platform-tools vào PATH, tạo một emulator',
+      display: has.adb ? doctor('android') : 'https://developer.android.com/studio' });
+    if (mob.platforms.includes('ios')) add({ id: 'ios', label: 'Xcode + iOS simulator cho agent-device', ok: has.xcrun, manual: true,
+      detail: os !== 'darwin' ? 'iOS simulator chỉ chạy trên macOS: chạy target iOS ở máy Mac' : has.xcrun ? 'Có xcrun simctl. Kiểm tra simulator bằng lệnh bên cạnh' : 'Không thấy xcrun simctl: cài Xcode, mở một lần để nhận license, cài iOS runtime',
+      display: has.xcrun ? doctor('ios') : 'xcode-select --install' });
+  }
 
   // 3. trình duyệt: chromium và chromium-headless-shell kiểm tra riêng (installedBrowsers gộp hai cái làm một)
   // ponytail: chỉ xem thư mục chromium-<rev>, không so revision với bản Playwright mà engine ghim
   let entries = opts.browserEntries;
-  if (!entries) {
+  if (!entries && web) {
     const dir = browsersDir(process.env, os);
     try {
       entries = dir ? readdirSync(dir) : [];
@@ -160,7 +201,7 @@ export async function quickSetupPlan(root, opts = {}) {
       entries = [];
     }
   }
-  const has = (re) => entries.some((n) => re.test(n));
+  const has = (re) => (entries ?? []).some((n) => re.test(n));
   const browser = opts.browser ?? (await readSettings(root)).browser;
   const want = [...new Set(['chromium', browser ?? 'chromium'])];
   const missingBr = [];
@@ -172,7 +213,7 @@ export async function quickSetupPlan(root, opts = {}) {
   // --with-deps gọi sudo apt-get bên trong: chỉ có nghĩa trên distro họ Debian / Ubuntu
   const withDeps = os === 'linux' && pm === 'apt-get' && (interactive || canSudo);
   const flags = withDeps ? ['--with-deps'] : [];
-  add({
+  if (web) add({
     id: 'browsers', label: `Trình duyệt: Chromium + headless shell${want.length > 1 ? ` + ${want.slice(1).join(', ')}` : ''}`, ok: !missingBr.length,
     detail: missingBr.length ? `Thiếu ${missingBr.join(', ')}` : 'Đã cài', cmd: [process.execPath, bin, 'install', ...want, ...flags],
     // Yarn PnP: không có node_modules/@e2e-dev/web để gọi trực tiếp, chạy tay qua yarn
@@ -207,10 +248,71 @@ export const quickSetupRunning = (root) => busy.has(resolve(root));
 export async function runQuickSetup(root, ids, opts = {}) {
   const key = resolve(root);
   // đánh dấu trước await đầu tiên: kiểm tra quickSetupRunning rồi gọi hàm này (không await xen giữa) là nguyên tử
-  if (busy.has(key)) throw Object.assign(new Error('Quick Setup đang chạy'), { status: 409 });
+  if (busy.has(key)) throw Object.assign(new Error('Quick Setup đang chạy (hoặc đang tự cập nhật e2e)'), { status: 409 });
   busy.add(key);
   try {
     return await runSteps(root, ids, opts);
+  } finally {
+    busy.delete(key);
+  }
+}
+
+// Cập nhật e2e (github.com/tester-army/e2e) và các engine project đã khai báo lên bản mới nhất trên npm, mỗi lần mở
+// dashboard (main.mjs gọi nền; tắt bằng "e2e": { "autoUpdate": false } trong ~/.e2e-dashboard/config.json).
+// Dùng chung khoá với Quick Setup: đang cài thì nút Chạy / lịch / MCP từ chối. deps tiêm được để test:
+// latest(name) → version | null, installed(name) → version | null, run(argv) → mã thoát, nodeVersion
+export const E2E_PACKAGES = ['e2e', '@e2e-dev/web', '@e2e-dev/mobile', '@e2e-dev/limrun', '@e2e-dev/eas'];
+const npmLatest = async (name) => {
+  const r = await fetch(`https://registry.npmjs.org/${name.replace('/', '%2F')}/latest`, { signal: AbortSignal.timeout(8000) });
+  if (!r.ok) return null;
+  const v = (await r.json()).version;
+  return typeof v === 'string' && /^\d+\.\d+\.\d+/.test(v) ? v : null;
+};
+const installedVersion = (root) => (name) => {
+  try {
+    return JSON.parse(readFileSync(join(root, 'node_modules', name, 'package.json'), 'utf8')).version ?? null;
+  } catch {
+    return null;
+  }
+};
+// a mới hơn b (x.y.z; cùng x.y.z thì bản chính thức mới hơn bản có hậu tố -beta…)
+export function newerVersion(a, b) {
+  const p = (v) => String(v).split('-')[0].split('.').map((n) => Number.parseInt(n, 10) || 0);
+  const [x, y] = [p(a), p(b)];
+  for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
+  return !String(a).includes('-') && String(b).includes('-');
+}
+// idle(): false khi đang có run (dashboard / terminal) — cài đè node_modules lúc đó làm hỏng run đang chạy
+export async function updateE2ePackages(root, { latest = npmLatest, installed = installedVersion(root), run = (argv) => spawnStep(root, argv), os = platform(), nodeVersion = process.versions.node, idle = () => true } = {}) {
+  const pkg = readPkg(root);
+  const declared = { ...(pkg?.dependencies ?? {}), ...(pkg?.devDependencies ?? {}) };
+  const names = E2E_PACKAGES.filter((n) => declared[n]);
+  if (!names.length) return { status: 'skipped', reason: 'Project chưa khai báo e2e trong package.json' };
+  // e2e ≥ 0.18 từ chối Node cũ: nâng lên sẽ làm hỏng project đang chạy được
+  if (!nodeOkForE2e(nodeVersion)) return { status: 'skipped', reason: `Node v${nodeVersion} cũ hơn mức bản e2e mới cần (≥ 22.22.3 hoặc ≥ 24.8)` };
+  const js = jsPm(root, os);
+  if (js.pnp) return { status: 'skipped', reason: 'Yarn PnP: cập nhật tay bằng yarn up' };
+  const rows = await Promise.all(names.map(async (name) => ({ name, from: installed(name), to: await latest(name).catch(() => null) })));
+  // chỉ nâng lên (không hạ bản canary / beta đang cài) và chỉ gói khai báo bằng khoảng ^ / ~: bỏ qua bản ghim ("0.17.2")
+  // và file: / link: / workspace: / git (bản e2e cục bộ, không được thay bằng bản trên npm)
+  const outdated = rows.filter((r) => r.to && /^[\^~]/.test(declared[r.name]) && (!r.from || newerVersion(r.to, r.from)));
+  if (!outdated.length) return { status: 'up-to-date', packages: rows };
+  const key = resolve(root);
+  if (busy.has(key)) return { status: 'skipped', reason: 'Quick Setup đang chạy' };
+  if (!idle()) return { status: 'skipped', reason: 'Đang có run: cập nhật ở lần mở dashboard sau' };
+  busy.add(key);
+  try {
+    // giữ đúng mục khai báo: gói ở dependencies cài không -D (không thì npm chuyển nó sang devDependencies)
+    const spec = (r) => `${r.name}@${r.to}`;
+    const dev = outdated.filter((r) => !pkg?.dependencies?.[r.name]);
+    const prod = outdated.filter((r) => pkg?.dependencies?.[r.name]);
+    const cmds = [...(dev.length ? [[js.bin, ...js.add, ...dev.map(spec)]] : []), ...(prod.length ? [[js.bin, ...js.add.filter((f) => !/^-[dD]$/.test(f)), ...prod.map(spec)]] : [])];
+    let code = 0;
+    for (const c of cmds) if (code === 0) code = await run(c);
+    // @e2e-dev/web mới ghim bản Playwright mới → Chromium revision khác: cài lại ngay, không thì run sau báo thiếu trình duyệt
+    // (bước trình duyệt của Quick Setup chỉ xem có thư mục chromium-<rev>, không so revision)
+    if (code === 0 && outdated.some((r) => r.name === '@e2e-dev/web')) code = await run([process.execPath, join(root, 'node_modules', '@e2e-dev', 'web', 'dist', 'bin.js'), 'install', 'chromium']);
+    return { status: code === 0 ? 'updated' : 'failed', packages: outdated, command: cmds.map(show).join(' && '), exitCode: code };
   } finally {
     busy.delete(key);
   }
@@ -253,7 +355,8 @@ async function runSteps(root, ids, { onEvent = () => {}, signal, inherit = false
       break;
     }
   }
-  resetTools(); // vừa cài git/gh/claude: lần đo sau (trang Cài đặt tải lại) không dùng cache cũ
+  resetTools();
+  probeMemo = mobileMemo = null; // vừa cài git/gh/claude: lần đo sau (trang Cài đặt tải lại) không dùng cache cũ
   onEvent({ type: 'done', results });
   return { results };
 }

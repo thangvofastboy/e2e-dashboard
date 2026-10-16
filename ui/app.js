@@ -49,6 +49,7 @@ import { renderMarkdown } from './markdown.js';
 import { getJson, postJson, isExport, liveStream } from './api.js';
 import { attachTooltips } from './charts.js';
 import { escapeHtml } from './format.js';
+import { toast } from './toast.js';
 import { applyPrefs, setTheme, applyHiddenNav } from './prefs.js';
 import { iconOnly, storedIconOnly } from './icon-only.js';
 import { parseRoute } from './router.js';
@@ -117,6 +118,7 @@ function shell() {
         <button type="button" class="icon-btn nav-toggle" aria-expanded="false" aria-controls="nav-body" aria-label="Mở menu">${icon('list', { size: 18 })}</button></div>
       <div class="nav-body" id="nav-body">
       ${isExport() ? '' : `<div class="nav-tools"><button type="button" class="nav-search" data-search title="Tìm kiếm (Ctrl K)">${icon('search', { size: 15 })}<span class="nl">Tìm kiếm</span> <kbd>Ctrl K</kbd></button></div>`}
+      ${isExport() ? '' : '<div class="nav-project" hidden><select data-project-switch aria-label="Đổi nhanh project" title="Đổi nhanh project"></select></div>'}
       <nav aria-label="Điều hướng">${nav}</nav>
       <div class="nav-foot"><div class="foot-btns"><button class="theme-toggle" type="button" aria-label="Chuyển giao diện sáng / tối" title="Sáng / Tối">${icon('sun')}<span class="nl">Sáng / Tối</span></button>${isExport() ? '' : `<button type="button" class="icon-btn" data-keys title="Phím tắt (?)" aria-label="Phím tắt">${icon('bolt', { size: 15 })}</button>`}<button type="button" class="icon-btn lang-btn" data-lang title="Tiếng Việt / English" aria-label="Ngôn ngữ">${currentLang() === 'en' ? 'VI' : 'EN'}</button></div><div id="nav-foot"></div></div>
       </div>
@@ -179,6 +181,24 @@ function shell() {
 bindDownloads();
     bindShortcuts({ onSearch: openSearch });
   }
+}
+
+// Đổi nhanh project (đầu menu trái): chọn là mở dashboard của project đó, giữ trang đang xem
+async function projectSwitch() {
+  const sel = document.querySelector('[data-project-switch]');
+  if (!sel) return;
+  const { projects } = await getJson('/api/projects/brief').catch(() => ({ projects: [] }));
+  if (projects.length < 2) return; // một project thì không cần đổi
+  sel.innerHTML = projects.map((p) => `<option value="${escapeHtml(p.root)}"${p.current ? ' selected' : ''}${p.exists ? '' : ' disabled'}>${escapeHtml(p.name)}</option>`).join('');
+  sel.closest('.nav-project').hidden = false;
+  sel.addEventListener('change', async () => {
+    const root = sel.value;
+    sel.disabled = true;
+    const r = await postJson('/api/projects/select', { root }).catch((x) => toast(x.message.replace(/^\d{3}: /, ''), 'bad', 6000));
+    if (r?.url) return void (location.href = `${r.url}${location.hash}`);
+    sel.value = projects.find((p) => p.current)?.root ?? '';
+    sel.disabled = false;
+  });
 }
 
 async function footer() {
@@ -563,6 +583,7 @@ window.addEventListener('error', (e) => reportUiError(e.error, e.message));
 window.addEventListener('unhandledrejection', (e) => reportUiError(e.reason));
 shell();
 footer();
+projectSwitch();
 watchLive();
 window.addEventListener('hashchange', route);
 window.addEventListener('hashchange', syncPill);

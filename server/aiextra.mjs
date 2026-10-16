@@ -164,6 +164,70 @@ export const ticketEvidence = (ticket, folder, files) => [
   'File test hiện có (tham khảo quy ước):', ...files.map((f) => `- ${f}`),
 ];
 
+// ---------------------------------------------------------------- file test .ts chưa chạy được bằng e2e
+// File .ts / .mts có khai báo test nhưng không phải *.e2e.ts (vd. Playwright *.spec.ts): runner e2e không nhận.
+// AI viết lại từng file thành <tên>.e2e.ts bên cạnh; file gốc giữ nguyên.
+const TEST_DECL = /^[ \t]*test(?:\.(?:describe|only|skip|fixme))*(?:\.(?:serial|parallel|only|skip))?\s*\(/m;
+const TEST_CASE = /^[ \t]*test(?:\.(?:only|skip|fixme))?\s*\(/gm;
+export const e2eTarget = (rel) => rel.replace(/(?:\.(?:spec|test))?\.m?ts$/, '.e2e.ts');
+const CONVERT_SKIP = new Set(['node_modules', '.git', '.e2e', '.e2e-dashboard', 'dist', 'build']);
+const CONVERT_NAME = (name) => /\.m?ts$/.test(name) && !/\.(?:e2e|d)\.m?ts$/.test(name) && !/^(?:playwright|e2e)\.config\./.test(name);
+// một file (đường dẫn tương đối, '/'): mục của danh sách, hoặc null khi không phải file test Playwright / e2e đặt sai tên
+async function convertibleFile(root, path) {
+  const { readFile, stat } = await import('node:fs/promises');
+  const full = join(root, path);
+  if ((await stat(full).catch(() => null))?.size > 300_000) return null;
+  const src = await readFile(full, 'utf8').catch(() => '');
+  // chỉ test Playwright / e2e đặt sai tên: unit test vitest / jest (*.test.ts) không phải việc của runner e2e
+  const runner = /from\s+['"]@playwright\/test['"]/.test(src) ? 'playwright' : /from\s+['"](?:e2e|@e2e-dev\/\w+)['"]/.test(src) ? 'e2e' : null;
+  if (!runner || !TEST_DECL.test(src)) return null;
+  const target = e2eTarget(path);
+  return { path, target, converted: existsSync(join(root, target)), runner, tests: (src.match(TEST_CASE) ?? []).length };
+}
+export async function convertibleTests(root, limit = 500) {
+  const { readdir } = await import('node:fs/promises');
+  const { relative: rel } = await import('node:path');
+  const out = [];
+  const walk = async (dir, depth) => {
+    if (depth > 8 || out.length >= limit) return;
+    for (const e of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+      if (out.length >= limit) return;
+      const full = join(dir, e.name);
+      if (e.isDirectory() && !CONVERT_SKIP.has(e.name) && !e.name.startsWith('.')) await walk(full, depth + 1);
+      else if (e.isFile() && CONVERT_NAME(e.name)) {
+        const f = await convertibleFile(root, rel(root, full).split('\\').join('/'));
+        if (f) out.push(f);
+      }
+    }
+  };
+  await walk(root, 0);
+  return out.sort((a, b) => a.path.localeCompare(b.path));
+}
+// kiểm tra một đường dẫn người dùng gửi (nút AI chuyển) theo đúng luật quét, không quét lại cả project
+export async function convertibleTest(root, path) {
+  if (typeof path !== 'string' || path.length > 500 || path.startsWith('/') || /^[A-Za-z]:/.test(path)) return null;
+  const segs = path.split('/');
+  if (segs.length > 9 || segs.some((x) => !x || x === '..' || x.startsWith('.') || CONVERT_SKIP.has(x)) || !CONVERT_NAME(segs.at(-1))) return null;
+  // không đi qua symlink (như readdir của convertibleTests): mọi thư mục là thư mục thật, file là file thật
+  const { lstat } = await import('node:fs/promises');
+  for (let i = 1; i <= segs.length; i++) {
+    const st = await lstat(join(root, ...segs.slice(0, i))).catch(() => null);
+    if (!st || (i < segs.length ? !st.isDirectory() : !st.isFile())) return null;
+  }
+  return convertibleFile(root, path);
+}
+
+export async function convertEvidence(root, file) {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(join(root, file.path), 'utf8');
+  return [
+    `File gốc: ${file.path} (runner: ${file.runner}, ${file.tests} test)`,
+    `File đích: ${file.target}`,
+    'File .e2e.ts hiện có (tham khảo quy ước):', ...(await testFiles(root, 20)).map((f) => `- ${f}`),
+    `Nội dung file gốc${src.length > 60_000 ? ' (đã cắt, đọc đủ bằng Read)' : ''}:`, src.slice(0, 60_000),
+  ];
+}
+
 // đường dẫn nháp hợp lệ: trong project, đuôi .e2e.ts, không .., không thư mục ẩn
 export const DRAFT_PATH = /^(?!\/)(?!.*(?:^|\/)\.)(?!.*\.\.)[\w./ -]{1,200}\.e2e\.ts$/;
 
@@ -218,6 +282,35 @@ export function duplicateEvidence(history) {
   for (const r of results(h.report).slice(0, 80)) {
     const steps = stepsOf(h.report, r).slice(0, 14).map((s) => `${s.api} ${String(s.label ?? '').slice(0, 80)}`).join(' → ');
     lines.push(`- ${tTitle(r)} [${r.targetId}] · ${r.source?.file ?? r.file ?? '?'} · ${ms(durationOf(h.report, r))} · ${tokensOf(h.report, r)} token\n  ${steps || '(không có step)'}`);
+  }
+  return lines;
+}
+
+// ---------------------------------------------------------------- chia nhỏ test quá lớn
+// "lớn" = nhiều step hoặc chạy lâu ở lần chạy gần nhất có nó (trong history). key: chỉ một test (trang chi tiết test).
+// ponytail: ngưỡng cố định (≥ 15 step hoặc ≥ 60s), chỉnh ở đây nếu suite có nhịp khác
+export const SPLIT_MIN_STEPS = 15;
+export const SPLIT_MIN_MS = 60_000;
+export function splitEvidence(history, key = null) {
+  const seen = new Map(); // key → kết quả mới nhất (history mới → cũ)
+  for (const h of history) {
+    for (const r of results(h.report)) {
+      if (r.status === 'skipped' || seen.has(tKey(r)) || (key && tKey(r) !== key)) continue;
+      const steps = stepsOf(h.report, r);
+      if (steps.length) seen.set(tKey(r), { h, r, steps, ms: durationOf(h.report, r) });
+    }
+  }
+  const big = [...seen.values()]
+    .filter((x) => key || x.steps.length >= SPLIT_MIN_STEPS || x.ms >= SPLIT_MIN_MS)
+    .sort((a, b) => b.steps.length - a.steps.length || b.ms - a.ms)
+    .slice(0, 10);
+  if (!big.length) return null;
+  const lines = [key ? 'Test cần chia nhỏ:' : `${big.length} test lớn nhất (≥ ${SPLIT_MIN_STEPS} step hoặc ≥ ${ms(SPLIT_MIN_MS)}):`];
+  for (const { h, r, steps, ms: d } of big) {
+    const file = r.source?.file ?? r.file ?? '?';
+    lines.push(`- ${tTitle(r)} [${r.targetId}] · ${file}${r.source?.line ? `:${r.source.line}` : ''} · ${steps.length} step · ${ms(d)} · ${r.status} (run ${h.meta.runId})`);
+    lines.push(...steps.slice(0, 60).map((s, i) => `  ${i + 1}. ${s.api} ${String(s.label ?? '').slice(0, 100)}${s.status && s.status !== 'passed' ? ` [${s.status}]` : ''}`));
+    if (steps.length > 60) lines.push(`  … còn ${steps.length - 60} step`);
   }
   return lines;
 }

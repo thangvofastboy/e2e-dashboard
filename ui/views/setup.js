@@ -9,10 +9,11 @@ import { toast } from '../toast.js';
 import { escapeHtml } from '../format.js';
 import { icon } from '../icons.js';
 import { setupNeeds, stepsHtml, bindSteps } from '../setup-steps.js';
+import { appFieldsHtml, readAppFields } from '../project-context.js';
 
 const stat = (label, value, tone = '', sub = '') => `<div class="sys-stat${tone ? ` tone-${tone}` : ''}"><span class="sys-stat-v">${value}</span><span class="sys-stat-l">${escapeHtml(label)}</span>${sub ? `<span class="sys-stat-s muted small">${sub}</span>` : ''}</div>`;
 
-// e2e.config.ts: xem nhanh và sửa URL app / lệnh khởi động (server chỉ sửa đúng hai giá trị này)
+// e2e.config.ts: xem nhanh và sửa URL app / bundleId (mobile) / lệnh khởi động (server chỉ sửa đúng các giá trị này)
 export function e2eConfigHtml(c) {
   if (!c) return '';
   if (!c.exists) return `<section class="panel"><h2>${icon('file', { size: 18 })} e2e.config.ts</h2><p class="muted">Không tìm thấy e2e.config.*. Tạo bằng <code>/e2e-dashboard config --init</code> trong terminal.</p></section>`;
@@ -22,12 +23,11 @@ export function e2eConfigHtml(c) {
       ${row('Engine', `${c.engine ?? 'không rõ'} · ${c.targets} target`)}
       ${row('Model cho bước agent', c.model ?? 'Không (chỉ test bằng locator)', c.model ? 'good' : '')}
       ${row('Reporter dashboard', c.reporter ? 'Đã gắn' : 'Chưa gắn: bấm Cài tất cả ở trên', c.reporter ? 'good' : '')}
-      ${row('Chọn trình duyệt khi chạy', c.browserEnv ? 'Có (E2E_BROWSER)' : 'Chưa: bấm Cài tất cả ở trên', c.browserEnv ? 'good' : '')}
+      ${c.engine === 'mobile' && c.appUrl == null && !c.browserEnv ? '' : row('Chọn trình duyệt khi chạy', c.browserEnv ? 'Có (E2E_BROWSER)' : 'Chưa: bấm Cài tất cả ở trên', c.browserEnv ? 'good' : '')}
     </ul>
     ${aiPanelHtml(c)}
     <form data-e2e-config>
-      <div class="form-row"><span class="form-label">URL app đang test</span><input type="url" name="appUrl" value="${escapeHtml(c.appUrl ?? '')}" placeholder="http://localhost:3000" required aria-label="URL app đang test"><small class="fld-hint">${c.appUrlEnv ? `Biến <code>${escapeHtml(c.appUrlEnv)}</code> lúc chạy vẫn đè được giá trị này.` : 'Trang mà app.open() mở.'}</small></div>
-      <div class="form-row"><span class="form-label">Lệnh khởi động app</span><input type="text" name="command" value="${escapeHtml(c.command ?? '')}" placeholder="npm run dev" spellcheck="false" aria-label="Lệnh khởi động app"><small class="fld-hint">Runner tự chạy lệnh này trước test và tắt sau đó. Để trống nếu bạn tự chạy app.</small></div>
+      ${appFieldsHtml(c, (label, control, hint) => `<div class="form-row"><span class="form-label">${escapeHtml(label)}</span>${control}<small class="fld-hint">${hint}</small></div>`)}
       <p><button type="submit" class="primary">${icon('check', { size: 14 })}Lưu vào ${escapeHtml(c.file)}</button> <span class="muted small" data-e2e-config-msg></span></p>
     </form>
   </section>`;
@@ -146,7 +146,7 @@ export async function renderSetup(main) {
     } else if (f.matches('[data-e2e-config]')) {
       const msg = f.querySelector('[data-e2e-config-msg]');
       try {
-        const r = await postJson('/api/system/e2e-config', { appUrl: f.appUrl.value.trim(), command: f.command.value.trim() });
+        const r = await postJson('/api/system/e2e-config', readAppFields(f));
         msg.textContent = r.problems.join(' · ');
         toast(r.problems.length ? 'Có mục chưa lưu được, xem lưu ý' : r.changed.length ? `Đã lưu: ${r.changed.join(', ')}` : 'Không có gì thay đổi', r.problems.length ? 'bad' : 'good');
         if (!r.problems.length) await reload();

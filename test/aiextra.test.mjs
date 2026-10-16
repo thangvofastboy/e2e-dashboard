@@ -82,3 +82,55 @@ test('draft path and AI selection / draft parsing', async () => {
   assert.equal(d.code, 'import x from "y";\n');
   assert.equal(d.path, 'TestCases/01_Reports/a.e2e.ts');
 });
+
+test('splitEvidence: chọn test ≥ 15 step hoặc ≥ 60s, lớn trước; key = chỉ một test; không có test lớn thì null', async () => {
+  const { splitEvidence } = await import('../server/aiextra.mjs');
+  const steps = (n) => Array.from({ length: n }, (_, i) => ({ api: 'agent.act', label: `bước ${i + 1}`, status: 'passed' }));
+  const res = (testId, n, durationMs, status = 'passed') => ({ id: testId, testId, targetId: 'web', titlePath: [testId], status, source: { file: `tests/${testId}.e2e.ts`, line: 3 }, attempts: [{ durationMs, steps: steps(n) }] });
+  const hist = [
+    { meta: { runId: 'r2' }, report: { run: { results: [res('nho', 3, 1000), res('lau', 4, 90_000), res('dai', 70, 5000, 'failed')] } } },
+    { meta: { runId: 'r1' }, report: { run: { results: [res('cu', 20, 1000)] } } }, // chỉ có ở run cũ: vẫn tính
+  ];
+  const ev = splitEvidence(hist).join('\n');
+  assert.ok(ev.indexOf('dai') < ev.indexOf('lau') && ev.indexOf('lau') > 0);
+  assert.match(ev, /cu .*20 step/);
+  assert.doesNotMatch(ev, /nho \[/);
+  assert.match(ev, /tests\/dai\.e2e\.ts:3 · 70 step/);
+  assert.match(ev, /… còn 10 step/); // tối đa 60 step mỗi test
+  const one = splitEvidence(hist, 'nho|web|default').join('\n');
+  assert.match(one, /nho .*3 step/);
+  assert.doesNotMatch(one, /dai/);
+  assert.equal(splitEvidence([hist[0]].map((h) => ({ ...h, report: { run: { results: [res('nho', 3, 1000)] } } }))), null);
+});
+
+test('convertibleTests: nhận file .ts có test (Playwright / e2e đặt sai tên), bỏ helper, *.e2e.ts, config; e2eTarget', async () => {
+  const { convertibleTests, e2eTarget, convertEvidence } = await import('../server/aiextra.mjs');
+  const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const root = mkdtempSync(join(tmpdir(), 'e2ed-conv-'));
+  mkdirSync(join(root, 'tests', 'a'), { recursive: true });
+  mkdirSync(join(root, 'node_modules', 'x'), { recursive: true });
+  const pw = "import { test, expect } from '@playwright/test';\ntest.describe('nhóm', () => {\n  test('một', async ({ page }) => {});\n  test.skip('hai', async () => {});\n});\n";
+  writeFileSync(join(root, 'tests', 'a', 'login.spec.ts'), pw);
+  writeFileSync(join(root, 'tests', 'wrong.ts'), "import { test } from 'e2e';\ntest('x', async () => {});\n");
+  writeFileSync(join(root, 'tests', 'helper.ts'), 'export const test = 1;\nexport function login() {}\n');
+  writeFileSync(join(root, 'tests', 'sum.test.ts'), "import { test, expect } from 'vitest';\ntest('cộng', () => expect(1 + 1).toBe(2));\n"); // unit test: không phải e2e
+  writeFileSync(join(root, 'tests', 'ok.e2e.ts'), "import { test } from 'e2e';\ntest('y', async () => {});\n");
+  writeFileSync(join(root, 'tests', 'a', 'login.e2e.ts'), '// đã chuyển\n');
+  writeFileSync(join(root, 'playwright.config.ts'), "test('không phải test', () => {});\n");
+  writeFileSync(join(root, 'node_modules', 'x', 'a.spec.ts'), pw);
+  const files = await convertibleTests(root);
+  assert.deepEqual(files, [
+    { path: 'tests/a/login.spec.ts', target: 'tests/a/login.e2e.ts', converted: true, runner: 'playwright', tests: 2 },
+    { path: 'tests/wrong.ts', target: 'tests/wrong.e2e.ts', converted: false, runner: 'e2e', tests: 1 },
+  ]);
+  assert.equal(e2eTarget('x/y.test.mts'), 'x/y.e2e.ts');
+  const ev = (await convertEvidence(root, files[0])).join('\n');
+  assert.match(ev, /File đích: tests\/a\/login\.e2e\.ts/);
+  assert.match(ev, /- tests\/ok\.e2e\.ts/);
+  assert.match(ev, /page \}\) => \{\}\);/);
+  const { convertibleTest } = await import('../server/aiextra.mjs');
+  assert.deepEqual(await convertibleTest(root, 'tests/a/login.spec.ts'), files[0]); // một file, cùng luật với lần quét
+  for (const bad of ['../x.spec.ts', '/etc/passwd', 'tests/helper.ts', 'node_modules/x/a.spec.ts', 'tests/ok.e2e.ts', 'tests/nope.spec.ts']) assert.equal(await convertibleTest(root, bad), null, bad);
+});

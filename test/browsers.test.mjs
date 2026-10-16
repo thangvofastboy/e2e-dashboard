@@ -43,3 +43,10 @@ test('runner passes the chosen browser as E2E_BROWSER (and nothing for an unknow
   assert.equal(envs[0].E2E_BROWSER, 'firefox');
   assert.equal(envs[1].E2E_BROWSER, process.env.E2E_BROWSER);
 });
+
+test('patchBrowser: config chỉ có mobile thì không đụng, không báo "không tìm thấy web"', async () => {
+  const { patchBrowser, configMobileOnly } = await import('../server/browsers.mjs');
+  const src = "import { mobile } from '@e2e-dev/mobile';\nexport default { targets: [{ engine: mobile({ platform: 'ios' }) }] };\n";
+  assert.deepEqual(patchBrowser(src), { source: src, patched: false, reason: 'mobile' });
+  assert.equal(configMobileOnly(null), false);
+});

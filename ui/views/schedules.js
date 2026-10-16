@@ -154,7 +154,7 @@ function openScheduleDialog(data, sched, refresh) {
   };
   const loadTests = async () => {
     list.innerHTML = '<li class="muted small">Đang tải danh sách test…</li>';
-    const rows = await getJson(`/api/tests?root=${encodeURIComponent(el.root.value)}`).catch(() => []);
+    const rows = await getJson(`/api/tests?unrun=1&root=${encodeURIComponent(el.root.value)}`).catch(() => []);
     const bySpec = new Map();
     for (const r of rows) {
       const spec = r.line ? `${r.file}:${r.line}` : r.file;

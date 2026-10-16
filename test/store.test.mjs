@@ -106,3 +106,15 @@ test('loadHistory can skip the newest runs', async () => {
   assert.deepEqual((await loadHistory(root, 2, 1)).map((h) => h.meta.runId), [id(2), id(1)]);
   assert.deepEqual((await loadHistory(root, 5, 3)).map((h) => h.meta.runId), [id(0)]);
 });
+
+test('listRuns: gọi song song dùng chung một lần quét, mỗi người gọi nhận object riêng; gọi sau thấy thay đổi mới', async () => {
+  const root = await projectWithRuns(2);
+  const [a, b] = await Promise.all([listRuns(root), listRuns(root)]);
+  assert.deepEqual(a, b);
+  a[0].status = 'đã sửa';
+  a.reverse();
+  assert.notEqual(b[0].status, 'đã sửa');
+  assert.equal(b[0].runId, id(1));
+  await setFlag(root, id(1), 'pinned', true);
+  assert.equal((await listRuns(root))[0].pinned, true); // không cache theo thời gian: không có dữ liệu cũ
+});

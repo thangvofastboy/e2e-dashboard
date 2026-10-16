@@ -152,6 +152,13 @@ test('suite AI actions validate input; drafts save once inside the project only'
   const dup = await post('/api/ai/duplicate-tests', {});
   assert.equal(dup.status, 200); // có run: stream (AI giả trả lỗi "chưa sẵn sàng")
   assert.match(await dup.text(), /^data: /m);
+  assert.equal((await post('/api/ai/split-tests', { key: 42 })).status, 400);
+  const split = await post('/api/ai/split-tests', { key: 'khong-co|web|default' });
+  assert.equal(split.status, 400); // test không có trong lịch sử: báo lỗi, không gọi AI
+  assert.match((await split.json()).error, /chưa có step/);
+  const conv = await (await fetch(`${base}/api/tests/convertible`, { headers: auth })).json();
+  assert.ok(Array.isArray(conv.files));
+  assert.equal((await post('/api/ai/convert-test', { path: '../../etc/passwd' })).status, 400); // chỉ file trong danh sách quét
 });
 
 test('run API rejects an unknown browser; settings keep chromium by default', async () => {

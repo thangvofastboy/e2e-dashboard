@@ -102,6 +102,25 @@ test('API: GET / POST /api/project-context cho project đang mở và project tr
     assert.equal(calls.length, 2);
     const list = await (await fetch(`${base}/api/projects`, { headers: h })).json();
     assert.equal(list.projects.find((x) => x.root === other).ai.state, 'ready');
+    // URL app / lệnh khởi động: ghi vào e2e.config.ts của đúng project đó, không đụng project đang mở
+    writeFileSync(join(other, 'e2e.config.ts'), "export default {\n  tests: './tests/**/*.e2e.ts',\n  app: {\n    url: process.env.APP_URL ?? 'http://localhost:3000',\n  },\n};\n");
+    const app = await (await fetch(`${base}/api/project-context`, { method: 'POST', headers: h, body: JSON.stringify({ root: other, appUrl: 'http://localhost:5173', command: 'npm run dev' }) })).json();
+    assert.deepEqual(app.app, { file: 'e2e.config.ts', engine: null, appUrl: 'http://localhost:5173', appUrlEnv: 'APP_URL', bundleIds: [], platforms: [], command: 'npm run dev' });
+    assert.match(readFileSync(join(other, 'e2e.config.ts'), 'utf8'), /url: process\.env\.APP_URL \?\? 'http:\/\/localhost:5173'/);
+    assert.equal((await (await fetch(`${base}/api/project-context`, { headers: h })).json()).app.appUrl, null);
+    assert.equal((await (await fetch(`${base}/api/projects`, { headers: h })).json()).projects.find((x) => x.root === other).appUrl, 'http://localhost:5173');
+    const badUrl = await fetch(`${base}/api/project-context`, { method: 'POST', headers: h, body: JSON.stringify({ root: other, appUrl: 'ftp://x' }) });
+    assert.equal(badUrl.status, 400);
+    assert.match((await badUrl.json()).error, /URL không hợp lệ/);
+    // một mục lỗi thì không ghi mục nào (URL hợp lệ đi kèm lệnh sai): config giữ nguyên
+    const before = readFileSync(join(other, 'e2e.config.ts'), 'utf8');
+    assert.equal((await fetch(`${base}/api/project-context`, { method: 'POST', headers: h, body: JSON.stringify({ root: other, appUrl: 'http://localhost:9999', command: 'npm run dev | tee log' }) })).status, 400);
+    assert.equal(readFileSync(join(other, 'e2e.config.ts'), 'utf8'), before);
+    // URL hợp lệ nhưng thư mục test sai: lỗi ở bước lưu bối cảnh, config chưa bị ghi
+    assert.equal((await fetch(`${base}/api/project-context`, { method: 'POST', headers: h, body: JSON.stringify({ root: other, appUrl: 'http://localhost:9999', testDir: 'khong-co' }) })).status, 400);
+    assert.equal(readFileSync(join(other, 'e2e.config.ts'), 'utf8'), before);
+    const brief = await (await fetch(`${base}/api/projects/brief`, { headers: h })).json();
+    assert.ok(brief.projects.some((x) => x.root === other && x.current === false && x.exists === true));
     const bad = await fetch(`${base}/api/project-context`, { method: 'POST', headers: h, body: JSON.stringify({ root: tmpdir(), testDir: '' }) });
     assert.equal(bad.status, 400);
     const badDir = await fetch(`${base}/api/project-context`, { method: 'POST', headers: h, body: JSON.stringify({ root, testDir: 'khong-co' }) });
