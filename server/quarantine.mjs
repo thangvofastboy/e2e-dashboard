@@ -40,8 +40,15 @@ export function quarantineFlags(list, now = Date.now()) {
   const active = list.filter((q) => !expired(q, now));
   const esc = (s) => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
   const patterns = active.map((q) => `^${esc(q.title.replace(/ › /g, ' '))}$`);
+  // Playwright so --grep-invert với tiêu đề đầy đủ "project file describe… tiêu đề @tag": kèm tên file để cách ly
+  // "works" không kéo theo "Login › works" ở file khác; mục không có file thì khớp theo cuối tiêu đề như cũ
+  const pwOne = (q) => {
+    const name = String(q.file ?? '').split(/[\\/]/).pop();
+    return name ? `(?:^|[ /\\\\])${esc(name)} (?:.* )?${esc(q.title.replace(/ › /g, ' '))}(?: @\\S+)*$` : `(?:^| )${esc(q.title.replace(/ › /g, ' '))}(?: @\\S+)*$`;
+  };
   return {
     active,
+    pw: active.length ? active.slice(0, 100).map((q) => `(?:${pwOne(q)})`).join('|') : null,
     expired: list.filter((q) => expired(q, now)),
     args: patterns.flatMap((p) => ['--grep-invert', p]),
     command: patterns.length ? `npx e2e run ${patterns.map((p) => `--grep-invert '${p.replace(/'/g, "'\\''")}'`).join(' ')}` : null,

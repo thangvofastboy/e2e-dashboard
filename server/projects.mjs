@@ -106,15 +106,15 @@ const alive = (pid) => {
 
 // One row per registered project: latest run, pass rate, health, and a link when its server runs.
 export async function projectSummaries(currentRoot, env = process.env) {
-  const out = [];
-  for (const p of await readRegistry(env)) {
+  // các project đọc song song (mỗi cái liệt kê run riêng), thứ tự giữ như danh sách
+  return Promise.all((await readRegistry(env)).map(async (p) => {
     const root = resolve(p.root);
     const exists = existsSync(root);
     const metas = exists ? await listRuns(root).catch(() => []) : [];
     const s = exists ? readServerInfo(root) : null;
     const running = Boolean(s?.pid && Number.isInteger(s.pid) && alive(s.pid));
     const latest = metas[0] ?? null;
-    out.push({
+    return {
       root,
       name: p.name ?? basename(root),
       current: root === resolve(currentRoot),
@@ -125,7 +125,6 @@ export async function projectSummaries(currentRoot, env = process.env) {
       passRate: latest ? passRate(latest) : null,
       health: healthScore(metas),
       url: running ? `http://127.0.0.1:${s.port}/?token=${s.token}` : null,
-    });
-  }
-  return out;
+    };
+  }));
 }

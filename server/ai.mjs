@@ -298,6 +298,25 @@ Trả lời: một đoạn giải thích ngắn, rồi đúng MỘT khối \`\`\
 PATH: <đường dẫn file đề xuất, trong thư mục test của project, đuôi .e2e.ts>
 `;
   }
+  if (action === 'convert-test') {
+    return `${FRAME(language, fence)}
+
+Nhiệm vụ: viết lại file test dưới đây (Playwright hoặc runner khác) thành MỘT file test cho runner \`e2e\` (\`*.e2e.ts\`), giữ nguyên ý nghĩa.
+Trước khi viết: đọc e2e.config.* và 2–3 file .e2e.ts gần file gốc (Read / Grep / Glob) để theo đúng quy ước của project: import (\`test\` từ '@e2e-dev/web' có fixture \`browser\`, \`app\`, \`screen\`, \`agent\`; \`expect\` từ 'e2e'), cách đăng nhập / session, URL gốc.
+Quy tắc:
+- Giữ đủ mọi test case, mọi bước và mọi assertion của file gốc; giữ tên test (titlePath) để lịch sử dễ đối chiếu.
+- \`page.goto\` → \`app.open\` (đường dẫn tương đối với URL app) hoặc \`browser\`; locator / click / fill / expect → API tương ứng của e2e (\`screen.getByRole\`… hoặc \`browser.locator\`).
+- Bỏ \`waitForTimeout\` cố định khi expect đã chờ; giữ helper / import của project nếu chạy được trong ESM.
+- Chỗ không có API tương ứng chắc chắn thì để \`// TODO:\` kèm dòng gốc, không đoán.
+
+<${fence}>
+${lines}
+</${fence}>
+
+Trả lời: bảng ngắn "API cũ → API mới" đã dùng và các TODO, rồi đúng MỘT khối \`\`\`ts chứa toàn bộ file mới, rồi KẾT THÚC bằng một dòng:
+PATH: <đường dẫn file đích ở trên>
+`;
+  }
   if (action === 'req-coverage') {
     return `${FRAME(language, fence)}
 
@@ -412,6 +431,27 @@ Trả lời theo khung:
 ## Test có thể bỏ
 ## Lợi ích
 (thời gian, token tiết kiệm ước tính)
+`;
+  }
+  if (action === 'split-tests') {
+    return `${FRAME(language, fence)}
+
+Nhiệm vụ: các test dưới đây quá lớn (nhiều step / chạy lâu): fail ở giữa thì khó biết hỏng phần nào, chạy lại tốn thời gian. Đọc file test (Read) và đề xuất chia mỗi test thành nhiều test case nhỏ, mỗi test kiểm tra một ý, chạy độc lập được.
+
+<${fence}>
+${lines}
+</${fence}>
+
+Trả lời theo khung (mỗi test một mục):
+## <tên test>
+### Vì sao nên chia
+(các phần / mục tiêu khác nhau trong test, step nào thuộc phần nào)
+### Các test case mới
+(bảng: tên test mới · kiểm tra gì · dải step cũ tương ứng)
+### Code đề xuất
+(\`\`\`ts đầy đủ cho các test mới, đúng runner e2e của project; phần chuẩn bị chung (đăng nhập, mở trang, tạo dữ liệu) đưa vào beforeEach / hàm dùng chung hoặc setup đã có; không để test sau phụ thuộc kết quả test trước)
+### Lưu ý
+(dữ liệu dùng chung, thứ tự, test nên giữ nguyên nếu chia ra không có lợi)
 `;
   }
   if (action === 'release-notes') {

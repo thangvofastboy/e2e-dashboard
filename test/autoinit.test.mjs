@@ -17,7 +17,7 @@ test('autoInit: chạy e2e init (không hỏi, web, skill + MCP cho Claude Code,
     return 0;
   } });
   assert.equal(r.ok, true);
-  assert.deepEqual(seen.slice(-11), ['init', '--yes', '--engine', 'web', '--gateway', 'vercel', '--skills', '.claude/skills', '--mcp', '.mcp.json', '--no-install']);
+  assert.deepEqual(seen.slice(-11), ['init', '--yes', '--engine', 'web', '--gateway', 'none', '--skills', '.claude/skills', '--mcp', '.mcp.json', '--no-install']);
   assert.ok(r.lines.some((l) => l.includes('*  Created e2e.config.ts')));
   assert.ok(r.lines.some((l) => /1 Click Setup/.test(l)));
 });
@@ -39,4 +39,14 @@ test('lệnh khác (status…) ở thư mục chưa có config vẫn báo lỗi,
   const r = await main(['status'], dir);
   assert.equal(r.code, 1);
   assert.match(r.out, /npx e2e init/);
+});
+
+test('autoInit --engine mobile: e2e init với engine mobile; engine lạ thì báo lỗi, không chạy', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'e2ed-init-m-'));
+  let seen;
+  await autoInit(dir, { home: '/nonexistent-home', engine: 'mobile', run: async (argv) => ((seen = argv), 1) });
+  assert.deepEqual(seen.slice(seen.indexOf('--engine'), seen.indexOf('--engine') + 2), ['--engine', 'mobile']);
+  const bad = await autoInit(dir, { home: '/nonexistent-home', engine: 'tv', run: async () => assert.fail('không được chạy') });
+  assert.equal(bad.ok, false);
+  assert.match(bad.lines[0], /engine/);
 });

@@ -5,6 +5,7 @@ import { readFile, writeFile, lstat } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { findConfig } from '../bin/project.mjs';
 import { jsPm } from './quicksetup.mjs';
+import { configEngines } from './engines.mjs';
 
 export const GATEWAYS = ['vercel', 'openrouter', 'openai-compatible', 'chatgpt', 'copilot', 'opencode-console', 'grok', 'none'];
 export const ENGINES = ['web', 'mobile', 'none'];
@@ -27,12 +28,16 @@ const str = (s) => `'${String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 // `url: process.env.APP_URL ?? '…'` (dạng e2e init) hoặc `url: '…'`
 const URL_ENV = /(url\s*:\s*process\.env\.(\w+)\s*\?\?\s*)(['"`])([^'"`]*)\3/;
 const URL_LIT = /(\burl\s*:\s*)(['"`])([^'"`]*)\2/;
+// target mobile (@e2e-dev/mobile): app là `bundleId: '…'` (package Android / bundle id iOS), không có url
+const BUNDLE = /(\bbundleId\s*:\s*)(['"`])([^'"`]*)\2/g;
+const BUNDLE_ID = /^[\w.-]{1,200}$/;
 // lệnh một dòng: `command: { executable: 'npm', args: ['run', 'dev'] },` có thể đang bị comment
 const CMD_LINE = /^([ \t]*)(\/\/\s*)?command\s*:\s*\{[^\n]*\}\s*,?[ \t]*$/m;
 const CMD_HINT = /^[ \t]*\/\/\s*Or let the runner start the dev server:[ \t]*\n/m;
 
 export function readE2eConfig(source) {
-  const engine = /from\s+['"]@e2e-dev\/mobile['"]/.test(source) ? 'mobile' : /from\s+['"]@e2e-dev\/web['"]/.test(source) ? 'web' : null;
+  const eng = configEngines(source);
+  const engine = eng.mobile ? 'mobile' : eng.web ? 'web' : null; // trộn web + mobile: 'mobile' (cần bundleId)
   const env = URL_ENV.exec(source);
   const lit = env ? null : URL_LIT.exec(source);
   const cmd = CMD_LINE.exec(source);
@@ -48,6 +53,8 @@ export function readE2eConfig(source) {
     engine,
     appUrl: env ? env[4] : lit ? lit[3] : null,
     appUrlEnv: env ? env[2] : null,
+    bundleIds: [...source.matchAll(BUNDLE)].map((m) => m[3]),
+    platforms: eng.platforms,
     command,
     model,
     reporter: source.includes('e2e-dashboard.reporter'),
@@ -74,11 +81,20 @@ export function parseCommand(cmd) {
   return { executable, args };
 }
 
-// sửa URL app / lệnh khởi động. command: chuỗi rỗng = bỏ (comment lại), undefined = giữ nguyên
-export function patchE2eConfig(source, { appUrl, command } = {}) {
+// sửa URL app / bundleId (mobile) / lệnh khởi động. command: chuỗi rỗng = bỏ (comment lại), undefined = giữ nguyên
+export function patchE2eConfig(source, { appUrl, bundleId, command } = {}) {
   let out = source;
   const changed = [];
   const problems = [];
+  if (bundleId !== undefined && bundleId !== null && bundleId !== '') {
+    const found = [...out.matchAll(BUNDLE)];
+    if (!BUNDLE_ID.test(bundleId)) problems.push(`bundleId không hợp lệ: ${bundleId} (chỉ chữ, số, . _ -)`);
+    else if (found.length !== 1) problems.push(found.length ? `Config có ${found.length} bundleId (nhiều target): sửa tay trong file` : 'Không thấy `bundleId:` trong app của target: thêm tay app: { bundleId: … }');
+    else if (found[0][3] !== bundleId) {
+      out = out.replace(BUNDLE, (_m, head) => `${head}${str(bundleId)}`);
+      changed.push('bundleId');
+    }
+  }
   if (appUrl !== undefined && appUrl !== null && appUrl !== '') {
     if (!validAppUrl(appUrl)) problems.push(`URL không hợp lệ: ${appUrl} (cần http:// hoặc https://)`);
     else if (URL_ENV.test(out)) {
@@ -129,7 +145,7 @@ export function patchE2eConfig(source, { appUrl, command } = {}) {
 }
 
 // lệnh `e2e init` không hỏi gì: config web, skill + MCP cho Claude Code, chưa cài thư viện (Quick Setup cài sau)
-export function e2eInitArgv(root, { engine = 'web', gateway = 'vercel', os = process.platform } = {}) {
+export function e2eInitArgv(root, { engine = 'web', gateway = 'none', os = process.platform } = {}) {
   if (!ENGINES.includes(engine)) throw new Error(`engine phải là một trong: ${ENGINES.join(', ')}`);
   if (!GATEWAYS.includes(gateway)) throw new Error(`gateway phải là một trong: ${GATEWAYS.join(', ')}`);
   const flags = ['init', '--yes', '--engine', engine, '--gateway', gateway, '--skills', '.claude/skills', '--mcp', '.mcp.json', '--no-install'];
@@ -147,11 +163,19 @@ export async function e2eConfigStatus(root) {
   return { exists: true, path, file: basename(path), ...readE2eConfig(source) };
 }
 
-export async function updateE2eConfig(root, changes) {
+// chỉ kiểm tra: các mục lỗi nếu ghi changes vào config (không ghi gì)
+export async function checkE2eConfig(root, changes) {
+  const path = findConfig(root);
+  if (!path) return ['Project chưa có e2e.config.*'];
+  return patchE2eConfig(await readFile(path, 'utf8'), changes).problems;
+}
+
+// atomic: có mục lỗi thì không ghi gì (hộp Sửa project: lỗi trả 400, không để config đổi một nửa)
+export async function updateE2eConfig(root, changes, { atomic = false } = {}) {
   const path = findConfig(root);
   if (!path) throw Object.assign(new Error('Project chưa có e2e.config.*'), { status: 404 });
   if ((await lstat(path)).isSymbolicLink()) throw new Error(`Từ chối ghi qua symlink: ${path}`);
   const r = patchE2eConfig(await readFile(path, 'utf8'), changes);
-  if (r.changed.length) await writeFile(path, r.source);
+  if (r.changed.length && !(atomic && r.problems.length)) await writeFile(path, r.source);
   return { changed: r.changed, problems: r.problems, ...(await e2eConfigStatus(root)) };
 }

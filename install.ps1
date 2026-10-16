@@ -150,7 +150,7 @@ if ($PSBoundParameters.Count -eq 0 -and (Can-Ask)) {
     $appCommandSet = $true
     Write-Host '  4. Model AI cho bước agent của e2e:'
     $ids = @($AiProviders.Keys)
-    $def = if ($curAi) { $curAi } else { 'vercel' }
+    $def = if ($curAi) { $curAi } else { 'none' } # mặc định không dùng model: không cần API key
     for ($i = 0; $i -lt $ids.Count; $i++) { Write-Host ("     {0,2}) {1,-18} {2}{3}" -f ($i + 1), $ids[$i], $AiProviders[$ids[$i]][2], $(if ($ids[$i] -eq $def) { '  ← hiện tại / mặc định' } else { '' })) }
     while ($true) {
       $a = Ask '   Chọn số' $def
@@ -170,11 +170,7 @@ if ($PSBoundParameters.Count -eq 0 -and (Can-Ask)) {
         Write-Host '     ! Điều khoản Anthropic không cho sản phẩm bên thứ ba dùng đăng nhập claude.ai nếu chưa được duyệt: chỉ tự dùng trên máy mình.' -ForegroundColor Yellow
         Write-Host '     ! Test ăn chung hạn mức với Claude Code của bạn và chậm hơn API key.' -ForegroundColor Yellow
         if (Ask-YN '   Vẫn dùng claude-code?' $false) { $AiModel = Ask '   Model của Claude Code (haiku | sonnet | opus)' 'sonnet' }
-        else {
-          $Ai = 'anthropic'; Write-Host '     Đổi sang anthropic.'
-          $sec = Read-Host '     Dán ANTHROPIC_API_KEY (Enter để bỏ qua)' -AsSecureString
-          $ApiKey = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))
-        }
+        else { $Ai = 'none'; Write-Host '     Không dùng model (chọn lại sau bằng /e2e-dashboard ai).' }
       }
       'local' { $AiBaseUrl = Ask '   URL server model' 'http://127.0.0.1:11434/v1'; $AiModel = Ask '   Model id' 'gpt-6-luna' }
     }

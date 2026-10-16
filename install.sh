@@ -264,7 +264,7 @@ wizard() {
     [ "$a" = "-" ] && a=""
     APP_CMD="$a"; APP_CMD_SET=1
     printf '  4. Model AI cho bước agent của e2e:\n' >/dev/tty
-    def="${cur_ai:-vercel}"; [ "$def" = custom ] && def=""
+    def="${cur_ai:-none}"; [ "$def" = custom ] && def=""  # mặc định không dùng model: không cần API key
     for ((i = 0; i < ${#AI_IDS[@]}; i++)); do
       printf '     %2d) %-18s %s%s\n' "$((i + 1))" "${AI_IDS[$i]}" "${AI_LABELS[$i]}" "$([ "${AI_IDS[$i]}" = "$def" ] && echo '  ← hiện tại / mặc định' || true)" >/dev/tty
     done
@@ -286,9 +286,7 @@ wizard() {
         printf '     %s! THỬ NGHIỆM: e2e không hỗ trợ chính thức; e2e khuyên dùng API key cho gói Claude (chọn anthropic).%s\n' "$Y" "$N" >/dev/tty
         printf '     %s! Điều khoản Anthropic không cho sản phẩm bên thứ ba dùng đăng nhập claude.ai nếu chưa được duyệt: chỉ tự dùng trên máy mình.%s\n' "$Y" "$N" >/dev/tty
         printf '     %s! Test ăn chung hạn mức với Claude Code của bạn và chậm hơn API key.%s\n' "$Y" "$N" >/dev/tty
-        if ! ask_yn "   Vẫn dùng claude-code?" n; then AI=anthropic; printf '     Đổi sang anthropic.\n' >/dev/tty
-          printf '     %sCần ANTHROPIC_API_KEY. Key lưu vào .env của project (git-ignore, quyền 600).%s\n' "$D" "$N" >/dev/tty
-          API_KEY="$(ask_secret "   Dán ANTHROPIC_API_KEY (Enter để bỏ qua, điền sau trong dashboard)")"
+        if ! ask_yn "   Vẫn dùng claude-code?" n; then AI=none; printf '     Không dùng model (chọn lại sau bằng /e2e-dashboard ai).\n' >/dev/tty
         else AI_MODEL="$(ask "   Model của Claude Code (haiku | sonnet | opus)" "sonnet")"; fi ;;
       local)
         AI_BASE_URL="$(ask "   URL server model" "http://127.0.0.1:11434/v1")"

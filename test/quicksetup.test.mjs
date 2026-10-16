@@ -238,3 +238,76 @@ test('setup không hứa việc nó không làm được: thiếu .env mà khôn
   items = await setupStatus(root, { reporter: { installed: true, version: '1', latest: '1' } });
   assert.equal(items.find((x) => x.id === 'ignore').ok, true);
 });
+
+test('project mobile: cài e2e + @e2e-dev/mobile, không có bước trình duyệt, kiểm adb / Xcode theo platform trong config', async () => {
+  const { mobileTargets } = await import('../server/quicksetup.mjs');
+  const root = project({ devDependencies: { lodash: '1' } });
+  writeFileSync(join(root, 'e2e.config.ts'), "import { mobile } from '@e2e-dev/mobile';\nconst pixel = mobile({ platform: 'android' });\nconst iphone = mobile({ platform: 'ios' });\n");
+  assert.deepEqual(mobileTargets(root, {}, 'linux'), { platforms: ['android', 'ios'], web: false });
+  const plan = await quickSetupPlan(root, { ...base, mobileTools: { adb: false, xcrun: false } });
+  assert.deepEqual(item(plan, 'e2e').cmd, ['npm', 'install', '-D', 'e2e', '@e2e-dev/mobile']);
+  assert.equal(item(plan, 'browsers'), undefined);
+  assert.equal(item(plan, 'android').ok, false);
+  assert.equal(item(plan, 'android').manual, true);
+  assert.match(item(plan, 'ios').detail, /chỉ chạy trên macOS/);
+  const ok = await quickSetupPlan(root, { ...base, mobileTools: { adb: true, xcrun: false } });
+  assert.equal(item(ok, 'android').display, 'npx agent-device doctor --platform android');
+  assert.ok(!ok.steps.includes('android')); // bước chạy tay, không vào Cài tất cả
+});
+
+test('mobile không ghi platform: mặc định theo máy; config trộn web + mobile cần cả hai engine và trình duyệt', async () => {
+  const { mobileTargets } = await import('../server/quicksetup.mjs');
+  const root = project({ devDependencies: { e2e: '1', '@e2e-dev/mobile': '1' } }, ['e2e', '@e2e-dev/mobile']);
+  assert.deepEqual(mobileTargets(root, { '@e2e-dev/mobile': '1' }, 'darwin').platforms, ['ios']);
+  assert.deepEqual(mobileTargets(root, { '@e2e-dev/mobile': '1' }, 'linux').platforms, ['android']);
+  writeFileSync(join(root, 'e2e.config.ts'), "import { web } from '@e2e-dev/web';\nimport { mobile } from '@e2e-dev/mobile';\n");
+  const plan = await quickSetupPlan(root, { ...base, mobileTools: { adb: true, xcrun: false } });
+  assert.deepEqual(item(plan, 'e2e').cmd, ['npm', 'install', '-D', '@e2e-dev/web']);
+  assert.ok(item(plan, 'browsers'));
+  assert.equal(mobileTargets(project({}), {}), null);
+});
+
+test('updateE2ePackages: chỉ gói đã khai báo, lên bản mới nhất bằng trình quản lý gói của project; khoá Quick Setup trong lúc cài', async () => {
+  const { updateE2ePackages } = await import('../server/quicksetup.mjs');
+  const root = project({ devDependencies: { e2e: '^0.17.0', '@e2e-dev/web': '^0.12.0', lodash: '1' } });
+  const latest = async (n) => ({ e2e: '0.21.1', '@e2e-dev/web': '0.15.1', '@e2e-dev/mobile': '0.12.2' })[n];
+  const installed = (n) => ({ e2e: '0.17.0', '@e2e-dev/web': '0.15.1' })[n];
+  let during;
+  const r = await updateE2ePackages(root, { latest, installed, os: 'linux', nodeVersion: '24.9.0', run: async (argv) => ((during = quickSetupRunning(root)), argv.length && 0) });
+  const runs = [];
+  await updateE2ePackages(root, { latest, installed: (n) => ({ e2e: '0.21.1', '@e2e-dev/web': '0.12.0' })[n], os: 'linux', nodeVersion: '24.9.0', run: async (argv) => (runs.push(argv), 0) });
+  assert.deepEqual(runs.map((a) => a.slice(-2)), [['-D', '@e2e-dev/web@0.15.1'], ['install', 'chromium']]); // web mới → cài lại Chromium
+  assert.equal(r.status, 'updated');
+  assert.deepEqual(r.packages, [{ name: 'e2e', from: '0.17.0', to: '0.21.1' }]); // web đã mới nhất, mobile không khai báo
+  assert.equal(r.command, 'npm install -D e2e@0.21.1');
+  assert.equal(during, true);
+  assert.equal(quickSetupRunning(root), false);
+  assert.equal((await updateE2ePackages(root, { latest, installed: (n) => ({ e2e: '0.21.1', '@e2e-dev/web': '0.15.1' })[n], os: 'linux', nodeVersion: '24.9.0', run: () => assert.fail() })).status, 'up-to-date');
+  assert.match((await updateE2ePackages(root, { latest, installed, nodeVersion: '22.12.0', run: () => assert.fail() })).reason, /Node v22\.12\.0/);
+  assert.equal((await updateE2ePackages(project({ dependencies: { lodash: '1' } }), { latest, run: () => assert.fail() })).status, 'skipped');
+  assert.equal((await updateE2ePackages(root, { latest, installed, os: 'linux', nodeVersion: '24.9.0', run: async () => 1 })).status, 'failed');
+  // gói khai báo ở dependencies: cài không -D (giữ đúng mục)
+  const prodRoot = project({ dependencies: { e2e: '^0.17.0' }, devDependencies: { '@e2e-dev/web': '^0.12.0' } });
+  const cmds = [];
+  const pr = await updateE2ePackages(prodRoot, { latest, installed: () => '0.1.0', os: 'linux', nodeVersion: '24.9.0', run: async (a) => (cmds.push(a.join(' ')), 0) });
+  assert.deepEqual(cmds.slice(0, 2), ['npm install -D @e2e-dev/web@0.15.1', 'npm install e2e@0.21.1']);
+  assert.equal(pr.status, 'updated');
+});
+
+test('updateE2ePackages: không hạ bản đang cài mới hơn latest, không đụng gói ghim đúng một bản', async () => {
+  const { updateE2ePackages, newerVersion } = await import('../server/quicksetup.mjs');
+  assert.equal(newerVersion('0.21.1', '0.17.0'), true);
+  assert.equal(newerVersion('0.21.1', '0.22.0-beta.1'), false);
+  assert.equal(newerVersion('0.21.1', '0.21.1-beta.1'), true);
+  assert.equal(newerVersion('0.21.1', '0.21.1'), false);
+  const root = project({ devDependencies: { e2e: '0.17.0', '@e2e-dev/web': '^0.12.0' } });
+  const latest = async (n) => ({ e2e: '0.21.1', '@e2e-dev/web': '0.15.1' })[n];
+  const r = await updateE2ePackages(root, { latest, installed: (n) => ({ e2e: '0.17.0', '@e2e-dev/web': '0.16.0-canary.3' })[n], os: 'linux', nodeVersion: '24.9.0', run: () => assert.fail() });
+  assert.equal(r.status, 'up-to-date');
+  // bản cục bộ / git / workspace: không thay bằng bản trên npm
+  const local = project({ devDependencies: { e2e: 'file:../e2e', '@e2e-dev/web': 'workspace:*' } });
+  assert.equal((await updateE2ePackages(local, { latest, installed: () => '0.1.0', os: 'linux', nodeVersion: '24.9.0', run: () => assert.fail() })).status, 'up-to-date');
+  // đang có run: không cài đè node_modules
+  const busyRun = project({ devDependencies: { e2e: '^0.17.0' } });
+  assert.equal((await updateE2ePackages(busyRun, { latest, installed: () => '0.17.0', os: 'linux', nodeVersion: '24.9.0', idle: () => false, run: () => assert.fail() })).status, 'skipped');
+});

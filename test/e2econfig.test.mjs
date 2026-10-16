@@ -80,3 +80,29 @@ test('updateE2eConfig ghi file; e2eConfigStatus báo chưa có config', async ()
   assert.equal(r.appUrl, 'http://localhost:4000');
   assert.match(readFileSync(join(root, 'e2e.config.ts'), 'utf8'), /localhost:4000/);
 });
+
+const MOBILE = `import type { E2EConfig } from 'e2e';
+import { mobile } from '@e2e-dev/mobile';
+
+const pixel = mobile({ platform: 'android' });
+
+export default {
+  targets: [{ name: 'pixel', engine: pixel, app: { bundleId: 'com.android.settings' } }],
+  workers: 1,
+} satisfies E2EConfig;
+`;
+
+test('config mobile: đọc engine, platform, bundleId; sửa bundleId; nhiều target thì báo sửa tay', () => {
+  const c = readE2eConfig(MOBILE);
+  assert.equal(c.engine, 'mobile');
+  assert.deepEqual(c.platforms, ['android']);
+  assert.deepEqual(c.bundleIds, ['com.android.settings']);
+  assert.equal(c.appUrl, null);
+  const r = patchE2eConfig(MOBILE, { bundleId: 'com.example.shop' });
+  assert.deepEqual(r.changed, ['bundleId']);
+  assert.match(r.source, /bundleId: 'com\.example\.shop'/);
+  assert.deepEqual(patchE2eConfig(r.source, { bundleId: 'com.example.shop' }).changed, []);
+  assert.match(patchE2eConfig(MOBILE, { bundleId: "x'; process.exit()" }).problems[0], /bundleId không hợp lệ/);
+  const two = MOBILE.replace("app: { bundleId: 'com.android.settings' } }", "app: { bundleId: 'a.b' } }, { name: 'ip', engine: pixel, app: { bundleId: 'c.d' } }");
+  assert.match(patchE2eConfig(two, { bundleId: 'x.y' }).problems[0], /2 bundleId/);
+});

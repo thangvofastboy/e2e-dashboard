@@ -345,7 +345,8 @@ export async function main(argv, cwd) {
   // mở dashboard ở thư mục chưa có e2e: chạy `npx e2e init` trước (bỏ qua bằng --no-init)
   let initLines = [];
   if (!root && opening && !argv.includes('--no-init')) {
-    const r = await autoInit(cwd);
+    const e = argv.indexOf('--engine');
+    const r = await autoInit(cwd, { engine: e >= 0 ? argv[e + 1] : undefined });
     if (!r.ok) return { code: 1, out: r.lines.join('\n') };
     root = cwd;
     initLines = r.lines;
@@ -535,7 +536,7 @@ async function quickSetupCli(root, yes) {
   return { code: bad ? 1 : 0, out: bad ? `${bad} bước lỗi.` : 'Quick Setup xong.' };
 }
 
-// `/e2e-dashboard config [--init] [--engine web] [--gateway ID] [--app-url URL] [--app-command "npm run dev"|--no-command] [--yes]`
+// `/e2e-dashboard config [--init] [--engine web|mobile] [--gateway ID] [--app-url URL] [--bundle-id ID] [--app-command "npm run dev"|--no-command] [--yes]`
 // Chưa có e2e.config.*: tạo bằng `e2e init`. Có terminal và không --yes: hỏi URL app và lệnh khởi động (Enter giữ nguyên).
 async function configCli(args, cwd) {
   const { e2eConfigStatus, updateE2eConfig, e2eInitArgv, GATEWAYS } = await import('../server/e2econfig.mjs');
@@ -557,10 +558,12 @@ async function configCli(args, cwd) {
     if (gateway && !AI_PROVIDERS[gateway]) return { code: 1, out: `--gateway phải là một trong: ${AI_IDS.join(', ')}` };
     if (!gateway && interactive) {
       console.log('Model AI cho bước agent (đổi lại được sau bằng /e2e-dashboard ai):');
-      gateway = await choose('Chọn', AI_IDS.map((id) => ({ id, label: `${id.padEnd(18)} ${AI_PROVIDERS[id].label}` })), 'vercel');
+      gateway = await choose('Chọn', AI_IDS.map((id) => ({ id, label: `${id.padEnd(18)} ${AI_PROVIDERS[id].label}` })), 'none');
     }
-    gateway ??= 'vercel';
-    const argv = e2eInitArgv(cwd, { engine: val('--engine') ?? 'web', gateway: GATEWAYS.includes(gateway) ? gateway : 'none' });
+    gateway ??= 'none'; // mặc định không dùng model: không cần API key
+    let engine = val('--engine');
+    if (!engine && interactive) engine = await choose('Engine', [{ id: 'web', label: 'web     Trình duyệt (Chromium / Firefox / WebKit)' }, { id: 'mobile', label: 'mobile  iOS simulator / Android emulator / điện thoại (agent-device)' }], 'web');
+    const argv = e2eInitArgv(cwd, { engine: engine ?? 'web', gateway: GATEWAYS.includes(gateway) ? gateway : 'none' });
     console.log(`$ ${argv.join(' ')}`);
     const code = await spawnStep(cwd, argv, { inherit: true });
     if (code !== 0 || !findConfig(cwd)) return { code: 1, out: `e2e init lỗi (mã ${code}).` };
@@ -568,19 +571,25 @@ async function configCli(args, cwd) {
     if (!GATEWAYS.includes(gateway)) await setAiProvider(root, gateway);
   }
   const cur = await e2eConfigStatus(root);
+  const mobile = cur.engine === 'mobile';
+  const web = !mobile || cur.appUrl != null; // config trộn target web + mobile: hỏi cả URL / lệnh khởi động
   let appUrl = val('--app-url');
+  let bundleId = val('--bundle-id');
   let command = args.includes('--no-command') ? '' : val('--app-command');
-  if (interactive && appUrl === undefined) appUrl = await ask(`URL app đang test${cur.appUrlEnv ? ` (biến ${cur.appUrlEnv} vẫn đè được)` : ''}`, cur.appUrl ?? '');
-  if (interactive && command === undefined) {
+  // target mobile: app là bundleId (một target; nhiều target thì sửa tay), không có URL / dev server
+  if (interactive && mobile && bundleId === undefined && cur.bundleIds.length <= 1) bundleId = (await ask('bundleId app mobile (package Android / bundle id iOS)', cur.bundleIds[0] ?? '')) || undefined;
+  if (interactive && web && appUrl === undefined) appUrl = await ask(`URL app đang test${cur.appUrlEnv ? ` (biến ${cur.appUrlEnv} vẫn đè được)` : ''}`, cur.appUrl ?? '');
+  if (interactive && web && command === undefined) {
     const a = await ask('Lệnh khởi động app để runner tự chạy (vd. npm run dev; "-" = không dùng)', cur.command ?? '');
     command = a === '-' ? '' : a || undefined;
   }
-  const r = await updateE2eConfig(root, { appUrl, command });
+  const r = await updateE2eConfig(root, { appUrl, bundleId, command });
   const lines = [
     r.changed.length ? `Đã cập nhật ${r.file}: ${r.changed.join(', ')}.` : `${r.file}: không có gì thay đổi.`,
     ...r.problems.map((p) => `Lưu ý: ${p}`),
     `- Engine: ${r.engine ?? '?'} · ${r.targets} target`,
-    `- URL app: ${r.appUrl ?? '(không đọc được)'}${r.appUrlEnv ? ` (đè bằng biến ${r.appUrlEnv})` : ''}`,
+    ...(r.engine === 'mobile' ? [`- App mobile (${r.platforms.join(', ') || 'platform mặc định'}): ${r.bundleIds.join(', ') || '(chưa có bundleId)'} · kiểm tra máy ảo: npx agent-device doctor`] : []),
+    ...(r.engine !== 'mobile' || r.appUrl != null ? [`- URL app: ${r.appUrl ?? '(không đọc được)'}${r.appUrlEnv ? ` (đè bằng biến ${r.appUrlEnv})` : ''}`] : []),
     `- Lệnh khởi động app: ${r.command ?? 'không (tự chạy app trước khi test)'}`,
     `- Model cho bước agent: ${r.model ?? 'không (chỉ test bằng locator)'}`,
     `- Reporter dashboard: ${r.reporter ? 'đã gắn' : 'chưa: chạy /e2e-dashboard setup'} · chọn trình duyệt: ${r.browserEnv ? 'có (E2E_BROWSER)' : 'chưa'}`,
@@ -677,7 +686,7 @@ function claudeLoggedIn() {
 // Chưa có e2e.config.*: chạy `npx --yes e2e init --yes …` ở thư mục hiện tại (web, skill + MCP cho Claude Code, chưa cài
 // thư viện — popup 1 Click Setup của dashboard cài tiếp). Không chạy ở thư mục home hoặc thư mục gốc: init ở đó rải
 // package.json / tests vào chỗ không phải project. deps tiêm được để test: run(argv, onLine) → mã thoát, home
-export async function autoInit(cwd, { run, home } = {}) {
+export async function autoInit(cwd, { run, home, engine = 'web' } = {}) {
   const { homedir } = await import('node:os');
   const { parse, resolve: abs } = await import('node:path');
   const dir = abs(cwd);
@@ -686,7 +695,12 @@ export async function autoInit(cwd, { run, home } = {}) {
     return { ok: false, lines: [`Không tìm thấy e2e.config.* và đang ở ${dir === h ? 'thư mục home' : 'thư mục gốc'} (${dir}): không tự chạy \`e2e init\` ở đây.`, 'cd vào thư mục project rồi gõ lại /e2e-dashboard (dashboard sẽ tự chạy npx e2e init).'] };
   }
   const { e2eInitArgv } = await import('../server/e2econfig.mjs');
-  const argv = e2eInitArgv(dir, { engine: 'web', gateway: 'vercel' });
+  let argv;
+  try {
+    argv = e2eInitArgv(dir, { engine, gateway: 'none' }); // --engine mobile: project iOS / Android; mặc định không model, không API key
+  } catch (e) {
+    return { ok: false, lines: [e.message] };
+  }
   const tail = [];
   const onLine = (l) => {
     const t = l.replace(/\x1b\[[0-9;]*m/g, '').trim();

@@ -5,6 +5,7 @@ import { createSelfHeal, crashPathFor } from './selfheal.mjs';
 import { summarizeRun } from './aiextra.mjs';
 import { autoLogBugs } from './autobug.mjs';
 import { syncIndex } from './runindex.mjs';
+import { playwrightToReport } from './playwright.mjs';
 import { readUserConfig, aiPrefs } from './system.mjs';
 import { resolveLinear, detectMcpLinear } from './linear-mcp.mjs';
 import { mkdir, writeFile, rm, readFile, rename } from 'node:fs/promises';
@@ -21,7 +22,7 @@ import { registerProject } from './projects.mjs';
 import { createScheduleRunner, recordRun, scheduleRootAllowed } from './schedules.mjs';
 import { createRunner } from './runner.mjs';
 import { createAi, AI_NO_TOOLS_ARGS } from './ai.mjs';
-import { annotateRun, loadHistory, getRun } from './store.mjs';
+import { annotateRun, loadHistory, getRun, forgetRuns } from './store.mjs';
 import { anomalies } from './insights.mjs';
 import { createApp } from './app.mjs';
 import { createLive } from './live.mjs';
@@ -33,7 +34,7 @@ import { reportSchedule, createReportScheduler, sendReport } from './reports.mjs
 import { publishSite } from './site.mjs';
 import { readSettings } from './settings.mjs';
 import { createLearner, effectiveTestDir, readMemory } from './aimemory.mjs';
-import { quickSetupRunning } from './quicksetup.mjs';
+import { quickSetupRunning, updateE2ePackages } from './quicksetup.mjs';
 
 const UI_DIR = fileURLToPath(new URL('../ui', import.meta.url));
 
@@ -47,7 +48,22 @@ async function readReportId(projectRoot, outputDir) {
 
 // After a dashboard-started run: tag the run it produced, and only if e2e actually wrote a new report
 // (a stop during start-up, a config error or a missing binary leaves the previous one in place).
-export async function finishDashboardRun({ projectRoot, beforeId, rerunOf, outputDir, browser = null }) {
+// playwrightJson: run Playwright (file *.spec.ts) — reporter JSON đổi sang report-1 rồi lưu như run e2e; onArchived nhận kết quả
+// archive (watcher của .e2e/report.json không thấy run này: chỉ mục SQLite, thông báo… cần gọi tay)
+export async function finishDashboardRun({ projectRoot, beforeId, rerunOf, outputDir, browser = null, playwrightJson = null, onArchived = () => {} }) {
+  if (playwrightJson) {
+    let report;
+    try {
+      report = playwrightToReport(JSON.parse(await readFile(playwrightJson, 'utf8')), projectRoot);
+    } catch {
+      return null; // Playwright lỗi trước khi ghi report (config sai, bị dừng sớm): không có run để lưu
+    }
+    const r = await archive(projectRoot, { source: 'dashboard', report }).catch(() => null);
+    if (r?.status !== 'archived') return null;
+    await annotateRun(projectRoot, report.run.id, { launchedBy: 'dashboard', rerunOf: RUN_ID.test(rerunOf ?? '') ? rerunOf : undefined, browser }).catch(() => null);
+    await onArchived(r);
+    return report.run.id;
+  }
   const id = await readReportId(projectRoot, outputDir);
   if (!id || id === beforeId) return null;
   await archive(projectRoot, { source: 'dashboard', outputDir }).catch(() => null); // "exists" when the watcher won
@@ -164,6 +180,7 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
   });
   void syncIndex(projectRoot).catch(() => {}); // chỉ mục SQLite: dựng / bổ sung nền lúc khởi động
   const onArchive = async (r) => {
+    forgetRuns(); // run mới vừa ghi: lần quét đang chạy (bắt đầu trước đó) không có nó
     last = r;
     void syncIndex(projectRoot).catch(() => {});
     if (r.runDir && (r.status === 'archived' || r.status === 'exists')) {
@@ -199,17 +216,28 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
     projectRoot,
     live,
     beforeStart: () => readReportId(projectRoot, cfg.output).then((id) => (beforeId = id)),
-    onExit: async ({ rerunOf, browser }) => {
-      await finishDashboardRun({ projectRoot, beforeId, rerunOf, outputDir: cfg.output, browser });
+    onExit: async ({ rerunOf, browser, playwrightJson }) => {
+      await finishDashboardRun({ projectRoot, beforeId, rerunOf, outputDir: cfg.output, browser, playwrightJson, onArchived: onArchive });
     },
   });
+  // e2e mới nhất (tester-army/e2e) mỗi lần mở dashboard; tắt: "e2e": { "autoUpdate": false } trong ~/.e2e-dashboard/config.json
+  if (readUserConfig().e2e?.autoUpdate !== false && !process.env.NODE_TEST_CONTEXT) {
+    void updateE2ePackages(projectRoot, { idle: () => !runner.state().running && live.snapshot().status !== 'running' }).then((r) => {
+      if (r.status === 'updated') console.log(`[e2e-dashboard] đã cập nhật ${r.packages.map((p) => `${p.name} ${p.from ?? '?'} → ${p.to}`).join(', ')}`);
+      else if (r.status === 'failed') console.error(`[e2e-dashboard] cập nhật e2e lỗi (mã ${r.exitCode}): chạy tay ${r.command}`);
+    }).catch((e) => console.error(`[e2e-dashboard] không kiểm tra được bản e2e mới: ${e.message}`));
+  }
   // Scheduled runs and watch mode share the runner (one run at a time) and skip quarantined tests.
-  const grepInvert = async () => quarantineFlags(await readQuarantine(projectRoot)).args.filter((x) => x !== '--grep-invert');
+  // e2e: grepInvert (một mẫu mỗi test); Playwright (*.spec.ts): grepInvertPw (một regex, kèm tên file)
+  const quarantineOpts = async (root) => {
+    const q = quarantineFlags(await readQuarantine(root));
+    return { grepInvert: q.args.filter((x) => x !== '--grep-invert'), grepInvertPw: q.pw };
+  };
   const startAuto = async (opts) => {
     if (quickSetupRunning(projectRoot)) return { ok: false, error: 'Quick Setup đang cài thư viện' }; // node_modules đang được ghi
     try {
       const { workers, browser, headed } = await readSettings(projectRoot); // worker / trình duyệt / headed mặc định ở Settings
-      return runner.start({ ...opts, ...(workers ? { workers } : {}), browser, headed, grepInvert: await grepInvert() });
+      return runner.start({ ...opts, ...(workers ? { workers } : {}), browser, headed, ...(await quarantineOpts(projectRoot)) });
     } catch (e) {
       return { ok: false, error: e.message };
     }
@@ -225,8 +253,8 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
         projectRoot: root,
         live: createLive(),
         beforeStart: () => readReportId(root, out).then((id) => (before = id)),
-        onExit: async ({ exitCode, browser }) => {
-          await finishDashboardRun({ projectRoot: root, beforeId: before, rerunOf: null, outputDir: out, browser }).catch(() => {});
+        onExit: async ({ exitCode, browser, playwrightJson }) => {
+          await finishDashboardRun({ projectRoot: root, beforeId: before, rerunOf: null, outputDir: out, browser, playwrightJson, onArchived: () => syncIndex(root).catch(() => {}) }).catch(() => {});
           await recordRun(otherRunners.get(root).scheduleId, { exitCode }).catch(() => {});
         },
       }));
@@ -240,8 +268,8 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
       if (quickSetupRunning(root)) return { ok: false, error: 'Quick Setup đang cài thư viện' };
       if (!(await scheduleRootAllowed(s, projectRoot))) return { ok: false, error: 'Project của lịch này đã bị gỡ khỏi Projects: thêm lại project hoặc xoá lịch.' };
       const defaults = await readSettings(root);
-      const q = excludeQuarantined === false ? [] : quarantineFlags(await readQuarantine(root)).args.filter((x) => x !== '--grep-invert');
-      const full = { ...(defaults.workers ? { workers: defaults.workers } : {}), browser: defaults.browser, ...(defaults.headed ? { headed: true } : {}), ...opts, grepInvert: q }; // headed: lịch bật riêng, không thì theo Settings
+      const q = excludeQuarantined === false ? { grepInvert: [], grepInvertPw: null } : await quarantineOpts(root);
+      const full = { ...(defaults.workers ? { workers: defaults.workers } : {}), browser: defaults.browser, ...(defaults.headed ? { headed: true } : {}), ...opts, ...q }; // headed: lịch bật riêng, không thì theo Settings
       if (root === resolve(projectRoot)) return runner.start(full);
       const other = runnerFor(root);
       const r = other.start(full);

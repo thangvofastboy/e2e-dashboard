@@ -16,9 +16,24 @@ export function dropCaches() {
   metaCache.clear();
   for (const k of [...reportCache.keys()]) dropReport(k);
   countCache.clear();
+  listing.clear();
 }
 
+// Các request đến cùng lúc (Overview gọi ~9 API song song, mỗi cái liệt kê run) dùng chung một lần quét đang chạy;
+// xong là bỏ, nên không có dữ liệu cũ. Mỗi người gọi nhận bản sao riêng (có chỗ sắp xếp / sửa mảng, meta)
+// Ghi run / meta thì bỏ lần quét đang chạy (forgetRuns): người gọi sau lần ghi không nhận danh sách cũ
+const listing = new Map();
+export const forgetRuns = () => listing.clear();
 export async function listRuns(root) {
+  let p = listing.get(root);
+  if (!p) {
+    p = scanRuns(root).finally(() => listing.delete(root));
+    listing.set(root, p);
+  }
+  return (await p).map((m) => ({ ...m }));
+}
+
+async function scanRuns(root) {
   if (isLink(join(root, DATA_DIR)) || isLink(runsDir(root))) return [];
   const dirs = await listRunDirs(runsDir(root)); // runs/YYYY/MM/DD/… và bố cục cũ runs/<ISO>_<id>, mới nhất trước
   const live = new Set();
@@ -163,6 +178,7 @@ async function safeWrite(path, text) {
 async function writeMeta(dir, meta) {
   const { dir: _ignored, ...rest } = meta;
   await safeWrite(join(dir, 'meta.json'), JSON.stringify(rest, null, 2));
+  listing.clear();
   return rest;
 }
 

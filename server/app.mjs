@@ -1,10 +1,11 @@
 import { RUN_OPTION_KEYS } from './runner.mjs';
 import { readFile, readdir, stat, lstat, rm, mkdir, writeFile } from 'node:fs/promises';
-import { installedBrowsers, configSupport, validBrowser } from './browsers.mjs';
+import { installedBrowsers, configSupport, configMobileOnly, validBrowser } from './browsers.mjs';
 import { quickSetupPlan, runQuickSetup, quickSetupRunning } from './quicksetup.mjs';
 import { findConfig as findConfigPath } from '../bin/project.mjs';
 import { indexedTestHistory, syncIndex, sqliteSupport, closeIndex, indexPath } from './runindex.mjs';
-import { failuresEvidence, runSummaryEvidence, whySlowEvidence, groupEvidence, triageEvidence, parseTriage, summaryState, testFiles, ticketEvidence, writeNewTest, selectTestsEvidence, reqCoverageEvidence, charterEvidence, testDataEvidence, bugDupeEvidence, locatorBatchEvidence, duplicateEvidence, releaseEvidence, visualEvidence } from './aiextra.mjs';
+import { discoverTests, withUnrun } from './discover.mjs';
+import { failuresEvidence, runSummaryEvidence, whySlowEvidence, groupEvidence, triageEvidence, parseTriage, summaryState, testFiles, ticketEvidence, writeNewTest, selectTestsEvidence, reqCoverageEvidence, charterEvidence, testDataEvidence, bugDupeEvidence, locatorBatchEvidence, duplicateEvidence, splitEvidence, SPLIT_MIN_STEPS, SPLIT_MIN_MS, convertibleTests, convertibleTest, convertEvidence, releaseEvidence, visualEvidence } from './aiextra.mjs';
 import { envSummary, readEnvFile, writeEnvFile, userSummary, writeUser, setupStatus, aiPrefs } from './system.mjs';
 import { createReadStream, readFileSync, existsSync } from 'node:fs';
 import { pipeline } from 'node:stream';
@@ -176,17 +177,18 @@ const runCount = (url, def = 30) => {
 // Quét source (coverage.source) đọc mọi file của repo app: repo frontend vài nghìn file mất ~350 ms mỗi lần.
 // Giữ kết quả 30 giây theo thư mục + danh sách domain bỏ qua (đổi danh sách là khoá mới); lỗi thì không giữ.
 const SCAN_TTL_MS = 30_000;
-const scanCache = new Map();
-function cachedScan(srcDir, ignore) {
-  const key = `${srcDir}\0${ignore.join('\n')}`;
-  const hit = scanCache.get(key);
+// promise giữ SCAN_TTL_MS theo khoá; lỗi thì không giữ
+function ttlCached(cache, key, make) {
+  const hit = cache.get(key);
   if (hit && Date.now() - hit.at < SCAN_TTL_MS) return hit.promise;
-  const promise = scanSource(srcDir, { ignore });
-  promise.catch(() => scanCache.delete(key));
-  if (scanCache.size > 20) scanCache.clear();
-  scanCache.set(key, { at: Date.now(), promise });
+  const promise = make();
+  promise.catch(() => cache.get(key)?.promise === promise && cache.delete(key));
+  if (cache.size > 20) cache.clear();
+  cache.set(key, { at: Date.now(), promise });
   return promise;
 }
+const scanCache = new Map();
+const cachedScan = (srcDir, ignore) => ttlCached(scanCache, `${srcDir}\0${ignore.join('\n')}`, () => scanSource(srcDir, { ignore }));
 
 // Route của app như trang Coverage thấy: thư mục app/pages/router, "coverage.routes", rồi route quét từ "coverage.source"
 async function coverageRoutes(projectRoot, cfg, ignoreDomains = []) {
@@ -271,8 +273,8 @@ const IDLE_RUNNER = { start: () => ({ ok: false, error: 'unavailable' }), stop: 
 // lịch sử từng test: từ chỉ mục SQLite khi có, không thì parse report như cũ
 // model / effort chọn cho riêng một lần gọi AI: hợp lệ thì vào khoá cache, sai thì bỏ (ai.run cũng bỏ)
 const aiVariant = (b) => [validModel(b?.model) ? b.model : '', AI_EFFORTS.includes(b?.effort) ? b.effort : ''].join('|').replace(/^\|$/, '');
-const SUITE_AI = new Set(['quality-review', 'ask', 'followup', 'route-test', 'ticket-test', 'select-tests', 'locator-batch', 'duplicate-tests', 'release-notes', 'req-coverage', 'explore-charter', 'test-data', 'bug-dupe']);
-const SUITE_EVIDENCE = new Set(['ticket-test', 'select-tests', 'locator-batch', 'duplicate-tests', 'release-notes', 'req-coverage', 'explore-charter', 'test-data', 'bug-dupe']);
+const SUITE_AI = new Set(['quality-review', 'ask', 'followup', 'route-test', 'ticket-test', 'select-tests', 'locator-batch', 'duplicate-tests', 'split-tests', 'convert-test', 'release-notes', 'req-coverage', 'explore-charter', 'test-data', 'bug-dupe']);
+const SUITE_EVIDENCE = new Set(['ticket-test', 'select-tests', 'locator-batch', 'duplicate-tests', 'split-tests', 'convert-test', 'release-notes', 'req-coverage', 'explore-charter', 'test-data', 'bug-dupe']);
 const DRAFT_DIR = /^(?!.*(?:^|\/)\.)(?!.*\.\.)[\w./ -]{1,150}$/;
 const historyTable = async (root, n) => (await indexedTestHistory(root, n).catch(() => null)) ?? testHistory(root, n);
 
@@ -287,9 +289,22 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
     if (abs === resolve(projectRoot)) return projectRoot;
     return (await readRegistry(env)).some((x) => resolve(x.root) === abs) ? abs : null;
   };
+  // test trên đĩa (quét thư mục test của project): giữ 30 giây theo project + thư mục test; lưu bản nháp thì xoá
+  const discoverCache = new Map();
+  const cachedDiscover = async (root) => {
+    const testDir = (await readSettings(root)).testDir;
+    return ttlCached(discoverCache, `${root}\0${testDir}`, () => discoverTests(root, testDir).catch(() => []));
+  };
+  // danh sách file test .ts (quét cả project, đọc từng file .ts): giữ 30 giây như cachedScan; lưu bản nháp thì xoá
+  const convertibleCache = new Map();
+  const cachedConvertible = () => ttlCached(convertibleCache, projectRoot, () => convertibleTests(projectRoot));
   const contextOf = async (root) => {
     const st = await readSettings(root);
-    return { root, testDir: st.testDir, sources: st.sources, prompt: st.prompt, memory: await learner.status(root) };
+    // URL app + lệnh khởi động của chính project đó (e2e.config.* trong thư mục project)
+    const { e2eConfigStatus } = await import('./e2econfig.mjs');
+    const c = await e2eConfigStatus(root).catch(() => null);
+    const app = c?.exists ? { file: c.file, engine: c.engine, appUrl: c.appUrl, appUrlEnv: c.appUrlEnv, bundleIds: c.bundleIds, platforms: c.platforms, command: c.command } : null;
+    return { root, testDir: st.testDir, sources: st.sources, prompt: st.prompt, app, memory: await learner.status(root) };
   };
   // lưu bối cảnh; nội dung đổi so với lần AI ghi nhớ gần nhất thì cho AI đọc lại (chạy nền)
   const saveContext = async (root, patch) => {
@@ -426,15 +441,22 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         const [machine, run] = await Promise.all([machineResources(projectRoot), runnerResources(pid)]);
         return send(res, 200, { machine, app: { dashboard: dashboardResources(), runner: run } });
       }
-      if (p === '/api/settings') return send(res, 200, { ...(await readSettings(projectRoot)), autoWorkers: autoWorkers(), browsers: { installed: installedBrowsers(env), configReadsBrowser: configSupport(findConfigPath(projectRoot)) } });
+      if (p === '/api/settings') {
+        const cfgPath = findConfigPath(projectRoot);
+        return send(res, 200, { ...(await readSettings(projectRoot)), autoWorkers: autoWorkers(), browsers: { installed: installedBrowsers(env), configReadsBrowser: configSupport(cfgPath), mobileOnly: configMobileOnly(cfgPath) } });
+      }
       if (p === '/api/info') return send(res, 200, { version: VERSION, pid: process.pid, project: basename(projectRoot), root: projectRoot, reporter: reporterStatus(projectRoot), lastArchive: lastArchive(), thresholds: readConfig(projectRoot).thresholds ?? null, runner: runner.state() });
       if (p === '/api/runs') return send(res, 200, await listRuns(projectRoot));
+      if (p === '/api/tests/convertible') return send(res, 200, { files: await cachedConvertible() }); // trước /api/tests: file .ts chưa chạy được bằng e2e
       if (p === '/api/tests') {
         // ?root=: test của project khác trong danh sách Projects (form Lịch chạy); thư mục lạ thì từ chối
         const root = url.searchParams.get('root');
-        if (!root) return send(res, 200, await historyTable(projectRoot, 10));
-        if (!(await readRegistry(env)).some((x) => resolve(x.root) === resolve(root))) return send(res, 400, { error: 'Project chưa có trong danh sách Projects' });
-        return send(res, 200, await historyTable(resolve(root), 10));
+        if (root && !(await readRegistry(env)).some((x) => resolve(x.root) === resolve(root))) return send(res, 400, { error: 'Project chưa có trong danh sách Projects' });
+        const r = root ? resolve(root) : projectRoot;
+        const rows = await historyTable(r, 10);
+        // ?unrun=1 (trang Tests, chọn test của lịch): thêm test có trong mã nhưng chưa chạy lần nào; Overview không gửi
+        if (url.searchParams.get('unrun') !== '1') return send(res, 200, rows);
+        return send(res, 200, withUnrun(rows, await cachedDiscover(r)));
       }
       if (p === '/api/schedules') {
         const schedules = (await readSchedules(env)).map((s) => ({ ...s, next: nextFire(s) }));
@@ -493,14 +515,17 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         if (!a || !b) return send(res, 400, { error: 'a and b are required' });
         return send(res, 200, compareBranches(await loadHistory(projectRoot, 100), a, b));
       }
+      // bộ đổi nhanh project (menu trái): chỉ tên + thư mục, không quét lịch sử run của từng project như /api/projects
+      if (p === '/api/projects/brief') return send(res, 200, { projects: (await readRegistry(env)).map((x) => ({ root: resolve(x.root), name: x.name ?? basename(x.root), current: resolve(x.root) === resolve(projectRoot), exists: existsSync(x.root) })) });
       if (p === '/api/projects') {
         // kèm tóm tắt bối cảnh AI của từng project (thẻ ở trang Projects)
         const projects = await projectSummaries(projectRoot, env);
-        for (const x of projects) {
-          if (!x.exists) continue;
-          const st = await learner.status(x.root).catch(() => null);
+        const { e2eConfigStatus } = await import('./e2econfig.mjs');
+        await Promise.all(projects.filter((x) => x.exists).map(async (x) => {
+          const [st, c] = await Promise.all([learner.status(x.root).catch(() => null), e2eConfigStatus(x.root).catch(() => null)]);
           if (st) x.ai = { state: st.state, updatedAt: st.updatedAt, testDir: st.inputs.testDir, sources: st.inputs.sources.length };
-        }
+          x.appUrl = c?.appUrl ?? (c?.bundleIds?.length ? c.bundleIds.join(', ') : null); // mobile: bundleId
+        }));
         return send(res, 200, { projects });
       }
       if (p === '/api/project-context') {
@@ -807,7 +832,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return send(res, 200, await deleteChat(projectRoot, (await readBody(req)).id));
       }
       if (p.startsWith('/api/ai/')) {
-        const action = /^\/api\/ai\/(analyze-failure|analyze-run|suggest-locator|why-flaky|explore-to-test|route-test|ask|followup|run-summary|why-slow|explain-group|ticket-test|select-tests|locator-batch|duplicate-tests|release-notes|explain-visual|repro-steps|severity|dedupe-failures|quality-review|req-coverage|explore-charter|test-data|bug-dupe)$/.exec(p)?.[1];
+        const action = /^\/api\/ai\/(analyze-failure|analyze-run|suggest-locator|why-flaky|explore-to-test|route-test|ask|followup|run-summary|why-slow|explain-group|ticket-test|select-tests|locator-batch|duplicate-tests|split-tests|convert-test|release-notes|explain-visual|repro-steps|severity|dedupe-failures|quality-review|req-coverage|explore-charter|test-data|bug-dupe)$/.exec(p)?.[1];
         if (!action) return send(res, 404, { error: 'unknown action' });
         const body = await readBody(req);
         // a question about the whole suite, or a follow-up in an existing session, needs no run
@@ -870,6 +895,16 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
             evidence = locatorBatchEvidence(cands);
           } else if (action === 'duplicate-tests') {
             evidence = duplicateEvidence(await loadHistory(projectRoot, 1));
+          } else if (action === 'convert-test') {
+            // chỉ file có trong danh sách quét (không đọc file tuỳ ý của máy)
+            const file = await convertibleTest(projectRoot, body.path);
+            if (!file) return send(res, 400, { error: 'File không có trong danh sách file test .ts của project' });
+            evidence = await convertEvidence(projectRoot, file);
+          } else if (action === 'split-tests') {
+            // body.key: một test (trang chi tiết test); không có thì các test lớn nhất của suite
+            if (body.key !== undefined && (typeof body.key !== 'string' || body.key.length > 1000)) return send(res, 400, { error: 'invalid key' });
+            evidence = splitEvidence(await loadHistory(projectRoot, 10), body.key || null);
+            if (!evidence) return send(res, 400, { error: body.key ? 'Test này chưa có step nào trong 10 run gần nhất' : `Không có test nào quá lớn (≥ ${SPLIT_MIN_STEPS} step hoặc ≥ ${SPLIT_MIN_MS / 1000}s) trong 10 run gần nhất` });
           } else if (action === 'req-coverage' || action === 'test-data' || action === 'bug-dupe') {
             // cả ba nhận văn bản người dùng dán (yêu cầu / mô tả field / mô tả bug)
             if (typeof body.text !== 'string' || body.text.trim().length < 10 || body.text.length > 8000) return send(res, 400, { error: 'Nhập nội dung (10–8000 ký tự)' });
@@ -1186,7 +1221,10 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         const b = await readBody(req);
         const rel = String(b.path ?? '').replace(/^\.\//, '');
         try {
-          return send(res, 200, await writeNewTest(projectRoot, rel, b.content));
+          const saved = await writeNewTest(projectRoot, rel, b.content);
+          convertibleCache.clear(); // file .e2e.ts mới: cột "Đã có" của danh sách file .ts đổi
+          discoverCache.clear(); // và hiện ngay ở cây Tests (chưa chạy)
+          return send(res, 200, saved);
         } catch (e) {
           if (e.status) return send(res, e.status, { error: e.message });
           throw e;
@@ -1223,11 +1261,11 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       if (p === '/api/selfheal/approve') return send(res, 200, { ok: Boolean(await selfHeal?.approve(String((await readBody(req)).fingerprint ?? ''))) });
       if (p === '/api/selfheal/reject') return send(res, 200, { ok: Boolean(await selfHeal?.reject(String((await readBody(req)).fingerprint ?? ''))) });
       if (p === '/api/system/e2e-config') {
-        // chỉ URL app và lệnh khởi động; e2econfig kiểm tra URL (http/https) và lệnh (không nháy, không ; | & $)
-        const { appUrl, command } = await readBody(req);
-        if ((appUrl !== undefined && typeof appUrl !== 'string') || (command !== undefined && typeof command !== 'string') || String(appUrl ?? '').length > 2000 || String(command ?? '').length > 500) return send(res, 400, { error: 'invalid body' });
+        // chỉ URL app (hoặc bundleId của target mobile) và lệnh khởi động; e2econfig kiểm tra URL (http/https) và lệnh (không nháy, không ; | & $)
+        const { appUrl, bundleId, command } = await readBody(req);
+        if ((bundleId !== undefined && typeof bundleId !== 'string') || (appUrl !== undefined && typeof appUrl !== 'string') || (command !== undefined && typeof command !== 'string') || String(appUrl ?? '').length > 2000 || String(command ?? '').length > 500) return send(res, 400, { error: 'invalid body' });
         const { updateE2eConfig } = await import('./e2econfig.mjs');
-        return send(res, 200, await updateE2eConfig(projectRoot, { appUrl, command }));
+        return send(res, 200, await updateE2eConfig(projectRoot, { appUrl, bundleId, command }));
       }
       if (p === '/api/system/ai') {
         // đổi provider trong e2e.config (+ API key vào .env); gói npm cài qua Quick Setup, đăng nhập subscription chạy trong terminal
@@ -1364,12 +1402,29 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       }
       if (p === '/api/project-context') {
         // thư mục test, các thư mục khác + mô tả (và prompt nếu gửi) của một project; lưu xong AI đọc lại để ghi nhớ
-        const { root: r, testDir, sources, prompt } = await readBody(req);
+        const { root: r, testDir, sources, prompt, appUrl, bundleId, command } = await readBody(req);
         const root = await knownRoot(r);
         if (!root) return send(res, 400, { error: 'Project chưa có trong danh sách Projects' });
         if ((testDir !== undefined && typeof testDir !== 'string') || (sources !== undefined && !Array.isArray(sources)) || (prompt !== undefined && typeof prompt !== 'string')) return send(res, 400, { error: 'invalid body' });
+        if ((appUrl !== undefined && typeof appUrl !== 'string') || (bundleId !== undefined && typeof bundleId !== 'string') || (command !== undefined && typeof command !== 'string') || String(appUrl ?? '').length > 2000 || String(command ?? '').length > 500) return send(res, 400, { error: 'invalid body' });
         try {
-          return send(res, 200, await saveContext(root, { testDir, sources, prompt }));
+          // URL app / lệnh khởi động ghi vào e2e.config.* của project đó (cùng kiểm tra như trang Setup)
+          // thứ tự để không lưu nửa vời: kiểm tra config (không ghi) → lưu bối cảnh (testDir / sources sai thì ném lỗi ở đây,
+          // config chưa đổi) → ghi config. Trường app không đổi thì UI không gửi, nên bước cuối hầu như không lỗi
+          const app = appUrl !== undefined || bundleId !== undefined || command !== undefined ? { appUrl, bundleId, command } : null;
+          if (app) {
+            const { checkE2eConfig } = await import('./e2econfig.mjs');
+            const problems = await checkE2eConfig(root, app);
+            if (problems.length) return send(res, 400, { error: problems.join(' · ') });
+          }
+          const ctx = await saveContext(root, { testDir, sources, prompt });
+          if (app) {
+            const { updateE2eConfig } = await import('./e2econfig.mjs');
+            const c = await updateE2eConfig(root, app, { atomic: true });
+            if (c.problems.length) return send(res, 400, { error: c.problems.join(' · ') });
+            ctx.app = { file: c.file, engine: c.engine, appUrl: c.appUrl, appUrlEnv: c.appUrlEnv, bundleIds: c.bundleIds, platforms: c.platforms, command: c.command };
+          }
+          return send(res, 200, ctx);
         } catch (e) {
           return send(res, e.status ?? 400, { error: e.message });
         }
@@ -1400,7 +1455,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return send(res, 200, { removed: await forgetProject(root, env) });
       }
       if (p === '/api/run') {
-        if (quickSetupRunning(projectRoot)) return send(res, 409, { error: 'Quick Setup đang cài thư viện: chờ cài xong rồi chạy test' });
+        if (quickSetupRunning(projectRoot)) return send(res, 409, { error: 'Đang cài thư viện (Quick Setup hoặc tự cập nhật e2e khi mở dashboard): chờ cài xong rồi chạy test' });
         const body = await readBody(req);
         if (body.rerunOf !== undefined && !RUN_ID.test(String(body.rerunOf))) return send(res, 400, { error: 'invalid rerunOf' });
         let out;
@@ -1417,14 +1472,20 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
           else if (!validBrowser(body.browser)) return send(res, 400, { error: 'Trình duyệt phải là chromium, firefox hoặc webkit' });
           // headed: không gửi = mặc định ở Settings (tắt)
           if (body.headed === undefined && (await readSettings(projectRoot)).headed) opts.headed = true;
-          if (body.excludeQuarantined === true) opts.grepInvert = quarantineFlags(await readQuarantine(projectRoot)).args.filter((x) => x !== '--grep-invert');
+          if (body.excludeQuarantined === true) {
+            const q = quarantineFlags(await readQuarantine(projectRoot));
+            opts.grepInvert = q.args.filter((x) => x !== '--grep-invert');
+            opts.grepInvertPw = q.pw; // run Playwright (*.spec.ts) dùng mẫu riêng
+          }
           out = runner.start(opts);
         } catch (e) {
           return send(res, 400, { error: e.message });
         }
         if (out.ok) return send(res, 202, { started: true, pid: out.pid ?? null });
         if (out.error === 'busy') return send(res, 409, { error: 'busy' });
-        return send(res, 503, { error: out.error === 'e2e-missing' ? 'Project chưa cài e2e (node_modules/e2e) — chạy npm install rồi thử lại.' : out.error });
+        if (out.error === 'mixed-runners') return send(res, 400, { error: 'Không chạy chung file *.e2e.ts với file Playwright (*.spec.ts) trong một lần: chọn riêng từng loại' });
+        const MISSING = { 'e2e-missing': 'Project chưa cài e2e (node_modules/e2e) — chạy npm install rồi thử lại.', 'playwright-missing': 'Project chưa cài @playwright/test (node_modules/@playwright/test) để chạy file *.spec.ts — chạy npm install rồi thử lại.', 'unsafe-path': 'Thư mục .e2e-dashboard là symlink: từ chối ghi report Playwright qua đó.' };
+        return send(res, 503, { error: MISSING[out.error] ?? out.error });
       }
       if (p === '/api/junk/clean') {
         const b = await readBody(req);

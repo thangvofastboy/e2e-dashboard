@@ -128,7 +128,8 @@ export function openRunDialog({ tests, targets = [], agents = [], allTargets = t
       }
     }
     const note = dlg.querySelector('[data-browser-note]');
-    if (s.browsers && !s.browsers.configReadsBrowser) {
+    if (s.browsers?.mobileOnly) sel.closest('.fld').hidden = true; // project mobile: chạy trên máy ảo / điện thoại, không có trình duyệt
+    else if (s.browsers && !s.browsers.configReadsBrowser) {
       note.hidden = false;
       note.textContent = 'e2e.config chưa đọc E2E_BROWSER: chọn trình duyệt ở đây chưa có tác dụng. Chạy /e2e-dashboard setup để bật.';
     }

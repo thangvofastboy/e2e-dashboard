@@ -5,6 +5,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
+import { configEngines } from './engines.mjs';
 
 export const BROWSERS = ['chromium', 'firefox', 'webkit'];
 export const validBrowser = (b) => BROWSERS.includes(b);
@@ -35,6 +36,8 @@ export const configReadsBrowser = (source) => /E2E_BROWSER/.test(source);
 // thêm `browser: process.env.E2E_BROWSER ?? 'chromium'` vào web({...}) (hoặc web()) — giữ nguyên mọi thứ khác
 export function patchBrowser(source) {
   if (configReadsBrowser(source)) return { source, patched: false, reason: 'already' };
+  // project chỉ có target mobile (@e2e-dev/mobile): không có trình duyệt để chọn
+  if (!/\bweb\(/.test(source) && configEngines(source).mobile) return { source, patched: false, reason: 'mobile' };
   const LINE = "browser: process.env.E2E_BROWSER ?? 'chromium'";
   if (/\bweb\(\s*\)/.test(source)) return { source: source.replace(/\bweb\(\s*\)/, `web({ ${LINE} })`), patched: true };
   if (/\bweb\(\s*\{/.test(source)) return { source: source.replace(/\bweb\(\s*\{/, (m) => `${m} ${LINE},`), patched: true };
@@ -44,6 +47,17 @@ export function patchBrowser(source) {
 export function configSupport(configPath) {
   try {
     return configReadsBrowser(readFileSync(configPath, 'utf8'));
+  } catch {
+    return false;
+  }
+}
+
+// config chỉ có target mobile: form chạy ẩn ô chọn trình duyệt
+export function configMobileOnly(configPath) {
+  try {
+    const src = readFileSync(configPath, 'utf8');
+    const e = configEngines(src);
+    return e.mobile && !e.web;
   } catch {
     return false;
   }

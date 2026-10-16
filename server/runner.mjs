@@ -2,7 +2,9 @@
 // e2e overwrites report.json, so two concurrent runs would clobber each other.
 import { spawn as nodeSpawn } from 'node:child_process';
 import { validBrowser } from './browsers.mjs';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdirSync, rmSync } from 'node:fs';
+import { runnerFor, resolvePlaywrightBin, playwrightArgs, playwrightJsonPath } from './playwright.mjs';
+import { isLink } from '../reporter/e2e-dashboard.reporter.mjs';
 import { join, resolve, dirname } from 'node:path';
 
 // file or file:line, relative to the project: no flags, no spaces, no `..`, no absolute or drive paths
@@ -97,7 +99,7 @@ export function resolveE2eBin(projectRoot) {
 }
 
 
-export function createRunner({ projectRoot, live, spawnImpl = nodeSpawn, onExit = () => {}, graceMs = 10_000, resolveBin = resolveE2eBin, killImpl = (target, sig) => process.kill(target, sig), beforeStart = () => null }) {
+export function createRunner({ projectRoot, live, spawnImpl = nodeSpawn, onExit = () => {}, graceMs = 10_000, resolveBin = resolveE2eBin, resolvePwBin = resolvePlaywrightBin, killImpl = (target, sig) => process.kill(target, sig), beforeStart = () => null }) {
   let child = null;
   let timers = [];
   const now = () => new Date().toISOString();
@@ -130,13 +132,29 @@ export function createRunner({ projectRoot, live, spawnImpl = nodeSpawn, onExit 
     start(opts = {}) {
       if (child || live.snapshot().status === 'running') return { ok: false, error: 'busy' }; // also a terminal run
       const args = buildRunArgs(opts); // throws "invalid …" for the caller to turn into 400
-      const bin = resolveBin(projectRoot);
-      if (!bin) return { ok: false, error: 'e2e-missing' };
-      const before = beforeStart();
+      // file không phải *.e2e.ts (Playwright *.spec.ts): chạy bằng Playwright của project. Quyết định ở đây để
+      // nút Chạy, lịch chạy và MCP (cùng đi qua start) đều theo
+      const kind = runnerFor(opts.tests);
+      if (kind === 'mixed') return { ok: false, error: 'mixed-runners' };
+      const pw = kind === 'playwright';
+      const bin = pw ? resolvePwBin(projectRoot) : resolveBin(projectRoot);
+      if (!bin) return { ok: false, error: pw ? 'playwright-missing' : 'e2e-missing' };
+      const before = pw ? null : beforeStart();
       const detached = process.platform !== 'win32'; // own process group, so Stop reaches e2e and its browsers
       // trình duyệt: config đọc E2E_BROWSER (web({ browser: process.env.E2E_BROWSER ?? 'chromium' }))
       const env = { ...process.env, FORCE_COLOR: '0', ...(validBrowser(opts.browser) ? { E2E_BROWSER: opts.browser } : {}) };
-      const proc = spawnImpl(process.execPath, [bin, ...args.slice(1)], { cwd: projectRoot, detached, stdio: ['ignore', 'pipe', 'pipe'], env });
+      const playwrightJson = pw ? playwrightJsonPath(projectRoot) : null;
+      // repo lạ có thể commit sẵn .e2e-dashboard -> ~/…: không tạo / xoá / ghi file qua symlink
+      if (pw && [dirname(dirname(playwrightJson)), dirname(playwrightJson)].some(isLink)) return { ok: false, error: 'unsafe-path' };
+      if (pw) {
+        mkdirSync(dirname(playwrightJson), { recursive: true });
+        rmSync(playwrightJson, { force: true }); // file cũ không bị lưu lại thành run mới khi lần này lỗi trước khi ghi
+        env.PLAYWRIGHT_JSON_OUTPUT_FILE = playwrightJson;
+        env.PLAYWRIGHT_JSON_OUTPUT_NAME = playwrightJson; // Playwright < 1.47 không biết _FILE: JSON sẽ đổ ra stdout
+      }
+      // ponytail: Playwright nhận tests / project / cách ly / retries / repeat / workers / grep / headed…; tag, trace, cache bỏ qua
+      const argv = pw ? playwrightArgs(opts) : args.slice(1);
+      const proc = spawnImpl(process.execPath, [bin, ...argv], { cwd: projectRoot, detached, stdio: ['ignore', 'pipe', 'pipe'], env });
       child = proc;
       // Without the reporter this is all the Live page gets; with it, the reporter's own run-started replaces it.
       live.apply({ type: 'run-started', at: now(), runId: null });
@@ -150,7 +168,7 @@ export function createRunner({ projectRoot, live, spawnImpl = nodeSpawn, onExit 
         if (error) live.apply({ type: 'run-error', at: now(), error: { message: error.message } });
         // the reporter's own run-finished carries the real verdict (blocked, interrupted…): keep it
         if (live.snapshot().status === 'running') live.apply({ type: 'run-finished', at: now(), status: exitCode === 0 ? 'passed' : 'failed', exitCode });
-        onExit({ exitCode, rerunOf: opts.rerunOf ?? null, before, browser: validBrowser(opts.browser) ? opts.browser : null });
+        onExit({ exitCode, rerunOf: opts.rerunOf ?? null, before, browser: !pw && validBrowser(opts.browser) ? opts.browser : null, playwrightJson }); // Playwright chọn trình duyệt theo project của nó
       };
       proc.on('close', (code) => done(code));
       proc.on('error', (e) => done(null, e));

@@ -113,3 +113,31 @@ export function pollMemory(root, onUpdate, every = 3000) {
 }
 
 export const relearn = (root) => postJson('/api/project-memory/refresh', { root });
+
+// Ô app đang test của e2e.config.*: web = URL (+ lệnh khởi động), mobile = bundleId (một target; nhiều target thì chỉ xem).
+// row(label, control, hint) dựng một dòng theo kiểu form của trang gọi. Đọc lại bằng readAppFields.
+export function appFieldsHtml(app, row) {
+  const mobile = app.engine === 'mobile';
+  const out = [];
+  if (!mobile || app.appUrl != null) out.push(row('URL app đang test', `<input type="url" name="appUrl" value="${escapeHtml(app.appUrl ?? '')}" placeholder="http://localhost:3000" autocomplete="off" spellcheck="false" aria-label="URL app đang test"${!mobile && app.appUrl != null ? ' required' : ''}>`, app.appUrlEnv ? `Biến <code>${escapeHtml(app.appUrlEnv)}</code> lúc chạy vẫn đè được giá trị này.` : 'Trang mà app.open() mở.'));
+  if (mobile) {
+    const ids = app.bundleIds ?? [];
+    const plat = app.platforms?.length ? ` (${app.platforms.join(', ')})` : '';
+    out.push(ids.length > 1
+      ? row(`App mobile${plat}`, `<code>${ids.map(escapeHtml).join('</code>, <code>')}</code>`, `${ids.length} target có bundleId riêng: sửa tay trong ${escapeHtml(app.file)}.`)
+      : row(`App mobile: bundleId${plat}`, `<input name="bundleId" value="${escapeHtml(ids[0] ?? '')}" placeholder="com.example.app" autocomplete="off" spellcheck="false" aria-label="bundleId app mobile"${ids.length ? ' required' : ''}>`, ids.length ? 'Package Android / bundle id iOS mà app.open() mở trên máy ảo hoặc điện thoại.' : `Config chưa có <code>bundleId</code>: thêm tay <code>app: { bundleId: … }</code> vào target trong ${escapeHtml(app.file)}.`));
+  }
+  if (!mobile || app.command) out.push(row('Lệnh khởi động app', `<input name="command" value="${escapeHtml(app.command ?? '')}" placeholder="npm run dev" autocomplete="off" spellcheck="false" aria-label="Lệnh khởi động app">`, 'Runner tự chạy lệnh này trước test và tắt sau đó. Để trống nếu bạn tự chạy app.'));
+  return out.join('');
+}
+
+// giá trị các ô app người dùng đã sửa (ô không hiện / không đổi thì không gửi: server giữ nguyên). Lệnh đọc từ config
+// là bản rút gọn (args có khoảng trắng / $ không quay về y nguyên): gửi lại khi không đổi sẽ ghi sai hoặc bị từ chối
+export function readAppFields(f) {
+  const v = {};
+  for (const k of ['appUrl', 'bundleId', 'command']) {
+    const el = f.elements[k];
+    if (el && el.value.trim() !== el.defaultValue.trim()) v[k] = el.value.trim();
+  }
+  return v;
+}

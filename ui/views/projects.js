@@ -4,7 +4,7 @@ import { getJson, postJson } from '../api.js';
 import { pageHead, emptyBox, fmtPct, toneFor, copyToClipboard } from '../analysis.js';
 import { escapeHtml, fmtRelative, statusBadge, countChips } from '../format.js';
 import { icon } from '../icons.js';
-import { contextFieldsHtml, readContextFields, bindContextFields, memoryHtml, pollMemory, relearn } from '../project-context.js';
+import { appFieldsHtml, readAppFields, contextFieldsHtml, readContextFields, bindContextFields, memoryHtml, pollMemory, relearn } from '../project-context.js';
 
 const HEALTH_ICON = { good: 'check', warn: 'alert', bad: 'x' };
 const AI_STATE = { ready: 'đã ghi nhớ', stale: 'cần đọc lại', learning: 'đang đọc dự án…', none: 'chưa ghi nhớ', error: 'lỗi khi đọc' };
@@ -22,8 +22,9 @@ export function projectCardHtml(p) {
       <span class="project-chips">${p.url && !p.current ? `<span class="chip tone-info" title="Dashboard của project này đang chạy">${icon('activity', { size: 12 })}Đang mở</span>` : ''}${h ? `<span class="chip tone-${h.health}" title="Health score">${icon(HEALTH_ICON[h.health], { size: 12 })}${escapeHtml(h.score)}/100</span>` : ''}</span></header>
     <div class="muted small project-path"><code>${escapeHtml(p.root)}</code>${p.exists ? '' : ' · <span class="tone-bad">thư mục không còn</span>'}</div>
     ${p.latest ? `<div class="project-latest small">${statusBadge(p.latest.status)} ${countChips(p.latest.summary)} <span class="muted">${escapeHtml(fmtRelative(p.latest.startedAt))}${p.latest.branch ? ` · ${escapeHtml(p.latest.branch)}` : ''} · pass <span class="tone-${toneFor(p.passRate)}">${fmtPct(p.passRate)}</span> · ${escapeHtml(p.runs)} run</span></div>` : '<p class="muted small">Chưa có run nào.</p>'}
+    ${p.appUrl ? `<div class="small muted project-app">${icon('external', { size: 12 })} App: <code>${escapeHtml(p.appUrl)}</code></div>` : ''}
     ${p.ai ? `<div class="small muted project-ai">${icon('sparkles', { size: 12 })} AI: ${escapeHtml(AI_STATE[p.ai.state] ?? p.ai.state)} · test: <code>${escapeHtml(p.ai.testDir || '?')}</code> · ${escapeHtml(p.ai.sources)} thư mục khác</div>` : ''}
-    <footer>${main}<span class="project-tools"><button type="button" class="icon-btn" data-copy-cmd="${escapeHtml(cmd)}" aria-label="Copy lệnh mở trong terminal" title="Copy lệnh mở trong terminal">${icon('copy', { size: 14 })}</button><button type="button" class="icon-btn" data-edit="${escapeHtml(p.root)}" data-name="${escapeHtml(p.name)}"${p.current ? ' data-current' : ''} aria-label="Sửa project (prompt, thư mục)" title="Sửa project (prompt, thư mục)">${icon('edit', { size: 14 })}</button>${p.current ? '' : `<button type="button" class="icon-btn" data-forget="${escapeHtml(p.root)}" aria-label="Bỏ khỏi danh sách" title="Bỏ khỏi danh sách">${icon('close', { size: 14 })}</button>`}</span></footer>
+    <footer>${main}<span class="project-tools"><button type="button" class="icon-btn" data-copy-cmd="${escapeHtml(cmd)}" aria-label="Copy lệnh mở trong terminal" title="Copy lệnh mở trong terminal">${icon('copy', { size: 14 })}</button><button type="button" class="icon-btn" data-edit="${escapeHtml(p.root)}" data-name="${escapeHtml(p.name)}"${p.current ? ' data-current' : ''} aria-label="Sửa project (URL app, prompt, thư mục)" title="Sửa project (URL app, prompt, thư mục)">${icon('edit', { size: 14 })}</button>${p.current ? '' : `<button type="button" class="icon-btn" data-forget="${escapeHtml(p.root)}" aria-label="Bỏ khỏi danh sách" title="Bỏ khỏi danh sách">${icon('close', { size: 14 })}</button>`}</span></footer>
   </article>`;
 }
 
@@ -74,6 +75,12 @@ export async function renderProjects(main) {
   return () => stopPoll();
 }
 
+// URL app / bundleId + lệnh khởi động: ghi vào e2e.config.* của project (mỗi project một cấu hình riêng)
+function appFields(app) {
+  if (!app) return '<p class="muted small">Project chưa có e2e.config.*: chưa đặt được app đang test. Tạo bằng <code>/e2e-dashboard config --init</code> trong thư mục project.</p>';
+  return appFieldsHtml(app, (label, control, hint) => `<label class="fb-field"><span>${escapeHtml(label)} <span class="muted small">(lưu vào ${escapeHtml(app.file)})</span></span>${control}<small class="muted">${hint}</small></label>`);
+}
+
 // Hộp chọn thư mục: duyệt cây thư mục phía server (trình duyệt không trả đường dẫn tuyệt đối), hoặc gõ thẳng đường dẫn.
 // Trả về { path, name } (name khi mở để sửa), hoặc null khi Huỷ. lockPath: chỉ sửa tên (project đang mở).
 // Hộp Thêm / Sửa project: tên, thư mục project, thư mục chứa test, các thư mục khác (tuỳ chọn) kèm mô tả, và trạng thái
@@ -94,6 +101,7 @@ async function projectDialog({ root, name, current = false, isNew = false }) {
       <label class="fb-field"><span>Tên hiển thị</span><input name="name" maxlength="80" required value="${escapeHtml(name ?? '')}"></label>
       <label class="fb-field"><span>Thư mục project${current ? ' <span class="muted small">(project đang mở, không đổi được)</span>' : ''}</span>
         <span class="ctx-path"><input name="root" value="${escapeHtml(root)}" autocomplete="off" spellcheck="false"${current || isNew ? ' readonly' : ''}>${current || isNew ? '' : `<button type="button" class="small-btn" data-pick-root>${icon('folder', { size: 13 })}Chọn…</button>`}</span></label>
+      ${appFields(ctx.app)}
       ${contextFieldsHtml(ctx)}
       <div data-mem>${memoryHtml(ctx.memory)}</div>
       <p class="err small tone-bad" data-err hidden></p>
@@ -136,7 +144,8 @@ async function projectDialog({ root, name, current = false, isNew = false }) {
       try {
         // đổi tên / chuyển thư mục trước: bối cảnh lưu trong thư mục project (mới)
         if (!isNew || f.name.value.trim() !== name) await postJson('/api/projects/update', { root, name: f.name.value.trim(), ...(current || isNew ? {} : { newRoot }) });
-        const r = await postJson('/api/project-context', { root: current || isNew ? root : newRoot, testDir: v.testDir, sources: v.sources, prompt: v.prompt });
+        const app = ctx.app ? readAppFields(f) : {};
+        const r = await postJson('/api/project-context', { root: current || isNew ? root : newRoot, testDir: v.testDir, sources: v.sources, prompt: v.prompt, ...app });
         saved = true;
         showMem(r.memory);
         toast(r.memory.state === 'learning' ? 'Đã lưu. AI đang đọc dự án để ghi nhớ (chạy nền, xem tiến độ ở thẻ project)' : 'Đã lưu project');
