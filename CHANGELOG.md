@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.20.1 — 2026-10-16
+
+- **Sửa file test là thấy ngay ở trang Tests**: cây test đối chiếu với mã hiện tại. Test đã xoá / đổi tên và file đã xoá không còn hiện; số dòng theo mã mới, nên nút Chạy chạy đúng test (không cần Reset dữ liệu).
+- **Test mới thêm** hiện với nhãn *chưa chạy*, cả ở trang Tests lẫn ô chọn test của lịch chạy; Overview vẫn chỉ đếm test đã chạy.
+- File có tiêu đề động (`${…}`) không làm ẩn test nào trong lịch sử.
+
 ## v0.20.0 — 2026-10-16
 
 - **URL app theo từng project**: hộp *Sửa project* có ô **URL app đang test** (project mobile: **bundleId**) và **Lệnh khởi động app**, lưu thẳng vào `e2e.config.*` của project đó; thẻ project hiện URL. Có mục lỗi thì không ghi gì.
