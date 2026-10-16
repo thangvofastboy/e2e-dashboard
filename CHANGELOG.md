@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.19.1 — 2026-10-16
+
+- **Nút chỉ có icon** (chú giải, phóng to, ghim, đóng, copy, sửa…): chỉ hiện icon có màu, không nền ô; rê chuột có nền nhạt, đang bật có nền tô nhạt.
+- **Mỗi icon một màu theo loại** ở cả tiêu đề trang / panel / dialog, chú thích chart, nút icon và cột git (trước đây các chỗ này ép một màu chung); icon dấu cộng vào nhóm xanh lá.
+- **Bộ lọc trạng thái ở Triage**: dạng chip không nền, chip đang chọn gạch chân theo màu trạng thái, vẫn có viền focus khi dùng bàn phím.
+- **Sửa lỗi**: nút chú giải / ghim / phóng to cạnh tiêu đề trang bị lệch hàng; thanh Đường / Vùng / Cột / Bậc có vòng sáng thừa ở nút đang chọn; icon ở vùng nguy hiểm (Dọn dẹp), hộp xác nhận nguy hiểm và tiêu đề SLO mất màu đỏ / màu trạng thái.
+
 ## v0.19.0 — 2026-10-16
 
 - **Giao diện tuỳ chọn** (*Cài đặt hệ thống › Giao diện*): **Bảng màu** (Mặc định, Nord, Solarized, Tương phản cao), **Màu nhấn** (xanh dương, tím, xanh ngọc, hồng, cam), **Mật độ** (Thoáng / Vừa / Gọn), **Bo góc** (Vuông / Vừa / Tròn), **Kiểu biểu đồ**. Mỗi bảng màu và màu nhấn có bản sáng và tối, chữ trên nút đạt tương phản ≥ 4.5:1 ở mọi tổ hợp.
