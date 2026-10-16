@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.20.0 — 2026-10-16
+
+- **URL app theo từng project**: hộp *Sửa project* có ô **URL app đang test** (project mobile: **bundleId**) và **Lệnh khởi động app**, lưu thẳng vào `e2e.config.*` của project đó; thẻ project hiện URL. Có mục lỗi thì không ghi gì.
+- **Đổi nhanh project**: ô chọn project ở đầu menu trái (khi có từ 2 project), giữ nguyên trang đang xem.
+- **E2E mobile** (`@e2e-dev/mobile`, iOS / Android): Quick Setup cài engine mobile, bỏ bước trình duyệt, kiểm tra Android SDK / Xcode (gợi ý `npx agent-device doctor`); sửa bundleId ở Setup / Projects; `/e2e-dashboard --engine mobile` và `config --init` hỏi web / mobile; form chạy ẩn ô trình duyệt cho project chỉ có mobile.
+- **Chạy thẳng file Playwright** (`*.spec.ts`): dashboard gọi Playwright của project, kết quả lưu thành run như e2e (đếm theo từng test case, có step); chạy lại theo project (`--project`), bỏ qua test đang cách ly.
+- **Tests**: hiện cả test có trong mã nhưng **chưa chạy** (quét thư mục test, nhãn *chưa chạy*); mục **File test .ts chưa chạy được bằng e2e** với nút *Chạy* (Playwright) và **AI chuyển sang .e2e.ts** (lưu file mới bên cạnh, file gốc giữ nguyên).
+- **AI chia nhỏ test lớn**: trang Tests và trang chi tiết test; AI đề xuất tách test nhiều step / chạy lâu thành các test case nhỏ độc lập, kèm code.
+- **Tự cập nhật e2e** mỗi lần mở dashboard: nâng `e2e` và `@e2e-dev/*` lên bản mới nhất (chỉ nâng, chỉ khai báo `^` / `~`, không khi đang có run, cài lại Chromium khi engine web đổi). Tắt: `"e2e": { "autoUpdate": false }` trong `~/.e2e-dashboard/config.json`.
+- **Mặc định không cần API key**: cài đặt, `e2e init` và `/e2e-dashboard config` mặc định không dùng model; Quick Setup coi API key là tuỳ chọn (chỉ cần cho `agent.act` / `agent.assert`).
+- **Nhanh hơn**: các API của Overview dùng chung một lần đọc danh sách run; cache quét file test; nhớ kết quả dò công cụ hệ thống; trang Projects đọc các project song song; ô đổi project dùng API nhẹ.
+- **Giao diện**: ô đường dẫn trong hộp Thêm / Sửa project rộng hơn.
+- **Sửa lỗi**: tự cập nhật không hạ bản / không đổi mục `dependencies`; Playwright bản cũ vẫn lưu được report; danh sách run không cũ sau khi lưu / ghim; form chạy không còn ô target rỗng; config trộn web + mobile vẫn hiện tuỳ chọn trình duyệt.
+
 ## v0.19.1 — 2026-10-16
 
 - **Nút chỉ có icon** (chú giải, phóng to, ghim, đóng, copy, sửa…): chỉ hiện icon có màu, không nền ô; rê chuột có nền nhạt, đang bật có nền tô nhạt.
