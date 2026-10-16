@@ -4,7 +4,7 @@ import { installedBrowsers, configSupport, configMobileOnly, validBrowser } from
 import { quickSetupPlan, runQuickSetup, quickSetupRunning } from './quicksetup.mjs';
 import { findConfig as findConfigPath } from '../bin/project.mjs';
 import { indexedTestHistory, syncIndex, sqliteSupport, closeIndex, indexPath } from './runindex.mjs';
-import { discoverTests, withUnrun } from './discover.mjs';
+import { discoverTests, reconcile } from './discover.mjs';
 import { failuresEvidence, runSummaryEvidence, whySlowEvidence, groupEvidence, triageEvidence, parseTriage, summaryState, testFiles, ticketEvidence, writeNewTest, selectTestsEvidence, reqCoverageEvidence, charterEvidence, testDataEvidence, bugDupeEvidence, locatorBatchEvidence, duplicateEvidence, splitEvidence, SPLIT_MIN_STEPS, SPLIT_MIN_MS, convertibleTests, convertibleTest, convertEvidence, releaseEvidence, visualEvidence } from './aiextra.mjs';
 import { envSummary, readEnvFile, writeEnvFile, userSummary, writeUser, setupStatus, aiPrefs } from './system.mjs';
 import { createReadStream, readFileSync, existsSync } from 'node:fs';
@@ -289,12 +289,8 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
     if (abs === resolve(projectRoot)) return projectRoot;
     return (await readRegistry(env)).some((x) => resolve(x.root) === abs) ? abs : null;
   };
-  // test trên đĩa (quét thư mục test của project): giữ 30 giây theo project + thư mục test; lưu bản nháp thì xoá
-  const discoverCache = new Map();
-  const cachedDiscover = async (root) => {
-    const testDir = (await readSettings(root)).testDir;
-    return ttlCached(discoverCache, `${root}\0${testDir}`, () => discoverTests(root, testDir).catch(() => []));
-  };
+  // test trên đĩa (thư mục test của project): quét mỗi lần, mỗi file nhớ theo mtime nên sửa file là thấy ngay
+  const scanTests = async (root) => discoverTests(root, (await readSettings(root)).testDir).catch(() => ({ tests: [], files: new Map() }));
   // danh sách file test .ts (quét cả project, đọc từng file .ts): giữ 30 giây như cachedScan; lưu bản nháp thì xoá
   const convertibleCache = new Map();
   const cachedConvertible = () => ttlCached(convertibleCache, projectRoot, () => convertibleTests(projectRoot));
@@ -453,10 +449,10 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         const root = url.searchParams.get('root');
         if (root && !(await readRegistry(env)).some((x) => resolve(x.root) === resolve(root))) return send(res, 400, { error: 'Project chưa có trong danh sách Projects' });
         const r = root ? resolve(root) : projectRoot;
-        const rows = await historyTable(r, 10);
-        // ?unrun=1 (trang Tests, chọn test của lịch): thêm test có trong mã nhưng chưa chạy lần nào; Overview không gửi
-        if (url.searchParams.get('unrun') !== '1') return send(res, 200, rows);
-        return send(res, 200, withUnrun(rows, await cachedDiscover(r)));
+        // lịch sử khớp với mã hiện tại: test đã xoá / đổi tên ẩn đi, số dòng theo mã mới (không cần Reset dữ liệu);
+        // ?unrun=1 (trang Tests, chọn test của lịch): thêm test có trong mã nhưng chưa chạy lần nào
+        const [rows, found] = await Promise.all([historyTable(r, 10), scanTests(r)]);
+        return send(res, 200, reconcile(rows, found, r, { addUnrun: url.searchParams.get('unrun') === '1' }));
       }
       if (p === '/api/schedules') {
         const schedules = (await readSchedules(env)).map((s) => ({ ...s, next: nextFire(s) }));
@@ -1223,7 +1219,6 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         try {
           const saved = await writeNewTest(projectRoot, rel, b.content);
           convertibleCache.clear(); // file .e2e.ts mới: cột "Đã có" của danh sách file .ts đổi
-          discoverCache.clear(); // và hiện ngay ở cây Tests (chưa chạy)
           return send(res, 200, saved);
         } catch (e) {
           if (e.status) return send(res, e.status, { error: e.message });

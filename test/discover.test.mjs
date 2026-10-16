@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { discoverTests, withUnrun } from '../server/discover.mjs';
+import { discoverTests, reconcile } from '../server/discover.mjs';
 import { selectionToRun } from '../ui/model.js';
 
 const project = () => {
@@ -20,23 +20,47 @@ const project = () => {
 
 test('discoverTests: tiêu đề + dòng của *.e2e.ts và file Playwright; bỏ vitest, helper; giới hạn trong thư mục test', async () => {
   const root = project();
-  const all = await discoverTests(root, 'tests');
-  assert.deepEqual(all, [
+  const { tests, files } = await discoverTests(root, 'tests');
+  assert.deepEqual(tests, [
     { file: 'tests/a/login.e2e.ts', title: 'đăng nhập', line: 3, runner: 'e2e' },
     { file: 'tests/a/login.e2e.ts', title: "quên 'mật khẩu'", line: 4, runner: 'e2e' },
     { file: 'tests/old.spec.ts', title: 'một', line: 3, runner: 'playwright' },
   ]);
-  assert.equal((await discoverTests(root)).length, 4); // không đặt thư mục test: cả project
-  assert.deepEqual(await discoverTests(root, '../'), []); // ngoài project
+  assert.deepEqual([...files.keys()], ['tests/a/login.e2e.ts', 'tests/old.spec.ts']);
+  assert.equal((await discoverTests(root)).tests.length, 4); // không đặt thư mục test: cả project
+  assert.deepEqual((await discoverTests(root, '../')).tests, []); // ngoài project
 });
 
-test('withUnrun: chỉ thêm file chưa có trong lịch sử; chọn chạy không mang target / agent rỗng', async () => {
+const hist = (file, title, line, extra = {}) => ({ key: `${file}::${title}|web|default`, title, file, line, tags: [], target: 'web', agent: 'default', history: [{ status: 'passed' }], ...extra });
+
+test('reconcile: sửa file test là thấy ngay — dòng mới, test xoá / file xoá ẩn đi, test mới hiện "chưa chạy"', async () => {
   const root = project();
-  const hist = [{ key: 'k', title: 'đăng nhập', file: 'tests/a/login.e2e.ts', line: 3, tags: [], target: 'web', agent: 'default', history: [{ status: 'passed' }] }];
-  const rows = withUnrun(hist, await discoverTests(root, 'tests'));
-  assert.equal(rows.length, 2);
-  const u = rows[1];
-  assert.deepEqual([u.file, u.unrun, u.runner, u.history], ['tests/old.spec.ts', true, 'playwright', []]);
-  assert.deepEqual(selectionToRun(rows.map((r) => ({ ...r, id: r.key })), new Set([u.key])), { tests: ['tests/old.spec.ts:3'], targets: [], agents: [] });
-  assert.equal(withUnrun(hist, []), hist);
+  const rows = [
+    hist('tests/a/login.e2e.ts', 'Nhóm › đăng nhập', 3),
+    hist('tests/a/login.e2e.ts', 'tên cũ đã đổi', 9),
+    hist('tests/da-xoa.e2e.ts', 'file đã xoá', 1),
+    hist('ngoai/x.e2e.ts', 'ngoài thư mục test', 1), // không quét, file còn: giữ
+  ];
+  mkdirSync(join(root, 'ngoai'));
+  writeFileSync(join(root, 'ngoai', 'x.e2e.ts'), "test('ngoài thư mục test', async () => {});\n");
+  // sửa file: chèn 2 dòng, đổi tên một test
+  writeFileSync(join(root, 'tests', 'a', 'login.e2e.ts'), "import { test } from 'e2e';\n// mới\n// mới\n\ntest('đăng nhập', async () => {});\ntest('tên mới', async () => {});\n");
+  const out = reconcile(rows, await discoverTests(root, 'tests'), root);
+  assert.deepEqual(out.map((r) => [r.file, r.title, r.line, Boolean(r.unrun)]), [
+    ['tests/a/login.e2e.ts', 'Nhóm › đăng nhập', 5, false],
+    ['ngoai/x.e2e.ts', 'ngoài thư mục test', 1, false],
+    ['tests/a/login.e2e.ts', 'tên mới', 6, true],
+    ['tests/old.spec.ts', 'một', 3, true],
+  ]);
+  assert.equal(reconcile(rows, await discoverTests(root, 'tests'), root, { addUnrun: false }).some((r) => r.unrun), false);
+  const u = out.find((r) => r.title === 'tên mới');
+  assert.deepEqual(selectionToRun(out.map((r) => ({ ...r, id: r.key })), new Set([u.key])), { tests: ['tests/a/login.e2e.ts:6'], targets: [], agents: [] });
+});
+
+test('reconcile: file có tiêu đề động (`${…}`) không ẩn test lịch sử, không thêm dòng template trùng', async () => {
+  const root = project();
+  writeFileSync(join(root, 'tests', 'dyn.e2e.ts'), "for (const s of list) {\n  test(`${s}: mở được`, async () => {});\n}\n");
+  const rows = [hist('tests/dyn.e2e.ts', 'Clients: mở được', 2)];
+  const out = reconcile(rows, await discoverTests(root, 'tests'), root).filter((r) => r.file === 'tests/dyn.e2e.ts');
+  assert.deepEqual(out.map((r) => r.title), ['Clients: mở được']);
 });
