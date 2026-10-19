@@ -53,6 +53,8 @@ import { validateFeedback, buildIssue, rateOk, createIssue, SECRET } from './fee
 import { commentIfNewBug, signatureOf } from './knownbug.mjs';
 import { resolveLinear, detectMcpLinear } from './linear-mcp.mjs';
 import { createLinearIssuesApi } from './linear-issues.mjs';
+import { createRecorderApi } from './recorder-api.mjs';
+import { createRecorder } from './recorder-session.mjs';
 import { findDuplicates, splitCandidates, actionPrompt, latestWithResults } from './dupes.mjs';
 import { analyzeQuality } from './quality.mjs';
 import { machineResources, runnerResources, dashboardResources } from './resources.mjs';
@@ -278,7 +280,7 @@ const SUITE_EVIDENCE = new Set(['ticket-test', 'select-tests', 'locator-batch', 
 const DRAFT_DIR = /^(?!.*(?:^|\/)\.)(?!.*\.\.)[\w./ -]{1,150}$/;
 const historyTable = async (root, n) => (await indexedTestHistory(root, n).catch(() => null)) ?? testHistory(root, n);
 
-export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER, ai = NO_AI, qcAi = null, env = process.env, linearFetch, mcpDetect = detectMcpLinear, github = createGithub({ projectRoot }), ghImport = importFromGithub, automation = null, tracking = null, selfHeal = null, learner: givenLearner = null }) {
+export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {}, lastArchive = () => null, runner = IDLE_RUNNER, ai = NO_AI, qcAi = null, env = process.env, linearFetch, mcpDetect = detectMcpLinear, github = createGithub({ projectRoot }), ghImport = importFromGithub, automation = null, tracking = null, selfHeal = null, learner: givenLearner = null, recorder = createRecorder({ projectRoot }) }) {
   // AI ghi nhớ dự án (server/aimemory.mjs): main.mjs truyền learner riêng mỗi project; test / mặc định dùng `ai`
   const learner = givenLearner ?? createLearner({ aiFor: () => ai });
   // project được phép đọc / sửa bối cảnh: project đang mở hoặc có trong danh sách Projects
@@ -325,6 +327,7 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
     return final;
   };
   const linearIssuesApi = createLinearIssuesApi({ projectRoot, linearBackend, runAi: runAiText });
+  const recorderApi = createRecorderApi({ projectRoot, runAi: runAiText, recorder });
   const NO_LINEAR = 'Chưa có Linear: nhập LINEAR_API_KEY ở Cài đặt hệ thống → Tích hợp, hoặc đăng nhập MCP Linear cho Claude CLI (chạy `claude`, gõ /mcp).';
   let avgByKey = new Map();
   const refreshAverages = () =>
@@ -383,6 +386,10 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
     const ui = { 'content-security-policy': UI_CSP, 'cache-control': 'no-store' };
     if (p.startsWith('/api/linear/issues')) {
       const out = await linearIssuesApi(req, p, req.method, readBody);
+      if (out) return send(res, out.status, out.body);
+    }
+    if (p.startsWith('/api/record/')) {
+      const out = await recorderApi(req, p, req.method, readBody);
       if (out) return send(res, out.status, out.body);
     }
     if (req.method === 'GET') {

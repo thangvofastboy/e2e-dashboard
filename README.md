@@ -115,6 +115,7 @@
 | 🗂️ | **Thu gọn menu & phóng to** | Menu trái gập thành thanh icon; mỗi chart, bảng, danh sách phóng to toàn màn hình (Esc để thoát) |
 | 🧾 | **Linear có xem trước** | Sửa tiêu đề và nội dung, xem trước, nhờ AI viết lại theo giọng tự nhiên, đính kèm ảnh minh hoạ trước khi gửi |
 | 🎟️ | **Issue Linear → testcase → e2e** | Lấy issue được giao cho các email đã chọn (lọc theo status), AI đọc mô tả và comment rồi đề xuất testcase; sửa, lưu, rồi AI viết `tests/linear/<ID>.e2e.ts` (không ghi đè file có sẵn) |
+| 🎬 | **Record → testcase → test** | Mở trình duyệt, thao tác thật: dashboard ghi lại bằng `playwright codegen`, AI viết testcase kèm kết quả mong đợi, bạn sửa rồi lưu `tests/recorded/<tên>.spec.ts` (chạy ngay bằng runner Playwright); tuỳ chọn AI Gen `*.e2e.ts`. Mật khẩu / token bị che thành `process.env.E2E_SECRET_<n>`. Cần máy có màn hình. |
 | 🧠 | **Model calls (`--ai-trace`)** | Tab *Model* ở Run detail: từng lần gọi model của test (model, token, độ trễ, prompt và phản hồi đầy đủ khi mở), từ `ai-trace.json` |
 | 🧭 | **Phân loại lỗi theo lớp** | Lỗi hạ tầng / cấu hình (model provider, credential, worker…) không tính vào pass rate; cổng chất lượng báo riêng, Run detail hiện nhãn và ý nghĩa exit code |
 | ♻️ | **Replay cache** | Danh sách bản ghi theo test (tuổi, action, dung lượng), cảnh báo bản ghi cũ, xoá theo test / bản ghi mồ côi / toàn bộ (tương đương `e2e cache ls\|stats\|clear`) |
@@ -560,6 +561,14 @@ Các trang ở nhóm **Phân tích** trên sidebar; mỗi trang chọn được 
 4. **Gen e2e**: AI đọc quy ước của project (`e2e.config.*`, vài file `.e2e.ts`) rồi viết một file `tests/linear/<ID>.e2e.ts`, mỗi testcase một `test()`. File đã có thì báo lỗi, không ghi đè.
 
 Cần Linear API key hoặc MCP Linear đã đăng nhập (như *Gửi Linear*). Nội dung issue và comment được coi là dữ liệu, không phải chỉ dẫn cho AI.
+**🎬 Record → testcase → test.** Trang *Record thao tác*: nhập URL và tên rồi bấm **Record**. Dashboard mở trình duyệt thật kèm cửa sổ Inspector của `playwright codegen`; thao tác như người dùng, bấm nút assert trong Inspector để thêm kiểm tra, rồi đóng cửa sổ (hoặc bấm **Dừng**).
+
+1. **Testcase**: các thao tác thành bước đọc được; AI gom thành testcase và viết kết quả mong đợi (kiểm tra bạn thêm trong Inspector được coi là bằng chứng chắc chắn). AI lỗi hoặc chưa cấu hình thì vẫn có testcase, bạn điền tay.
+2. **Sửa và lưu**: sửa tiêu đề, bước, kết quả mong đợi, đổi tên, rồi **Lưu**: ghi `tests/recorded/<tên>.spec.ts` và `<tên>.cases.json`. Trùng tên thì báo 409, không ghi đè; đổi tên rồi lưu lại.
+3. **AI Gen e2e** (tuỳ chọn): AI chuyển testcase đã lưu sang `tests/recorded/<tên>.e2e.ts` theo runner `e2e`.
+
+Giá trị nhạy cảm (ô mật khẩu, OTP, PIN, thẻ, token, query `?token=`…) bị thay bằng `process.env.E2E_SECRET_<n>` trước khi lưu và trước khi gửi cho AI; trang liệt kê các biến cần đặt trong `.env` hoặc môi trường trước khi chạy test. Chỉ ghi được khi dashboard chạy trên máy có màn hình (Linux cần `DISPLAY` hoặc `WAYLAND_DISPLAY`) và đã cài chromium (`npx @e2e-dev/web install chromium`).
+
 
 **📰 Digest tuần.** Trang *Digest tuần* hoặc `/e2e-dashboard digest`: số run, pass rate so với tuần trước, token, replay cache, health score, test mới fail, flaky, nhóm lỗi, step chậm nhất. Muốn tự động hằng tuần: tạo Routine trong Claude Code chạy `/e2e-dashboard digest`.
 

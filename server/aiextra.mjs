@@ -232,9 +232,9 @@ export async function convertEvidence(root, file) {
 export const DRAFT_PATH = /^(?!\/)(?!.*(?:^|\/)\.)(?!.*\.\.)[\w./ -]{1,200}\.e2e\.ts$/;
 
 // Ghi file test mới trong project: đuôi .e2e.ts, không ghi đè, không đi qua symlink. Lỗi có status 400 / 409.
-export async function writeNewTest(root, rel, content) {
+export async function writeNewTest(root, rel, content, pattern = DRAFT_PATH) {
   const fail = (status, error) => Object.assign(new Error(error), { status });
-  if (!DRAFT_PATH.test(rel) || typeof content !== 'string' || !content.trim() || content.length > 200_000) throw fail(400, 'Đường dẫn phải là file .e2e.ts trong project (không có .., không thư mục ẩn)');
+  if (!pattern.test(rel) || typeof content !== 'string' || !content.trim() || content.length > 200_000) throw fail(400, pattern === DRAFT_PATH ? 'Đường dẫn phải là file .e2e.ts trong project (không có .., không thư mục ẩn)' : 'Đường dẫn hoặc nội dung file không hợp lệ (không có .., không thư mục ẩn, tối đa 200000 ký tự)');
   const full = join(root, rel);
   if (existsSync(full)) throw fail(409, `${rel} đã tồn tại: đổi tên rồi lưu lại`);
   const parts = rel.split('/');

@@ -25,6 +25,7 @@ import { createAi, AI_NO_TOOLS_ARGS } from './ai.mjs';
 import { annotateRun, loadHistory, getRun, forgetRuns } from './store.mjs';
 import { anomalies } from './insights.mjs';
 import { createApp } from './app.mjs';
+import { createRecorder } from './recorder-session.mjs';
 import { createLive } from './live.mjs';
 import { watchReport, outputFromArtifactsRoot } from './watch.mjs';
 import { checkAlerts } from './tracking.mjs';
@@ -352,7 +353,9 @@ export async function startServer({ projectRoot, port, token, uiDir = UI_DIR, re
   const selfHeal = createSelfHeal({ projectRoot });
   selfHeal.ingestCrashes();
   watchCrashes(projectRoot);
+  const recorder = createRecorder({ projectRoot });
   const app = createApp({
+    recorder,
     selfHeal,
     tracking,
     automation,
@@ -395,6 +398,7 @@ export async function startServer({ projectRoot, port, token, uiDir = UI_DIR, re
     token,
     url: `http://127.0.0.1:${bound}/?token=${token}`,
     async close() {
+      recorder.close(); // phiên codegen đang mở không được mồ côi khi server tắt
       watcher.close();
       scheduler.close();
       userSchedules.close();

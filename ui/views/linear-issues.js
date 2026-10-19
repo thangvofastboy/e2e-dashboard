@@ -24,9 +24,9 @@ function liIssuesTable(items) {
     }).join('')}</tbody></table></div></section>`;
 }
 
-// Bảng sửa testcase: mỗi testcase là một khối; ô bước viết mỗi dòng một bước
-export function liEditorHtml(ed, item) {
-  const cards = ed.testcases.map((t, k) => `<article class="tc-card" data-tc="${k}">
+// Danh sách thẻ testcase: mỗi testcase là một khối; ô bước viết mỗi dòng một bước. Dùng chung với trang Record.
+export function tcCardsHtml(testcases) {
+  const cards = testcases.map((t, k) => `<article class="tc-card" data-tc="${k}">
       <header class="tc-head"><span class="tc-no">TC ${k + 1}</span>
         <input class="tc-title" data-f="title" value="${escapeHtml(t.title)}" placeholder="Tiêu đề testcase" aria-label="Tiêu đề testcase ${k + 1}">
         <button type="button" class="icon-btn tc-del" data-tc-del="${k}" aria-label="Xoá testcase ${k + 1}" title="Xoá testcase">${icon('close', { size: 14 })}</button></header>
@@ -36,8 +36,13 @@ export function liEditorHtml(ed, item) {
         <label class="tc-field"><span class="tc-label">${icon('check', { size: 13 })}Kết quả mong đợi</span>
           <textarea data-f="expected" rows="4" placeholder="Hệ thống hiển thị…" aria-label="Kết quả mong đợi testcase ${k + 1}">${escapeHtml(t.expected)}</textarea></label>
       </div></article>`).join('');
+  return cards ? `<div class="tc-list">${cards}</div>` : '<p class="muted small">Chưa có testcase.</p>';
+}
+
+// Bảng sửa testcase của một issue: thẻ testcase + nút thêm / Gen e2e / Lưu
+export function liEditorHtml(ed, item) {
   return `<section class="panel tc-editor"><h2>${icon('ticket', { size: 15 })} Testcase của ${escapeHtml(item.identifier)} <span class="chip">${ed.testcases.length} testcase</span></h2>
-    ${cards ? `<div class="tc-list">${cards}</div>` : '<p class="muted small">Chưa có testcase.</p>'}
+    ${tcCardsHtml(ed.testcases)}
     <div class="tc-actions">
       <button type="button" data-tc-add>${icon('plus', { size: 14 })}<span class="tc-btn-text">Thêm testcase</span></button>
       <span class="tc-spacer"></span>
@@ -47,13 +52,14 @@ export function liEditorHtml(ed, item) {
 }
 
 // Đọc các ô đang sửa thành mảng testcase. Dòng trống trong ô bước bị bỏ ở server.
-function liReadEditor(main) {
+export function readTcCards(main) {
   return [...main.querySelectorAll('[data-tc]')].map((card) => ({
     title: card.querySelector('[data-f="title"]').value,
     steps: card.querySelector('[data-f="steps"]').value.split('\n'),
     expected: card.querySelector('[data-f="expected"]').value,
   }));
 }
+const liReadEditor = readTcCards;
 
 // Gọi API với nút tạm khoá; lỗi hiện toast (bỏ tiền tố mã HTTP như các trang khác)
 async function liBusy(btn, fn) {

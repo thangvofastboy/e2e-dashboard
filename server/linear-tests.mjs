@@ -5,8 +5,8 @@ const MAX_TITLE = 200;
 const MAX_STEP = 500;
 const MAX_STEPS = 30;
 const MAX_EXPECTED = 1000;
-const clip = (s, n) => String(s ?? '').slice(0, n);
-const noFence = (s) => String(s ?? '').replace(/<(\/?)untrusted-data/gi, '‹$1untrusted-data');
+export const clip = (s, n) => String(s ?? '').slice(0, n);
+export const noFence = (s) => String(s ?? '').replace(/<(\/?)untrusted-data/gi, '‹$1untrusted-data');
 
 // Testcase do AI đề xuất hoặc người dùng sửa tay: kiểm tra và chuẩn hoá. Sai thì ném 400.
 export function normalizeTestcase(t, i) {

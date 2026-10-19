@@ -1,5 +1,9 @@
 # Changelog
 
+## Chưa phát hành
+
+- **Record thao tác → testcase → test**: trang *Record thao tác* mở trình duyệt qua `playwright codegen`, ghi lại thao tác, AI sinh testcase và kết quả mong đợi, bạn sửa rồi lưu `tests/recorded/<tên>.spec.ts` (chạy bằng runner Playwright có sẵn); tuỳ chọn **AI Gen e2e** tạo `*.e2e.ts`. Mật khẩu / token bị che thành `process.env.E2E_SECRET_<n>` trước khi lưu và trước khi gửi cho AI. Cần máy có màn hình.
+
 ## v0.23.1 — 2026-10-19
 
 - **Sửa `/e2e-dashboard pane`**: từ v0.22.0 lệnh này luôn báo "Pane E2E chưa có" dù đã cài mod, vì Claude Code từ chối chạy một lệnh khác từ trong hook đang chờ. Giờ plugin trả lời ngay rồi mở `/e2e-pane` từ một timer; chưa cài mod thì hiện toast hướng dẫn cài. `/e2e-pane` gõ trực tiếp vẫn dùng được ở mọi bản.

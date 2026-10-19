@@ -36,16 +36,18 @@ async function tracked(work) {
   }
 }
 
-export async function getJson(path) {
+// quiet: poll nền không bật thanh hoạt động trên cùng (data-busy), tránh nhấp nháy mỗi lần hỏi
+export async function getJson(path, { quiet = false } = {}) {
   if (EXPORT) {
     if (!(path in EXPORT.api)) throw new Error('Không có trong bản export');
     return structuredClone(EXPORT.api[path]);
   }
-  return tracked(async () => {
+  const work = async () => {
     const res = await fetch(path, { headers: { accept: 'application/json' } });
     if (!res.ok) throw await httpError(res);
     return res.json();
-  });
+  };
+  return quiet ? work() : tracked(work);
 }
 
 // the button clicked just before a POST shows a spinner until the server answers (or the stream ends)
