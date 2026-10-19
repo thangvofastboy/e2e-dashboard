@@ -108,7 +108,7 @@ test('thoát mã 0 với file có nội dung → done, result trả specText', a
   const st = rec.status();
   assert.equal(st.state, 'done');
   assert.equal(st.id, id);
-  assert.deepEqual(rec.result(), { id, name: 'Đăng nhập', url: 'https://a.test/', specText: SPEC });
+  assert.deepEqual(rec.result(), { id, name: 'Đăng nhập', url: 'https://a.test/', specText: SPEC, auth: null });
 });
 
 test('thoát mã khác 0 → failed, error chứa stderr', async () => {

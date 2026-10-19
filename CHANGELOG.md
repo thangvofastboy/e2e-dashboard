@@ -1,5 +1,11 @@
 # Changelog
 
+## Chưa phát hành
+
+- **Record: đăng nhập trước, lưu phiên**: nút *Đăng nhập trước* mở trình duyệt để đăng nhập (SSO, OTP, captcha) rồi lưu cookie / localStorage thành phiên ở `.e2e-dashboard/auth/` (0600, không commit). Record chọn phiên đó để mở ra đã đăng nhập; spec lưu mang `test.use({ storageState })`. Có nút xoá phiên; API chỉ trả tên và thời điểm lưu, không trả nội dung phiên.
+- **Record: dựng phiên từ cookie hoặc link**: dán chuỗi `Cookie` từ DevTools và/hoặc một link đăng nhập một lần, bấm *Lưu phiên từ cookie / link*. Chỉ cookie thì ghi thẳng, không cần màn hình; có link thì mở bằng chromium ẩn rồi lưu phiên. Không dùng AI; cookie và link đi qua file tạm 0600, không qua dòng lệnh, và bị che trong thông báo lỗi.
+- **Record: nhờ AI chuẩn bị phiên**: viết prompt tự do ("đăng nhập bằng {{E2E_ADMIN_USER}} / {{E2E_ADMIN_PASSWORD}}, mở mục Cài đặt"); agent của runner `e2e` làm theo trong trình duyệt ẩn rồi lưu phiên. Bí mật là handle `{{E2E_…}}` lấy từ `.env` / môi trường, AI chỉ thấy tên; AI không sinh mã để chạy, dashboard dựng test tạm theo khuôn cố định. Cần bật AI cho runner e2e; có hộp xác nhận vì tốn token.
+
 ## v0.24.0 — 2026-10-19
 
 - **Record thao tác → testcase → test**: trang *Record thao tác* mở trình duyệt qua `playwright codegen`, ghi lại thao tác, AI sinh testcase và kết quả mong đợi, bạn sửa rồi lưu `tests/recorded/<tên>.spec.ts` (chạy bằng runner Playwright có sẵn); tuỳ chọn **AI Gen e2e** tạo `*.e2e.ts`. Mật khẩu / token bị che thành `process.env.E2E_SECRET_<n>` trước khi lưu và trước khi gửi cho AI. Cần máy có màn hình.

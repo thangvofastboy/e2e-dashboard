@@ -60,8 +60,17 @@ const tidy = (code) => code.replace(/^await\s+/, '').replace(/;$/, '');
 export function parseSpec(text) {
   const steps = [];
   let url = null;
+  let inUse = false; // đang ở trong khối `test.use({ … })` nhiều dòng (codegen chèn storageState khi có --load-storage)
   String(text ?? '').split('\n').forEach((raw, line) => {
     const code = raw.trim();
+    if (inUse) {
+      if (/^\}\);?$/.test(code)) inUse = false;
+      return;
+    }
+    if (/^test\.use\(\{\s*$/.test(code)) {
+      inUse = true;
+      return;
+    }
     if (!code || SKIP_LINE.test(code)) return;
     let m = GOTO_LINE.exec(code);
     if (m) {
