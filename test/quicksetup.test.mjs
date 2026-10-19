@@ -320,14 +320,14 @@ test('describeE2eUpdate: one line per outcome', async () => {
   assert.match(describeE2eUpdate({ status: 'skipped', reason: 'Đang có run' }), /^ℹ .*Đang có run$/);
 });
 
-test('CLI update-e2e: no project → exit 3 (retry later); switched off in the user config → exit 0', async () => {
+test('CLI update-e2e: no project → exit 0 (final); switched off in the user config → exit 0', async () => {
   const { main } = await import('../bin/dashboard.mjs');
   const home = mkdtempSync(join(tmpdir(), 'e2ed-home-'));
   const prev = process.env.E2E_DASHBOARD_HOME;
   process.env.E2E_DASHBOARD_HOME = home;
   try {
     const bare = mkdtempSync(join(tmpdir(), 'e2ed-bare-'));
-    assert.equal((await main(['update-e2e'], bare)).code, 3);
+    assert.equal((await main(['update-e2e'], bare)).code, 0); // no project here: nothing to update, and nothing to retry
     writeFileSync(join(home, 'config.json'), JSON.stringify({ e2e: { autoUpdate: false } }));
     const off = await main(['update-e2e'], bare);
     assert.equal(off.code, 0);
@@ -336,4 +336,19 @@ test('CLI update-e2e: no project → exit 3 (retry later); switched off in the u
     if (prev === undefined) delete process.env.E2E_DASHBOARD_HOME;
     else process.env.E2E_DASHBOARD_HOME = prev;
   }
+});
+
+test('updateE2ePackages: offline is a transient skip, busy is a transient skip, "no e2e declared" is final', async () => {
+  const { updateE2ePackages } = await import('../server/quicksetup.mjs');
+  const root = mkdtempSync(join(tmpdir(), 'e2ed-up-'));
+  writeFileSync(join(root, 'package.json'), JSON.stringify({ devDependencies: { e2e: '^0.17.0' } }));
+  const deps = { os: 'linux', nodeVersion: '24.9.0', installed: () => '0.17.0', run: () => assert.fail('must not install') };
+  const offline = await updateE2ePackages(root, { ...deps, latest: async () => null });
+  assert.deepEqual([offline.status, offline.transient], ['skipped', true]);
+  const busy = await updateE2ePackages(root, { ...deps, latest: async () => '0.18.0', idle: () => false });
+  assert.deepEqual([busy.status, busy.transient], ['skipped', true]);
+  const none = mkdtempSync(join(tmpdir(), 'e2ed-up-'));
+  writeFileSync(join(none, 'package.json'), JSON.stringify({ devDependencies: {} }));
+  const final = await updateE2ePackages(none, { ...deps, latest: async () => '9.9.9' });
+  assert.deepEqual([final.status, final.transient], ['skipped', undefined]);
 });

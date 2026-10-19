@@ -355,21 +355,22 @@ export async function main(argv, cwd) {
     return { code: 0, out: `Token dashboard lưu tại ${join(homeDir(), 'token')} (quyền 0600). Link trên trang status / start không đổi giữa các lần khởi động.` };
   }
   if (first === 'update-e2e') {
-    // exit code: 0 done (updated, already latest, or switched off), 1 failed, 3 nothing done yet (retry later)
+    // exit code: 0 final (updated, already latest, switched off, nothing to update here), 1 failed, 3 retry later (busy, offline)
     const { readUserConfig } = await import('../server/system.mjs');
     if (readUserConfig().e2e?.autoUpdate === false) return { code: 0, out: 'Tự cập nhật e2e đang tắt ("e2e": { "autoUpdate": false } trong ~/.e2e-dashboard/config.json).' };
     const projectRoot = findProjectRoot(cwd);
-    if (!projectRoot) return { code: 3, out: 'Không thấy project e2e (e2e.config.*) từ thư mục hiện tại trở lên.' };
+    if (!projectRoot) return { code: 0, out: 'Không thấy project e2e (e2e.config.*) từ thư mục hiện tại trở lên: không có gì để cập nhật.' };
     const running = () => {
       try {
-        return JSON.parse(readFileSync(dataPath(projectRoot, 'live.json'), 'utf8')).status === 'running';
+        const live = JSON.parse(readFileSync(dataPath(projectRoot, 'live.json'), 'utf8'));
+        return live.status === 'running' && Date.now() - Date.parse(live.at) < 300_000; // a crashed dashboard leaves 'running' behind
       } catch {
         return false;
       }
     };
     const { updateE2ePackages, describeE2eUpdate } = await import('../server/quicksetup.mjs');
     const r = await updateE2ePackages(projectRoot, { idle: () => !running() });
-    return { code: r.status === 'failed' ? 1 : r.status === 'skipped' ? 3 : 0, out: describeE2eUpdate(r) };
+    return { code: r.status === 'failed' ? 1 : r.status === 'skipped' && r.transient ? 3 : 0, out: describeE2eUpdate(r) };
   }
   if (first === 'projects') {
     const list = await projectSummaries(findProjectRoot(cwd) ?? cwd);

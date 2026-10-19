@@ -295,11 +295,13 @@ export async function updateE2ePackages(root, { latest = npmLatest, installed = 
   const rows = await Promise.all(names.map(async (name) => ({ name, from: installed(name), to: await latest(name).catch(() => null) })));
   // chỉ nâng lên (không hạ bản canary / beta đang cài) và chỉ gói khai báo bằng khoảng ^ / ~: bỏ qua bản ghim ("0.17.2")
   // và file: / link: / workspace: / git (bản e2e cục bộ, không được thay bằng bản trên npm)
+  // no registry answer at all (offline): not "up to date" — retry later
+  if (rows.every((r) => !r.to)) return { status: 'skipped', transient: true, reason: 'Không kiểm tra được bản mới trên npm (mất mạng?)' };
   const outdated = rows.filter((r) => r.to && /^[\^~]/.test(declared[r.name]) && (!r.from || newerVersion(r.to, r.from)));
   if (!outdated.length) return { status: 'up-to-date', packages: rows };
   const key = resolve(root);
-  if (busy.has(key)) return { status: 'skipped', reason: 'Quick Setup đang chạy' };
-  if (!idle()) return { status: 'skipped', reason: 'Đang có run: cập nhật ở lần mở dashboard sau' };
+  if (busy.has(key)) return { status: 'skipped', transient: true, reason: 'Quick Setup đang chạy' };
+  if (!idle()) return { status: 'skipped', transient: true, reason: 'Đang có run: cập nhật ở lần mở dashboard sau' };
   busy.add(key);
   try {
     // giữ đúng mục khai báo: gói ở dependencies cài không -D (không thì npm chuyển nó sang devDependencies)

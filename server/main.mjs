@@ -74,13 +74,24 @@ const randomToken = () => randomBytes(24).toString('hex');
 // One token per user, kept in ~/.e2e-dashboard/token (0600), so the bookmarked link keeps working across restarts.
 // Tests get a fresh random token and never touch the real home dir.
 const tokenPath = (env = process.env) => join(homeDir(env), 'token');
+const TOKEN_RE = /^[A-Za-z0-9_-]{32,}$/;
 export async function loadOrCreateToken(env = process.env) {
   if (env.NODE_TEST_CONTEXT) return randomToken();
   const p = tokenPath(env);
   if ((await lstat(p).catch(() => null))?.isSymbolicLink()) throw new Error(`Từ chối đọc token qua symlink: ${p}`);
   const saved = await readFile(p, 'utf8').then((t) => t.trim(), () => '');
-  if (/^[A-Za-z0-9_-]{32,}$/.test(saved)) return saved;
-  return resetToken(env);
+  if (TOKEN_RE.test(saved)) return saved;
+  // `wx`: when two dashboards start together on a fresh home, one creates the file and the other reads it back
+  const token = randomToken();
+  await mkdir(dirname(p), { recursive: true, mode: 0o700 });
+  try {
+    await writeFile(p, `${token}\n`, { flag: 'wx', mode: 0o600 });
+    return token;
+  } catch (e) {
+    if (e.code !== 'EEXIST') throw e;
+  }
+  const raced = await readFile(p, 'utf8').then((t) => t.trim(), () => '');
+  return TOKEN_RE.test(raced) ? raced : resetToken(env); // a broken file is replaced
 }
 export async function resetToken(env = process.env) {
   const p = tokenPath(env);

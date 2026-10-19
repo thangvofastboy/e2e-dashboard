@@ -66,3 +66,10 @@ test('CLI token: never prints the token; reset writes a new one', async () => {
     else process.env.E2E_DASHBOARD_HOME = prev;
   }
 });
+
+test('token: dashboards starting together on a fresh home agree on one token', async () => {
+  const h = home();
+  const tokens = await Promise.all(Array.from({ length: 8 }, () => loadOrCreateToken(env(h))));
+  assert.equal(new Set(tokens).size, 1);
+  assert.equal(readFileSync(join(h, 'token'), 'utf8').trim(), tokens[0]);
+});
