@@ -2,9 +2,9 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Flaky, Gate, Live, RunSummary, Server, Slo, View } from '../types'
-import { cleanLive, cleanRun, num, parseServer, passRate } from './pure'
+import { cleanLive, cleanRun, num, parseServer, passRate } from './pane-pure'
 
-const PANE = 'e2e-dashboard-tab'
+const PANE = 'e2e-pane'
 const POLL_MS = 1000
 const RUN_EVERY = 5 // /api/runs: every 5 s
 const SLOW_EVERY = 15 // gate, SLO, budget, flaky: every 15 s, and at the end of a run
@@ -14,7 +14,7 @@ const EMPTY: View = {
   live: null, run: null, prevRate: null, trend: [], etaMs: null, server: null,
   gate: null, slo: null, budgetOver: [], flaky: [], progressFrom: 0, error: null,
 }
-const view = atom({ plugin: 'e2e-dashboard-tab', key: 'view' } as const, EMPTY)
+const view = atom({ plugin: 'e2e-dashboard', key: 'view' } as const, EMPTY)
 
 type Palette = { run: string; good: string; warn: string; bad: string; muted: string; track: string }
 // Status colors keep their meaning in every theme: good / warn / bad.
@@ -26,8 +26,8 @@ const THEMES: Record<string, Palette> = {
   light: { run: '#2563eb', good: '#15803d', warn: '#a16207', bad: '#b91c1c', muted: '#475569', track: '#47556933' },
 }
 const THEME_NAMES = Object.keys(THEMES)
-const theme = atom({ plugin: 'e2e-dashboard-tab', key: 'theme' } as const, 'default')
-const motion = atom({ plugin: 'e2e-dashboard-tab', key: 'motion' } as const, true)
+const theme = atom({ plugin: 'e2e-dashboard', key: 'theme' } as const, 'default')
+const motion = atom({ plugin: 'e2e-dashboard', key: 'motion' } as const, true)
 const BARS = '▁▂▃▄▅▆▇█'
 
 // Desktop charts: inline SVG in an interactive frame, so SMIL animation, :hover and <title> tooltips run.
@@ -110,7 +110,7 @@ const pct = (x: number) => `${Math.round(x * 100)}%`
 const toMs = (t: string | number) => (typeof t === 'number' ? t : Date.parse(t))
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
-const readLive = async ($: EngineInterface, dir: string): Promise<Live | null> => {
+async function readLive($: EngineInterface, dir: string): Promise<Live | null> {
   const live = cleanLive(await $.fs.read(`${dir}/runtime/live.json`).then(JSON.parse, () => null))
   // Nobody wrote live.json for 5 minutes: a dashboard that died mid-run, not a run still going.
   return live?.status === 'running' && live.at && (await $.clock.now()) - Date.parse(live.at) > 300_000 ? null : live
@@ -208,40 +208,41 @@ async function paneCommand($: EngineInterface, args: string[]) {
 let isOpened = false // polls only while the pane is open
 let ticks = 0 // 0 on open: the first poll also fetches runs and the slow endpoints
 
-export const register: Register = on => {
-  on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'e2e-pane', description: 'Mở pane theo dõi run của e2e-dashboard' })
-    $.clock.every(POLL_MS, async () => {
-      if (!isOpened) return
-      const prev = await read($, view)
-      const dir = `${await $.session.cwd()}/.e2e-dashboard`
-      const live = await readLive($, dir)
-      // live.json gone means the dashboard stopped, not that the run finished.
-      const ended = prev.live?.status === 'running' && live != null && live.status !== 'running'
-      const tick = ticks++
-      let fresh: View
-      try {
-        fresh = await poll($, dir, prev, live, ended || tick % RUN_EVERY === 0, ended || tick % SLOW_EVERY === 0)
-      } catch {
-        fresh = { ...EMPTY, live, error: NOT_RUNNING }
-      }
-      if (ended && fresh.run) {
-        const rate = passRate(fresh.run)
-        $.ui.toast(`Run xong: ${rate ?? '—'}% pass, ${fresh.run.summary.failed ?? 0} fail`)
-      }
-      if (prev.slo?.met === true && fresh.slo?.met === false && fresh.slo.actual != null) {
-        $.ui.toast(`SLO vượt: ${pct(fresh.slo.actual)} dưới mục tiêu ${pct(fresh.slo.target)}`)
-      }
-      if (prev.budgetOver.length === 0 && fresh.budgetOver.length > 0) {
-        $.ui.toast(`Vượt ngân sách: ${fresh.budgetOver.join(', ')}`)
-      }
-      // No redraw when nothing changed: most ticks between runs are identical.
-      if (JSON.stringify(fresh) !== JSON.stringify(prev)) await update($, view, () => fresh)
-    })
-
-    return next(e)
+// Khởi động pane: đăng ký lệnh /e2e-pane và bắt đầu vòng poll (chỉ làm việc khi pane đang mở). Do handler session.start duy nhất
+// của plugin (hooks/register.ts) gọi: engine chỉ cho mỗi module một on("session.start") không matcher.
+export async function startPane($: EngineInterface) {
+  await $.command.register({ name: 'e2e-pane', description: 'Mở pane theo dõi run của e2e-dashboard' })
+    .catch(() => undefined) // trùng tên với mod cũ còn cài riêng: không để lỗi này làm vỡ session.start
+  $.clock.every(POLL_MS, async () => {
+    if (!isOpened) return
+    const prev = await read($, view)
+    const dir = `${await $.session.cwd()}/.e2e-dashboard`
+    const live = await readLive($, dir)
+    // live.json gone means the dashboard stopped, not that the run finished.
+    const ended = prev.live?.status === 'running' && live != null && live.status !== 'running'
+    const tick = ticks++
+    let fresh: View
+    try {
+      fresh = await poll($, dir, prev, live, ended || tick % RUN_EVERY === 0, ended || tick % SLOW_EVERY === 0)
+    } catch {
+      fresh = { ...EMPTY, live, error: NOT_RUNNING }
+    }
+    if (ended && fresh.run) {
+      const rate = passRate(fresh.run)
+      $.ui.toast(`Run xong: ${rate ?? '—'}% pass, ${fresh.run.summary.failed ?? 0} fail`)
+    }
+    if (prev.slo?.met === true && fresh.slo?.met === false && fresh.slo.actual != null) {
+      $.ui.toast(`SLO vượt: ${pct(fresh.slo.actual)} dưới mục tiêu ${pct(fresh.slo.target)}`)
+    }
+    if (prev.budgetOver.length === 0 && fresh.budgetOver.length > 0) {
+      $.ui.toast(`Vượt ngân sách: ${fresh.budgetOver.join(', ')}`)
+    }
+    // No redraw when nothing changed: most ticks between runs are identical.
+    if (JSON.stringify(fresh) !== JSON.stringify(prev)) await update($, view, () => fresh)
   })
+}
 
+export const register: Register = on => {
   on('ui.close', ($, e, next) => {
     if (e.id === PANE) isOpened = false
     return next(e)

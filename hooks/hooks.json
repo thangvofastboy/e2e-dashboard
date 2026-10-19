@@ -4,10 +4,16 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/archive.mjs\"", "timeout": 15 }
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/archive.mjs\"",
+            "timeout": 15
+          }
         ]
       }
     ]
   },
-  "modules": ["./register.ts"]
+  "modules": [
+    "./index.ts"
+  ]
 }

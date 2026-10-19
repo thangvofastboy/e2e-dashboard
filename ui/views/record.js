@@ -6,70 +6,101 @@ import { escapeHtml } from '../format.js';
 import { icon } from '../icons.js';
 import { tcCardsHtml, readTcCards } from './linear-issues.js';
 
-// Trang Record: (tuỳ chọn) đăng nhập trước và lưu phiên → ghi thao tác bằng codegen → testcase (AI sinh expected) → sửa →
-// lưu .spec.ts → tuỳ chọn AI Gen e2e. Trạng thái đang sửa / vừa lưu nằm ở biến module; đổi trang thì dựng lại từ đầu.
+// Trang Record, 3 bước: (1) trang cần test → (2) phiên đăng nhập, tuỳ chọn (dùng phiên đã lưu hoặc tạo mới bằng đăng nhập thủ công /
+// cookie + link / nhờ AI) → (3) Record: ghi thao tác bằng codegen → testcase (AI sinh expected) → sửa → lưu .spec.ts → tuỳ chọn AI Gen e2e.
+// Trạng thái đang sửa / vừa lưu / phiên đang chọn / tab nằm ở biến module; đổi trang thì dựng lại từ đầu.
 let recEditing = null; // { name, url, slug, secrets, aiError?, testcases }
 let recSaved = null; // { specPath, casesPath, secrets, slug, e2ePath }
+let recAuthPick = null; // tên phiên đăng nhập dùng cho lần Record này
+let recTab = 'manual'; // cách tạo phiên đang mở: manual | cookie | ai
+let recNewOpen = false; // mục "Tạo phiên mới" đang mở
 const REC_POLL_MS = 1500;
-// ô của form ghi mới: giữ giá trị khi trang vẽ lại (poll, xong phiên đăng nhập…)
-const REC_FIELDS = ['[data-rec-url]', '[data-rec-name-new]', '[data-rec-auth]', '[data-rec-login-name]', '[data-rec-cookie]', '[data-rec-link]', '[data-rec-ai-prompt]'];
+// ô của form: giữ giá trị khi trang vẽ lại (poll, xong phiên đăng nhập…)
+const REC_FIELDS = ['[data-rec-url]', '[data-rec-name-new]', '[data-rec-login-name]', '[data-rec-cookie]', '[data-rec-link]', '[data-rec-ai-prompt]'];
+const REC_TABS = [['manual', 'Đăng nhập thủ công', 'lock'], ['cookie', 'Cookie / link', 'copy'], ['ai', 'Nhờ AI', 'sparkles']];
 
 const recSecretsNote = (secrets) => (secrets?.length
   ? `<p class="muted small" data-rec-secrets>Giá trị nhạy cảm đã được thay bằng biến môi trường ${secrets.map((s) => `<code>${escapeHtml(s)}</code>`).join(', ')}. Đặt giá trị của chúng trong <code>.env</code> hoặc môi trường trước khi chạy test.</p>`
   : '');
 
-const recWhen = (iso) => escapeHtml(String(iso ?? '').slice(0, 16).replace('T', ' '));
+// "19/10/2026 15:03" theo giờ máy; ngày không hợp lệ thì để trống
+const recWhen = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : escapeHtml(d.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }));
+};
 
-function recFormHtml(status, auth) {
-  const off = status.canRecord ? '' : ' disabled';
-  return `<section class="panel"><h2>${icon('video', { size: 15 })} Ghi thao tác mới</h2>
-    <div class="form-row">
-      <input data-rec-url maxlength="500" placeholder="https://app.example.com" aria-label="URL cần ghi">
-      <input data-rec-name-new maxlength="200" placeholder="Tên bộ test (vd: Đăng nhập)" aria-label="Tên bộ test">
-      <select data-rec-auth aria-label="Phiên đăng nhập"><option value="">Không dùng phiên đăng nhập</option>${auth.map((a) => `<option value="${escapeHtml(a.name)}">${escapeHtml(a.name)} · ${recWhen(a.savedAt)}</option>`).join('')}</select>
-      ${auth.length ? `<button type="button" class="icon-btn" data-rec-auth-del aria-label="Xoá phiên đã chọn" title="Xoá phiên đã chọn">${icon('close', { size: 14 })}</button>` : ''}
-      <button type="button" class="primary" data-rec-start${off}>${icon('play', { size: 14 })}Record</button>
+function recSessionsHtml(auth, pick) {
+  if (!auth.length) return '<p class="muted small rec-empty">Chưa có phiên nào. Tạo phiên mới bên dưới nếu trang cần đăng nhập.</p>';
+  const chips = auth.map((a) => {
+    const on = a.name === pick;
+    const n = escapeHtml(a.name);
+    const when = recWhen(a.savedAt);
+    return `<span class="rec-chip"><button type="button" class="keep-label" data-rec-auth-pick="${n}" aria-pressed="${on}" title="${on ? 'Đang dùng cho lần Record này, bấm để bỏ chọn' : 'Dùng phiên này cho lần Record này'}${when ? ` · lưu lúc ${when}` : ''}">${on ? icon('check', { size: 13 }) : ''}${n}</button><button type="button" class="icon-btn" data-rec-auth-del="${n}" aria-label="Xoá phiên ${n}" title="Xoá phiên này">${icon('close', { size: 12 })}</button></span>`;
+  }).join('');
+  return `<div class="rec-sessions" role="group" aria-label="Phiên đã lưu">${chips}</div><p class="muted small">Bấm một phiên để dùng cho lần Record này, bấm lại để bỏ chọn.</p>`;
+}
+
+function recNewSessionHtml(ui) {
+  const off = ui.canRecord ? '' : ' disabled';
+  const tabs = REC_TABS.map(([id, label, ic]) => `<button type="button" role="tab" class="keep-label" data-rec-tab="${id}" aria-selected="${ui.tab === id}" aria-controls="rec-panel-${id}" id="rec-tab-${id}">${icon(ic, { size: 14 })}${label}</button>`).join('');
+  const panel = (id, body) => `<div class="rec-panel" role="tabpanel" id="rec-panel-${id}" data-rec-panel="${id}" aria-labelledby="rec-tab-${id}"${ui.tab === id ? '' : ' hidden'}>${body}</div>`;
+  return `<details class="rec-new" data-rec-new${ui.newOpen ? ' open' : ''}>
+    <summary>Tạo phiên mới</summary>
+    <div class="rec-new-body">
+      <label class="rec-field rec-narrow"><span>Tên phiên</span><input data-rec-login-name maxlength="60" placeholder="vd: admin" autocomplete="off" spellcheck="false"></label>
+      <div class="seg-btns tabbar" role="tablist" aria-label="Cách tạo phiên">${tabs}</div>
+      ${panel('manual', `<p class="muted small">Mở một trình duyệt tới URL ở bước 1. Bạn đăng nhập (và chuẩn bị sẵn trạng thái cần có), rồi bấm <em>Xong, lưu phiên</em>.</p>
+        <div class="rec-actions"><button type="button" class="keep-label" data-rec-login${off}>${icon('lock', { size: 14 })}Mở trình duyệt để đăng nhập</button></div>`)}
+      ${panel('cookie', `<label class="rec-field"><span>Chuỗi Cookie</span><textarea data-rec-cookie rows="3" autocomplete="off" spellcheck="false" placeholder="name=value; name2=value2"></textarea><small class="muted">DevTools → Network → chọn một request tới site đã đăng nhập → Request Headers → <code>Cookie</code> → copy giá trị. Cookie áp dụng cho đúng tên miền của URL.</small></label>
+        <label class="rec-field"><span>Link đăng nhập một lần <em class="muted">(tuỳ chọn)</em></span><input data-rec-link maxlength="2000" autocomplete="off" spellcheck="false" placeholder="https://…/magic?token=…"><small class="muted">Được mở bằng trình duyệt ẩn (kèm cookie ở trên nếu có) rồi lưu phiên.</small></label>
+        <div class="rec-actions"><button type="button" class="keep-label" data-rec-prepare title="Dựng phiên từ cookie và/hoặc link, không dùng AI">${icon('lock', { size: 14 })}Lưu phiên từ cookie / link</button></div>`)}
+      ${panel('ai', `<label class="rec-field"><span>Việc AI cần làm</span><textarea data-rec-ai-prompt rows="4" autocomplete="off" spellcheck="false" placeholder="Đăng nhập bằng {{E2E_ADMIN_USER}} / {{E2E_ADMIN_PASSWORD}}, rồi mở mục Cài đặt"></textarea><small class="muted">Tài khoản, mật khẩu viết dạng <code>{{E2E_TÊN}}</code> và đặt giá trị trong <code>.env</code> của project hoặc môi trường: AI chỉ thấy tên, không thấy giá trị. Cần bật AI cho runner e2e (Cài đặt → AI). Mỗi lần tốn token, tối đa 3 phút.</small></label>
+        <div class="rec-actions"><button type="button" class="keep-label" data-rec-prepare-ai title="AI làm theo prompt trong trình duyệt ẩn rồi lưu phiên (tốn token)">${icon('sparkles', { size: 14 })}Nhờ AI chuẩn bị phiên</button></div>`)}
     </div>
-    <div class="form-row">
-      <input data-rec-login-name maxlength="60" placeholder="Tên phiên mới (vd: admin)" aria-label="Tên phiên đăng nhập mới">
-      <button type="button" data-rec-login${off} title="Mở trình duyệt để đăng nhập (hoặc chuẩn bị sẵn trạng thái), rồi lưu phiên cho các lần Record sau">${icon('lock', { size: 14 })}Đăng nhập trước</button>
+  </details>`;
+}
+
+function recFormHtml(status, auth, ui) {
+  const pick = auth.some((a) => a.name === ui.authPick) ? ui.authPick : null;
+  return `<section class="panel rec-card">
+    <header class="rec-step"><span class="rec-no" aria-hidden="true">1</span><div><h2>Trang cần test</h2><p class="muted small">Địa chỉ trang bắt đầu và tên cho bộ test sẽ lưu.</p></div></header>
+    <div class="rec-grid">
+      <label class="rec-field"><span>URL trang</span><input data-rec-url maxlength="500" placeholder="https://app.example.com" autocomplete="off" spellcheck="false"></label>
+      <label class="rec-field"><span>Tên bộ test</span><input data-rec-name-new maxlength="200" placeholder="Đăng nhập, Giỏ hàng…" autocomplete="off"></label>
     </div>
-    <div class="form-row">
-      <textarea data-rec-cookie rows="2" autocomplete="off" spellcheck="false" placeholder="Hoặc dán chuỗi Cookie từ DevTools (name=value; name2=value2)" aria-label="Chuỗi Cookie"></textarea>
-      <input data-rec-link maxlength="2000" autocomplete="off" placeholder="Link đăng nhập một lần (tuỳ chọn)" aria-label="Link đăng nhập một lần">
-      <button type="button" data-rec-prepare title="Dựng phiên từ cookie và/hoặc link, không mở cửa sổ đăng nhập, không dùng AI">${icon('lock', { size: 14 })}Lưu phiên từ cookie / link</button>
-    </div>
-    <div class="form-row">
-      <textarea data-rec-ai-prompt rows="3" autocomplete="off" spellcheck="false" placeholder="Hoặc nhờ AI chuẩn bị: vd &quot;Đăng nhập bằng {{E2E_ADMIN_USER}} / {{E2E_ADMIN_PASSWORD}}, rồi mở mục Cài đặt&quot;" aria-label="Prompt cho AI chuẩn bị phiên"></textarea>
-      <button type="button" data-rec-prepare-ai title="AI làm theo prompt trong trình duyệt ẩn rồi lưu phiên (tốn token)">${icon('sparkles', { size: 14 })}Nhờ AI chuẩn bị phiên</button>
-    </div>
+  </section>
+  <section class="panel rec-card">
+    <header class="rec-step"><span class="rec-no" aria-hidden="true">2</span><div><h2>Phiên đăng nhập <span class="chip rec-optional">tuỳ chọn</span></h2><p class="muted small">Trang cần đăng nhập (SSO, OTP, captcha)? Dùng một phiên đã lưu để Record bắt đầu khi đã đăng nhập.</p></div></header>
+    ${recSessionsHtml(auth, pick)}
+    ${recNewSessionHtml({ ...ui, canRecord: status.canRecord })}
+  </section>
+  <section class="panel rec-card rec-go">
+    <header class="rec-step"><span class="rec-no" aria-hidden="true">3</span><div><h2>Ghi thao tác</h2><p class="muted small">Trình duyệt mở kèm cửa sổ Inspector: bấm nút assert ở đó để thêm kiểm tra. Đóng cửa sổ trình duyệt hoặc bấm Dừng để kết thúc.</p></div></header>
+    <div class="rec-actions"><button type="button" class="primary keep-label rec-start" data-rec-start${status.canRecord ? '' : ' disabled'}>${icon('play', { size: 15 })}Bắt đầu Record${pick ? ` với phiên ${escapeHtml(pick)}` : ''}</button></div>
     ${status.reason ? `<p class="muted small" data-rec-reason>${escapeHtml(status.reason)}</p>` : ''}
     ${status.state === 'failed' ? `<p class="error" role="alert">${escapeHtml(status.error ?? 'Phiên record lỗi')}</p>` : ''}
-    <p class="muted small">Lấy cookie: DevTools → Network → chọn một request tới site (đã đăng nhập) → Request Headers → <code>Cookie</code> → copy giá trị. Dùng ô <em>Tên phiên mới</em> và URL ở trên; cookie áp dụng cho đúng tên miền của URL. Link đăng nhập một lần được mở bằng trình duyệt ẩn rồi lưu phiên. Cookie và link chỉ xử lý trên máy này, không gửi cho AI, và ô dán được xoá sau khi lưu.</p>
-    <p class="muted small">Nhờ AI chuẩn bị: viết việc cần làm (đăng nhập, mở sẵn một mục…) bằng lời. Tài khoản, mật khẩu, token viết dạng <code>{{E2E_TÊN}}</code> (vd <code>{{E2E_ADMIN_PASSWORD}}</code>) và đặt giá trị trong <code>.env</code> của project hoặc môi trường: AI chỉ thấy tên, không bao giờ thấy giá trị. Cần đã bật AI cho runner e2e (Cài đặt → AI); mỗi lần tốn token, tối đa 3 phút.</p>
-    <p class="muted small">Trang cần đăng nhập (SSO, OTP, captcha): bấm <em>Đăng nhập trước</em>, đăng nhập xong thì <em>Xong, lưu phiên</em>, rồi chọn phiên đó ở trên trước khi Record. File phiên chứa cookie / token, nằm ở <code>.e2e-dashboard/auth/</code> (không commit); test dùng phiên chỉ chạy được trên máy có file đó.</p>
-    <p class="muted small">Trình duyệt Record mở kèm cửa sổ Inspector: bấm nút assert ở đó để thêm kiểm tra. Đóng cửa sổ trình duyệt hoặc bấm Dừng để kết thúc.</p>
+    <details class="rec-note"><summary>Lưu ý về phiên đăng nhập</summary><p class="muted small">File phiên chứa cookie / token, nằm ở <code>.e2e-dashboard/auth/</code> (không commit). Spec lưu từ phiên chỉ chạy được trên máy có file đó; phiên hết hạn thì tạo lại cùng tên để ghi đè.</p></details>
   </section>`;
 }
 
 function recRecordingHtml(status) {
   if (status.kind === 'login') {
-    return `<section class="panel"><h2><span class="chip tone-bad">Đang đăng nhập</span> ${escapeHtml(status.name ?? '')}</h2>
+    return `<section class="panel rec-card"><h2><span class="chip tone-bad">Đang đăng nhập</span> ${escapeHtml(status.name ?? '')}</h2>
     <p class="muted small">${escapeHtml(status.url ?? '')}</p>
     <p class="muted small">Đăng nhập trong cửa sổ trình duyệt vừa mở (có thể chuẩn bị thêm trạng thái cần có). Xong thì bấm nút bên dưới: cookie và localStorage được lưu thành phiên.</p>
-    <div class="tc-actions"><button type="button" class="primary" data-rec-stop>${icon('check', { size: 14 })}Xong, lưu phiên</button></div>
+    <div class="rec-actions"><button type="button" class="primary keep-label" data-rec-stop>${icon('check', { size: 14 })}Xong, lưu phiên</button></div>
   </section>`;
   }
-  return `<section class="panel"><h2><span class="chip tone-bad">Đang ghi</span> ${escapeHtml(status.name ?? '')}</h2>
+  return `<section class="panel rec-card"><h2><span class="chip tone-bad">Đang ghi</span> ${escapeHtml(status.name ?? '')}</h2>
     <p class="muted small">${escapeHtml(status.url ?? '')}${status.auth ? ` · phiên <code>${escapeHtml(status.auth)}</code>` : ''}</p>
     <p class="muted small">Thao tác trong cửa sổ trình duyệt vừa mở. Xong thì đóng cửa sổ đó hoặc bấm Dừng.</p>
-    <div class="tc-actions"><button type="button" class="primary" data-rec-stop>${icon('stop', { size: 14 })}Dừng</button></div>
+    <div class="rec-actions"><button type="button" class="primary keep-label" data-rec-stop>${icon('stop', { size: 14 })}Dừng</button></div>
   </section>`;
 }
 
 function recEditorHtml(ed) {
-  return `<section class="panel tc-editor"><h2>${icon('file', { size: 15 })} Testcase vừa ghi <span class="chip">${ed.testcases.length} testcase</span></h2>
-    <label class="tc-field"><span class="tc-label">Tên bộ test <span class="muted">· file lưu ở <code>tests/recorded/&lt;tên&gt;.spec.ts</code></span></span>
+  return `<section class="panel tc-editor rec-card"><h2>${icon('file', { size: 15 })} Testcase vừa ghi <span class="chip">${ed.testcases.length} testcase</span></h2>
+    <label class="rec-field rec-narrow"><span>Tên bộ test <small class="muted">· lưu ở <code>tests/recorded/&lt;tên&gt;.spec.ts</code></small></span>
       <input data-rec-name value="${escapeHtml(ed.name)}" maxlength="200" aria-label="Tên bộ test"></label>
     ${ed.aiError ? `<p class="error" data-rec-ai-error role="alert">AI chưa sinh được kết quả mong đợi (${escapeHtml(ed.aiError)}): hãy điền tay.</p>` : ''}
     ${recSecretsNote(ed.secrets)}
@@ -83,18 +114,19 @@ function recEditorHtml(ed) {
 }
 
 function recSavedHtml(sv) {
-  return `<section class="panel"><h2>${icon('check', { size: 15 })} Đã lưu</h2>
+  return `<section class="panel rec-card"><h2>${icon('check', { size: 15 })} Đã lưu</h2>
     <p><code>${escapeHtml(sv.specPath)}</code><br><code>${escapeHtml(sv.casesPath)}</code></p>
     ${recSecretsNote(sv.secrets)}
     ${sv.e2ePath
     ? `<p>Đã tạo <code>${escapeHtml(sv.e2ePath)}</code></p>`
-    : `<div class="tc-actions"><button type="button" data-gen-e2e title="AI chuyển testcase đã lưu sang file *.e2e.ts">${icon('bolt', { size: 14 })}<span class="tc-btn-text">AI Gen e2e</span></button></div>`}
+    : `<div class="rec-actions"><button type="button" class="keep-label" data-gen-e2e title="AI chuyển testcase đã lưu sang file *.e2e.ts">${icon('bolt', { size: 14 })}AI Gen e2e</button></div>`}
   </section>`;
 }
 
-// Thuần: dựng HTML theo trạng thái phiên record, testcase đang sửa, kết quả lưu và danh sách phiên đăng nhập đã lưu
-export function recordViewHtml({ status, editing, saved, auth = [] }) {
-  const top = status.state === 'recording' ? recRecordingHtml(status) : editing ? '' : recFormHtml(status, auth);
+// Thuần: dựng HTML theo trạng thái phiên record, testcase đang sửa, kết quả lưu, phiên đăng nhập đã lưu (auth), phiên đang chọn (authPick),
+// tab cách tạo phiên (tab) và việc mục "Tạo phiên mới" đang mở (newOpen)
+export function recordViewHtml({ status, editing, saved, auth = [], authPick = null, tab = 'manual', newOpen = false }) {
+  const top = status.state === 'recording' ? recRecordingHtml(status) : editing ? '' : recFormHtml(status, auth, { authPick, tab, newOpen });
   return `${top}${editing ? recEditorHtml(editing) : ''}${saved ? recSavedHtml(saved) : ''}`;
 }
 
@@ -125,12 +157,12 @@ async function recBusy(btn, fn) {
 
 export async function renderRecord(main) {
   recSaved = null;
+  recAuthPick = null;
   let status = await getJson('/api/record/status');
   recEditing = recKeepEditing(status, recEditing);
   let authList = [];
   let timer = null;
   let analyzing = false;
-  let preferAuth = null; // phiên vừa lưu: chọn sẵn trong ô chọn phiên sau khi vẽ
   const loadAuth = async () => {
     try {
       authList = (await getJson('/api/record/auth', { quiet: true })).sessions ?? [];
@@ -140,16 +172,16 @@ export async function renderRecord(main) {
   };
   const draw = () => {
     const keep = REC_FIELDS.map((q) => main.querySelector(q)?.value ?? '');
-    main.innerHTML = `${pageHead('Record', 'video', 'Ghi lại thao tác trên trình duyệt thật: dashboard đổi thành testcase và file test.')}${recordViewHtml({ status, editing: recEditing, saved: recSaved, auth: authList })}`;
+    main.innerHTML = `${pageHead('Record', 'video', 'Ghi lại thao tác trên trình duyệt thật: dashboard đổi thành testcase và file test.')}${recordViewHtml({ status, editing: recEditing, saved: recSaved, auth: authList, authPick: recAuthPick, tab: recTab, newOpen: recNewOpen })}`;
     REC_FIELDS.forEach((q, i) => {
       const el = main.querySelector(q);
       if (el && keep[i]) el.value = keep[i];
     });
-    if (preferAuth) {
-      const sel = main.querySelector('[data-rec-auth]');
-      if (sel) sel.value = preferAuth;
-      preferAuth = null;
-    }
+  };
+  // phiên vừa lưu thì chọn sẵn cho lần Record này
+  const savedSession = (name) => {
+    recAuthPick = name;
+    toast(`Đã lưu phiên "${name}"`);
   };
   // làm mới trạng thái; phiên record vừa xong thì nhờ AI sinh testcase + expected
   const settle = async ({ quiet = false } = {}) => {
@@ -161,8 +193,7 @@ export async function renderRecord(main) {
       timer = null;
     }
     if (status.state === 'done' && status.kind === 'login') {
-      toast(`Đã lưu phiên đăng nhập "${status.auth}"`);
-      preferAuth = status.auth;
+      savedSession(status.auth);
       await postJson('/api/record/discard', {}).catch(() => {});
       status = await getJson('/api/record/status', { quiet: true });
       await loadAuth();
@@ -189,41 +220,47 @@ export async function renderRecord(main) {
   };
   const editedName = () => main.querySelector('[data-rec-name]')?.value ?? recEditing?.name ?? '';
   const formValue = (q) => main.querySelector(q)?.value.trim() ?? '';
+  const startedSession = async (r) => {
+    if (!r) return;
+    recEditing = null;
+    recSaved = null;
+    watch();
+    await settle();
+  };
+
+  // <details> không nổi bọt sự kiện toggle: bắt ở pha capture để nhớ trạng thái mở
+  main.addEventListener('toggle', (e) => {
+    if (e.target.matches?.('[data-rec-new]')) recNewOpen = e.target.open;
+  }, true);
 
   main.addEventListener('click', async (e) => {
     const btn = e.target.closest('button');
     if (!btn || !main.contains(btn)) return;
+    if (btn.hasAttribute('data-rec-tab')) {
+      recTab = btn.getAttribute('data-rec-tab');
+      recNewOpen = true;
+      return draw();
+    }
+    if (btn.hasAttribute('data-rec-auth-pick')) {
+      const name = btn.getAttribute('data-rec-auth-pick');
+      recAuthPick = recAuthPick === name ? null : name;
+      return draw();
+    }
     if (btn.hasAttribute('data-rec-start')) {
       const body = { url: formValue('[data-rec-url]'), name: formValue('[data-rec-name-new]') };
-      const auth = formValue('[data-rec-auth]');
-      if (auth) body.auth = auth;
-      const r = await recBusy(btn, () => postJson('/api/record/start', body));
-      if (r) {
-        recEditing = null;
-        recSaved = null;
-        watch();
-        await settle();
-      }
-      return;
+      if (recAuthPick && authList.some((a) => a.name === recAuthPick)) body.auth = recAuthPick;
+      return startedSession(await recBusy(btn, () => postJson('/api/record/start', body)));
     }
     if (btn.hasAttribute('data-rec-login')) {
-      const r = await recBusy(btn, () => postJson('/api/record/login', { url: formValue('[data-rec-url]'), name: formValue('[data-rec-login-name]') }));
-      if (r) {
-        recEditing = null;
-        recSaved = null;
-        watch();
-        await settle();
-      }
-      return;
+      return startedSession(await recBusy(btn, () => postJson('/api/record/login', { url: formValue('[data-rec-url]'), name: formValue('[data-rec-login-name]') })));
     }
     if (btn.hasAttribute('data-rec-prepare')) {
       const body = { name: formValue('[data-rec-login-name]'), url: formValue('[data-rec-url]'), cookie: main.querySelector('[data-rec-cookie]')?.value ?? '', link: formValue('[data-rec-link]') };
       const r = await recBusy(btn, () => postJson('/api/record/prepare', body));
       if (r) {
         authList = r.sessions ?? [];
-        preferAuth = r.name;
+        savedSession(r.name);
         for (const q of ['[data-rec-cookie]', '[data-rec-link]']) main.querySelector(q).value = ''; // cookie không nằm lại trong trang
-        toast(`Đã lưu phiên "${r.name}"`);
       }
       return draw();
     }
@@ -234,18 +271,17 @@ export async function renderRecord(main) {
       const r = await recBusy(btn, () => postJson('/api/record/prepare-ai', body));
       if (r) {
         authList = r.sessions ?? [];
-        preferAuth = r.name;
-        toast(`Đã lưu phiên "${r.name}"`);
+        savedSession(r.name);
       }
       return draw();
     }
     if (btn.hasAttribute('data-rec-auth-del')) {
-      const name = formValue('[data-rec-auth]');
-      if (!name) return toast('Chọn phiên cần xoá ở ô chọn phiên', 'warn');
+      const name = btn.getAttribute('data-rec-auth-del');
       if (!(await confirmDialog({ title: 'Xoá phiên đăng nhập', message: `Xoá phiên "${name}"? Spec đã lưu dùng phiên này sẽ không chạy được cho đến khi đăng nhập lại.`, confirmLabel: 'Xoá phiên' }))) return;
       const r = await recBusy(btn, () => postJson('/api/record/auth/delete', { name }));
       if (r) {
         authList = r.sessions ?? [];
+        if (recAuthPick === name) recAuthPick = null;
         toast(`Đã xoá phiên "${name}"`);
       }
       return draw();

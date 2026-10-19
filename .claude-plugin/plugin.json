@@ -4,5 +4,6 @@
   "description": "/e2e-dashboard: live, history and debugging dashboard for e2e (tester-army/e2e) test runs",
   "author": {
     "name": "thangvofastboy"
-  }
+  },
+  "types": "./types/index.d.ts"
 }

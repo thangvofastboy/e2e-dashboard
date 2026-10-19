@@ -1792,3 +1792,42 @@ select { border: 1px solid var(--border); }
 .nav-project { margin: 0 0 8px; }
 .nav-project select { width: 100%; }
 @media (min-width: 901px) { body.nav-collapsed .nav-project { display: none; } }
+
+/* Record: 3 bước (trang cần test → phiên đăng nhập → ghi thao tác). Ô nhập theo khuôn .fb-field (radius 10px, cao 44px, viền var(--border)). */
+.rec-card { display: grid; gap: 14px; margin-bottom: 14px; }
+.rec-card > h2 { margin: 0; }
+.rec-step { display: flex; align-items: flex-start; gap: 12px; }
+.rec-step h2 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: calc(15px * var(--fs)); }
+.rec-step p { margin: 2px 0 0; }
+.rec-no { flex: none; display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; font-size: calc(12.5px * var(--fs)); font-weight: 700; background: color-mix(in srgb, var(--series-1) 14%, transparent); color: var(--series-1); }
+.rec-optional { --tone-bg: var(--surface-2); --tone-ink: var(--text-secondary); font-weight: 600; }
+.rec-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 14px; }
+.rec-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.rec-field > span { font-weight: 600; font-size: calc(13px * var(--fs)); color: var(--text-secondary); }
+.rec-field small { font-size: calc(12px * var(--fs)); line-height: 1.45; }
+.rec-field input, .rec-field textarea { width: 100%; max-width: none; min-width: 0; box-sizing: border-box; font: inherit; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text-primary); min-height: 44px; transition: border-color 0.15s, box-shadow 0.15s; }
+.rec-field textarea { min-height: 96px; resize: vertical; line-height: 1.5; font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: calc(13px * var(--fs)); }
+.rec-field input::placeholder, .rec-field textarea::placeholder { color: var(--muted); }
+.rec-field input:hover, .rec-field textarea:hover { border-color: color-mix(in srgb, var(--series-1) 45%, var(--border)); }
+.rec-field input:focus-visible, .rec-field textarea:focus-visible { outline: none; border-color: var(--series-1); box-shadow: 0 0 0 3px color-mix(in srgb, var(--series-1) 25%, transparent); }
+.rec-narrow { max-width: 360px; }
+.rec-sessions { display: flex; flex-wrap: wrap; gap: 8px; }
+.rec-chip { display: inline-flex; align-items: center; gap: 4px; }
+.rec-empty { margin: 0; }
+.rec-new { border: 1px dashed var(--border); border-radius: 12px; }
+.rec-new > summary { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 12px; list-style: none; cursor: pointer; font-weight: 600; color: var(--text-primary); }
+.rec-new > summary::-webkit-details-marker { display: none; }
+.rec-new > summary::before { content: ''; width: 7px; height: 7px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform 0.15s; }
+.rec-new[open] > summary::before { transform: rotate(45deg); }
+.rec-new > summary:hover { background: var(--surface-2); }
+.rec-new-body { display: grid; gap: 14px; padding: 4px 14px 16px; }
+.rec-panel { display: grid; gap: 12px; }
+.rec-panel[hidden] { display: none; }
+.rec-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.rec-start { min-height: 46px; padding: 10px 22px; border-radius: 12px; font-size: calc(15px * var(--fs)); }
+.rec-note > summary { cursor: pointer; color: var(--text-secondary); font-size: calc(12.5px * var(--fs)); }
+.rec-note p { margin: 8px 0 0; }
+@media (max-width: 560px) { .rec-start { width: 100%; justify-content: center; } }
+/* tab cách tạo phiên: tab đang chọn dùng đúng cặp màu info của web (chữ đậm trên nền nhạt), nút đặc màu ở trên đang ép chữ trắng làm chữ khó đọc */
+.rec-new .seg-btns [role="tab"][aria-selected="true"], .rec-new .seg-btns [role="tab"][aria-selected="true"]:hover { color: var(--info-ink); }
+.rec-new .seg-btns [role="tab"][aria-selected="true"] > .icon { background: color-mix(in srgb, var(--info-ink) 16%, transparent); color: var(--info-ink); }

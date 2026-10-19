@@ -238,26 +238,67 @@ test('T3: gen-e2e dặn AI về phiên đăng nhập khi cases có auth, không 
 const ui = await import('../ui/views/record.js');
 const idle = { state: 'idle', canRecord: true, reason: null };
 
-test('T4: form có chọn phiên (kèm tuỳ chọn không dùng), nút Xoá phiên và hàng Đăng nhập trước', () => {
-  const html = ui.recordViewHtml({ status: idle, editing: null, saved: null, auth: [{ name: 'admin', savedAt: '2026-10-19T07:00:00.000Z' }] });
-  assert.match(html, /<select[^>]*data-rec-auth/);
-  assert.match(html, /<option value="">/);
-  assert.match(html, /<option value="admin">/);
-  assert.match(html, /data-rec-auth-del/);
-  assert.match(html, /data-rec-login-name/);
-  assert.match(html, /data-rec-login/);
+test('T4: phiên đã lưu hiện thành chip bấm để chọn, có nút xoá riêng; chip đang dùng có aria-pressed', () => {
+  const auth = [{ name: 'admin', savedAt: '2026-10-19T07:00:00.000Z' }, { name: 'khach-hang', savedAt: '2026-10-19T08:00:00.000Z' }];
+  const html = ui.recordViewHtml({ status: idle, editing: null, saved: null, auth, authPick: 'khach-hang' });
+  assert.match(html, /data-rec-auth-pick="admin"[^>]*aria-pressed="false"/);
+  assert.match(html, /data-rec-auth-pick="khach-hang"[^>]*aria-pressed="true"/);
+  assert.match(html, /data-rec-auth-del="admin"/);
+  assert.match(html, /data-rec-auth-del="khach-hang"/);
+  assert.doesNotMatch(html, /<select/);
 });
 
-test('T4: không có phiên nào thì chỉ có tuỳ chọn trống và không có nút Xoá phiên; thiếu auth không lỗi', () => {
-  const html = ui.recordViewHtml({ status: idle, editing: null, saved: null });
-  assert.match(html, /<option value="">/);
-  assert.doesNotMatch(html, /data-rec-auth-del/);
+test('T4: chưa có phiên thì có lời nhắc thay vì chip; phiên được chọn mà không còn thì bị bỏ; thiếu auth không lỗi', () => {
+  const html = ui.recordViewHtml({ status: idle, editing: null, saved: null, auth: [], authPick: 'ghost' });
+  assert.doesNotMatch(html, /data-rec-auth-pick|data-rec-auth-del/);
+  assert.match(html, /Chưa có phiên nào/);
+  assert.doesNotThrow(() => ui.recordViewHtml({ status: idle, editing: null, saved: null }));
 });
 
-test('T4: tên phiên được escape', () => {
+test('T4: tên phiên được escape trong chip, thuộc tính và nhãn xoá', () => {
   const html = ui.recordViewHtml({ status: idle, editing: null, saved: null, auth: [{ name: '<b>x', savedAt: '2026-10-19T07:00:00.000Z' }] });
   assert.doesNotMatch(html, /<b>x/);
   assert.match(html, /&lt;b&gt;x/);
+});
+
+test('T4: cách tạo phiên là 3 tab; chỉ tab đang chọn hiện, ô nhập của tab ẩn vẫn nằm trong trang (giữ chữ đã gõ)', () => {
+  const html = ui.recordViewHtml({ status: idle, editing: null, saved: null, tab: 'cookie' });
+  for (const t of ['manual', 'cookie', 'ai']) assert.match(html, new RegExp(`data-rec-tab="${t}"`));
+  assert.match(html, /data-rec-tab="cookie"[^>]*aria-selected="true"/);
+  assert.match(html, /data-rec-tab="manual"[^>]*aria-selected="false"/);
+  assert.match(html, /data-rec-panel="cookie"(?![^>]*hidden)/);
+  assert.match(html, /data-rec-panel="manual"[^>]*hidden/);
+  assert.match(html, /data-rec-panel="ai"[^>]*hidden/);
+  for (const attr of ['data-rec-login-name', 'data-rec-login', 'data-rec-cookie', 'data-rec-link', 'data-rec-ai-prompt', 'data-rec-prepare-ai']) assert.match(html, new RegExp(attr));
+});
+
+test('T4: tab mặc định là đăng nhập thủ công', () => {
+  const html = ui.recordViewHtml({ status: idle, editing: null, saved: null });
+  assert.match(html, /data-rec-tab="manual"[^>]*aria-selected="true"/);
+  assert.match(html, /data-rec-panel="cookie"[^>]*hidden/);
+});
+
+test('T4: nút chính luôn hiện chữ (keep-label), không bị rút thành icon', () => {
+  const html = ui.recordViewHtml({ status: idle, editing: null, saved: null });
+  for (const attr of ['data-rec-start', 'data-rec-login', 'data-rec-prepare', 'data-rec-prepare-ai']) {
+    assert.match(html, new RegExp(`keep-label[^>]*${attr}|${attr}[^>]*keep-label`), attr);
+  }
+});
+
+test('T4: mục "Tạo phiên mới" chỉ mở khi newOpen', () => {
+  assert.match(ui.recordViewHtml({ status: idle, editing: null, saved: null, newOpen: true }), /<details[^>]*data-rec-new[^>]*\sopen/);
+  assert.doesNotMatch(ui.recordViewHtml({ status: idle, editing: null, saved: null }), /<details[^>]*data-rec-new[^>]*\sopen/);
+});
+
+test('T4: mỗi ô nhập và textarea của form có nhãn nhìn thấy được hoặc aria-label', () => {
+  const html = ui.recordViewHtml({ status: idle, editing: null, saved: null });
+  const fields = html.match(/<(input|textarea)\b[^>]*>/g) ?? [];
+  assert.ok(fields.length >= 5);
+  for (const f of fields) {
+    const idx = html.indexOf(f);
+    const inLabel = html.lastIndexOf('<label', idx) > html.lastIndexOf('</label>', idx);
+    assert.ok(inLabel || /aria-label=/.test(f), `thiếu nhãn: ${f.slice(0, 70)}`);
+  }
 });
 
 test('T4: phiên login đang chạy hiện "Đang đăng nhập" và nút "Xong, lưu phiên"', () => {

@@ -43,3 +43,7 @@ Thumbs.db
 mods/*/.claude-plugin/types/
 # harness session state written inside a mod folder
 mods/*/hooks/.claude/
+
+# trạng thái công cụ AI sinh trong thư mục hooks (không phải mã nguồn)
+hooks/.claude/
+mods/

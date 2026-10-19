@@ -37,6 +37,6 @@ export type View = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'e2e-dashboard-tab': { view: View; theme: string; motion: boolean }
+    'e2e-dashboard': { view: View; theme: string; motion: boolean }
   }
 }

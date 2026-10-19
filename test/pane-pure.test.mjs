@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseServer, num, cleanLive, cleanRun, passRate } from '../mods/e2e-dashboard-tab/hooks/pure.ts';
+import { parseServer, num, cleanLive, cleanRun, passRate } from '../hooks/pane-pure.ts';
 
 test('parseServer: only a real port and a plain token reach a URL (server.json is a file in the user repo)', () => {
   assert.deepEqual(parseServer({ port: 4477, token: 'ab12_-CD' }), { port: 4477, token: 'ab12_-CD' });

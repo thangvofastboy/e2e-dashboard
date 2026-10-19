@@ -10,16 +10,29 @@ const PLUGIN_ID = `e2e-dashboard@${MARKETPLACE}`
 const BARE = 'e2e-dashboard'
 const OURS = /^(e2e-dashboard:)?e2e-dashboard$/
 
-// Version the plugin manager now has installed, from `claude plugin list --json`.
-async function installedVersion($: EngineInterface) {
+// Plugins the plugin manager has installed, from `claude plugin list --json` (empty when it cannot be read).
+async function installedPlugins($: EngineInterface) {
   try {
     const run = await $.process.run(['claude', 'plugin', 'list', '--json'], { timeoutMs: 30000 })
-    if (run.exitCode !== 0) return undefined
-    const list = JSON.parse(run.stdout) as Array<{ id?: string; version?: string }>
-    return list.find(p => p.id === PLUGIN_ID)?.version
+    if (run.exitCode !== 0) return []
+    return JSON.parse(run.stdout) as Array<{ id?: string; version?: string }>
   } catch {
-    return undefined
+    return []
   }
+}
+
+// Version the plugin manager now has installed.
+async function installedVersion($: EngineInterface) {
+  return (await installedPlugins($)).find(p => p.id === PLUGIN_ID)?.version
+}
+
+// The pane used to be a separate mod. It lives in this plugin now (hooks/pane.tsx), so an old copy that is still installed
+// would open a second pane: say once per plugin version how to remove it.
+const LEGACY_MOD_ID = `e2e-dashboard-tab@${MARKETPLACE}`
+async function legacyModNotice($: EngineInterface, key: string) {
+  if (!(await installedPlugins($)).some(p => p.id === LEGACY_MOD_ID)) return
+  await $.store.set(key, '1')
+  $.ui.toast(`Pane E2E đã nằm trong plugin e2e-dashboard. Gỡ mod cũ để khỏi mở hai pane: /plugin uninstall ${LEGACY_MOD_ID}`)
 }
 
 async function currentVersion($: EngineInterface) {
@@ -124,14 +137,14 @@ async function runCli($: EngineInterface, argv: string[]) {
   return out.includes('NEEDS_MANUAL_EDIT') ? `${out}\n\nChạy /${BARE}:${BARE} setup để Claude sửa config giúp.` : out
 }
 
-// The pane belongs to the mod e2e-dashboard-tab; the plugin only forwards `pane` to its `/e2e-pane` command.
+// The pane is this plugin's own module (hooks/pane.tsx), which registers `/e2e-pane`; `pane` here only forwards to it.
 // `$.command.run` is rejected inside a hook the turn waits on (this one), so it starts from a timer, after this
-// command has returned; the mod prints its own "đã mở" line. No mod: nobody answers, the run rejects, a toast says so.
+// command has returned; the pane module prints its own "đã mở" line. Not registered yet (plugin just updated): a toast says to reload.
 function openPane($: EngineInterface, args: string[]) {
   $.clock.after(200, () => {
     void $.command
       .run({ command: 'e2e-pane', args: args.join(' ') })
-      .catch(() => $.ui.toast('Pane E2E chưa có: cài mod e2e-dashboard-tab (xem mods/e2e-dashboard-tab/README.md) rồi thử lại.'))
+      .catch(() => $.ui.toast('Pane E2E chưa sẵn sàng: chạy /reload-plugins rồi thử lại.'))
   })
   return 'Đang mở pane E2E…'
 }
@@ -145,27 +158,34 @@ async function updateE2e($: EngineInterface) {
   return { done: run?.exitCode === 0 && !out.startsWith('Dùng:'), out: out.startsWith('Dùng:') ? '' : out }
 }
 
-export const register: Register = on => {
-  on('session.start', async ($, e, next) => {
-    await $.command
-      .register({ name: BARE, description: 'Mở dashboard e2e (live, lịch sử, debug)', argumentHint: '[pane [theme <tên>]|artifact [week|month]|setup|export [runId]|stop|status|digest [ngày]|projects|statusline [install]|quarantine|import <path>|share push|pull|fix [runId] [resultId]|gate|report [week|month] [--send]|publish [dir]|mark <loại> <mô tả>|triage|ci-sync|update|version]' })
-      .catch(() => undefined)
-    // After a plugin update, bring e2e up to date once per project and plugin version, not on every session start.
-    const key = `e2e-updated:${await $.session.cwd()}`
-    const version = await currentVersion($)
-    if ((await $.store.get(key)) !== version) {
-      $.clock.after(2000, () => {
-        void updateE2e($)
-          .then(async r => {
-            if (r.done) await $.store.set(key, version)
-            if (/^(✓ Đã cập nhật|✗)/.test(r.out)) $.ui.toast(r.out)
-          })
-          .catch(() => undefined)
-      })
-    }
-    return next(e)
-  })
+// Việc khởi động của plugin, do handler session.start duy nhất trong hooks/index.ts gọi (engine chỉ cho mỗi module một
+// on("session.start") không matcher, và chỉ theo dõi được `$` truyền cho hàm có tên tĩnh).
+export async function startPlugin($: EngineInterface) {
+  await $.command
+    .register({ name: BARE, description: 'Mở dashboard e2e (live, lịch sử, debug)', argumentHint: '[pane [theme <tên>]|artifact [week|month]|setup|export [runId]|stop|status|digest [ngày]|projects|statusline [install]|quarantine|import <path>|share push|pull|fix [runId] [resultId]|gate|report [week|month] [--send]|publish [dir]|mark <loại> <mô tả>|triage|ci-sync|update|version]' })
+    .catch(() => undefined)
+  // After a plugin update, bring e2e up to date once per project and plugin version, not on every session start.
+  const key = `e2e-updated:${await $.session.cwd()}`
+  const version = await currentVersion($)
+  if ((await $.store.get(key)) !== version) {
+    $.clock.after(2000, () => {
+      void updateE2e($)
+        .then(async r => {
+          if (r.done) await $.store.set(key, version)
+          if (/^(✓ Đã cập nhật|✗)/.test(r.out)) $.ui.toast(r.out)
+        })
+        .catch(() => undefined)
+    })
+  }
+  const noticeKey = `legacy-mod-notice:${version}`
+  if (!(await $.store.get(noticeKey))) {
+    $.clock.after(3000, () => {
+      void legacyModNotice($, noticeKey).catch(() => undefined)
+    })
+  }
+}
 
+export const register: Register = on => {
   on('command.run', async ($, e, next) => {
     if (!OURS.test(e.command)) return next(e)
     const argv = e.args.trim() ? e.args.trim().split(/\s+/) : []

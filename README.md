@@ -731,17 +731,35 @@ Ba nguồn (reporter, watcher, hook) cùng gọi một hàm `archive()`. Hàm n�
 
 ---
 
-## 🖥️ Pane E2E trong Claude Code (mod)
+## 🖥️ Pane E2E trong Claude Code
 
-Mod [`e2e-dashboard-tab`](mods/e2e-dashboard-tab/README.md) thêm một pane theo dõi run ngay trong session Claude Code: tiến độ, thời gian còn lại, pass rate, gate / SLO / ngân sách, test flaky, nút chạy / dừng run. Trên Claude Desktop có thêm biểu đồ SVG chuyển động.
+Plugin có sẵn một pane theo dõi run ngay trong session Claude Code, không cần cài thêm gì:
 
-```text
-/plugin marketplace add thangvofastboy/e2e-dashboard
-/plugin install e2e-dashboard-tab@e2e-dashboard
-/reload-plugins
-```
+- Trạng thái run, tiến độ `done/total`, thời gian còn lại ước tính, tên các test đang chạy.
+- Pass rate và so với run trước; số pass / flaky / fail / skip.
+- Gate, SLO, cảnh báo vượt ngân sách token, top test flaky.
+- Nút **Chạy test** / **Dừng run** và link mở dashboard web.
+- Trên Claude Desktop: vòng tiến độ, thanh kết quả và biểu đồ xu hướng 10 run bằng SVG có chuyển động. Trên terminal: bản text.
+- Toast khi run xong, khi SLO vượt mục tiêu hoặc khi vượt ngân sách.
 
-Mở pane: `/e2e-pane` (hoặc `/e2e-dashboard pane`). Cần dashboard đang chạy (`/e2e-dashboard`). Theme và chuyển động: `/e2e-pane theme ocean`, `/e2e-pane motion off`. Chi tiết, giới hạn và cách gỡ: [mods/e2e-dashboard-tab/README.md](mods/e2e-dashboard-tab/README.md).
+Mở pane bằng `/e2e-pane` (hoặc `/e2e-dashboard pane`). Cần dashboard đang chạy (`/e2e-dashboard`), vì pane đọc `.e2e-dashboard/` và API của dashboard.
+
+| Lệnh | Việc |
+|---|---|
+| `/e2e-pane` | Mở pane (chỉ poll khi pane đang mở; đóng pane là dừng) |
+| `/e2e-pane theme <default\|ocean\|forest\|sunset\|light>` | Đổi theme; không có tên thì xem theme hiện tại |
+| `/e2e-pane motion <on\|off>` | Bật / tắt chuyển động của biểu đồ trên Desktop |
+
+Cách hoạt động và giới hạn:
+
+- Tiến độ đọc từ `.e2e-dashboard/runtime/live.json` mỗi giây; `live.json` không được ghi quá 5 phút thì coi là run đã dừng.
+- Số liệu lấy từ `/api/runs` (5 giây một lần) và `/api/gate`, `/api/slo`, `/api/cost`, `/api/flaky` (15 giây một lần), bằng port và token trong `.e2e-dashboard/server.json`.
+- **Chạy test** gọi `POST /api/run`, **Dừng run** gọi `POST /api/run/stop`.
+- Pane hiện link dashboard kèm token: đừng chia sẻ màn hình khi pane đang mở.
+- Chưa kiểm chứng đầy đủ trên Claude Desktop: phần vẽ SVG và chuyển động dựa theo tài liệu của mod API. Nếu chuyển động bị chớp, tắt bằng `/e2e-pane motion off`.
+- Mã nằm ở `hooks/pane.tsx` (vẽ pane) và `hooks/pane-pure.ts` (hàm thuần có test); lệnh `/e2e-dashboard pane` chuyển tiếp sang `/e2e-pane`.
+
+> Trước đây pane là một mod riêng tên `e2e-dashboard-tab`. Nó đã nằm trong plugin, nên nếu bạn từng cài mod đó hãy gỡ để khỏi mở hai pane: `/plugin uninstall e2e-dashboard-tab@e2e-dashboard` (plugin tự nhắc một lần cho mỗi phiên bản).
 
 ---
 

@@ -72,3 +72,14 @@ test('bundle UI có renderRecord và vẫn là một script hợp lệ (không k
   assert.match(code, /function renderRecord/);
   assert.doesNotThrow(() => new Function(code));
 });
+
+test('Record theo style của web: textarea có style riêng, tab chọn đọc được, không dùng .form-row (nút bị rút thành icon)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const css = readFileSync(fileURLToPath(new URL('../ui/style.css', import.meta.url)), 'utf8');
+  assert.match(css, /\.rec-field textarea \{[^}]*border: 1px solid var\(--border\)[^}]*border-radius: 10px/, 'textarea theo khuôn .fb-field');
+  assert.match(css, /\.rec-field input:focus-visible, \.rec-field textarea:focus-visible \{[^}]*box-shadow/, 'có trạng thái focus');
+  assert.match(css, /\.rec-new \.seg-btns \[role="tab"\]\[aria-selected="true"\][^{]*\{ color: var\(--info-ink\)/, 'tab chọn: chữ info-ink trên nền info-bg');
+  const html = recordViewHtml({ status: { state: 'idle', canRecord: true, reason: null }, editing: null, saved: null, auth: [{ name: 'a', savedAt: '2026-10-19T07:00:00.000Z' }] });
+  assert.doesNotMatch(html, /form-row/);
+  assert.doesNotMatch(html, /<select/, 'chọn phiên bằng nút, không dùng select mặc định');
+});

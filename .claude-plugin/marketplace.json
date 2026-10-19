@@ -14,12 +14,6 @@
       },
       "description": "/e2e-dashboard: live, history and debugging dashboard for e2e test runs",
       "version": "0.25.0"
-    },
-    {
-      "name": "e2e-dashboard-tab",
-      "source": "./mods/e2e-dashboard-tab",
-      "description": "/e2e-pane: pane theo dõi run e2e-dashboard trong Claude Code (mod)",
-      "version": "0.1.1"
     }
   ]
 }

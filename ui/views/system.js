@@ -236,8 +236,7 @@ function healHtml(h, cfg, aiCfg) {
     ${sysStats(sysStat('Model', escapeHtml(aiCfg.model || 'mặc định')), sysStat('Effort', escapeHtml(aiCfg.effort || 'mặc định')), sysStat('Tự sửa lỗi', cfg.enabled ? 'Bật' : 'Tắt', cfg.enabled ? 'good' : 'muted'), sysStat('Lỗi đã ghi', h.errors.length), sysStat('Chờ duyệt', n('awaiting-review'), n('awaiting-review') ? 'warn' : ''), sysStat('PR đã mở', n('pr-open'), n('pr-open') ? 'good' : ''))}
     <p class="muted">Dùng cho mọi tính năng AI của dashboard (phân tích lỗi, tóm tắt run, triage, tự sửa lỗi…) qua <code>claude</code> trên máy này. Để trống = mặc định của Claude Code.</p>
     <form class="form-row" data-ai-model><span class="form-label">Model</span>
-      <input name="model" list="ai-models" value="${escapeHtml(aiCfg.model)}" placeholder="mặc định" aria-label="Model AI" autocomplete="off">
-      <datalist id="ai-models">${AI_MODELS.map((m) => `<option value="${m}">`).join('')}</datalist>
+      <select name="model" aria-label="Model AI">${[['', 'mặc định'], ...[...new Set([aiCfg.model, ...AI_MODELS].filter(Boolean))].map((m) => [m, m])].map(([v, t]) => `<option value="${escapeHtml(v)}"${v === (aiCfg.model || '') ? ' selected' : ''}>${escapeHtml(t)}</option>`).join('')}</select>
       <button type="submit">${icon('check', { size: 14 })}Lưu</button><small class="fld-hint">Model Claude dùng cho mọi tính năng AI, ví dụ <code>sonnet</code> hoặc <code>opus</code>. Mặc định: để trống = model mặc định của Claude Code.</small></form>
     <div class="form-row"><span class="form-label">Effort</span>${seg('effort', [['', 'Mặc định'], ...aiCfg.efforts.map((e) => [e, e === 'xhigh' ? 'XHigh' : cap(e)])], aiCfg.effort, 'Effort')}</div>
     <p class="muted small">Effort cao hơn: suy luận kỹ hơn nhưng chậm và tốn token hơn. Gợi ý: <code>medium</code> cho tóm tắt / triage, <code>high</code> trở lên cho tự sửa lỗi.</p>

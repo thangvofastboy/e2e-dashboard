@@ -1,5 +1,11 @@
 # Changelog
 
+## Chưa phát hành
+
+- **Pane E2E nằm trong plugin**: `/e2e-pane` do chính plugin `e2e-dashboard` đăng ký, không còn mod riêng `e2e-dashboard-tab` để cài. `/e2e-dashboard pane` hết báo "Pane E2E chưa có: cài mod…" (nếu vừa cập nhật mà pane chưa sẵn sàng thì nhắc `/reload-plugins`). Ai đã cài mod cũ được nhắc gỡ một lần cho mỗi phiên bản (`/plugin uninstall e2e-dashboard-tab@e2e-dashboard`); chưa gỡ thì plugin vẫn chạy bình thường nhưng sẽ mở hai pane. Mod bị bỏ khỏi marketplace.
+- **Record: giao diện làm lại theo 3 bước** (Trang cần test → Phiên đăng nhập → Ghi thao tác): ô nhập và textarea có style như phần còn lại của web (nhãn, viền, focus, textarea mono kéo giãn được), phiên đã lưu là các nút chọn/xoá thay cho ô chọn, ba cách tạo phiên thành ba tab, nút chính luôn hiện chữ. Kiểm tra khổ hẹp (không tràn ngang) và chế độ tối.
+- **Item của dropdown theo style của web**: ô model AI ở Cài đặt hệ thống đổi từ `<datalist>` (popup do trình duyệt vẽ, không chỉnh được) sang `<select>` cùng khuôn với các dropdown khác; có test chặn `<datalist>` quay lại.
+
 ## v0.25.0 — 2026-10-19
 
 - **Record: đăng nhập trước, lưu phiên**: nút *Đăng nhập trước* mở trình duyệt để đăng nhập (SSO, OTP, captcha) rồi lưu cookie / localStorage thành phiên ở `.e2e-dashboard/auth/` (0600, không commit). Record chọn phiên đó để mở ra đã đăng nhập; spec lưu mang `test.use({ storageState })`. Có nút xoá phiên; API chỉ trả tên và thời điểm lưu, không trả nội dung phiên.
