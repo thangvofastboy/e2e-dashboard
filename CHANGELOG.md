@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.23.0 — 2026-10-19
+
+- **Mod `e2e-dashboard-tab` có trong repo**: pane `/e2e-pane` (hoặc `/e2e-dashboard pane`) theo dõi run ngay trong Claude Code: tiến độ, thời gian còn lại, pass rate, gate / SLO / ngân sách, test flaky, nút chạy và dừng run, link dashboard, 5 theme, biểu đồ SVG trên Claude Desktop. Cài bằng `/plugin install e2e-dashboard-tab@e2e-dashboard`; hướng dẫn trong `mods/e2e-dashboard-tab/README.md`.
+- **Sửa**: mod coi `server.json` và mọi phản hồi API là dữ liệu không tin cậy: port / token không hợp lệ bị bỏ qua, số đếm được ép về số, không có gì chưa kiểm tra đi vào URL hay SVG.
+- **Sửa**: `live.json` đếm số test theo trạng thái bằng object không có prototype, để trạng thái trùng tên khoá của `Object.prototype` không làm sai số.
+
 ## v0.22.1 — 2026-10-19
 
 - **Sửa cập nhật `e2e` tự động**: `/e2e-dashboard update-e2e` (và lần mở session sau khi plugin đổi bản) không còn chạy lại ở mọi lần mở session khi project không có e2e. Chỉ thử lại khi dashboard đang có run hoặc npm không trả lời; khi npm không trả lời, bản e2e không còn bị ghi nhận là "đã mới nhất".
