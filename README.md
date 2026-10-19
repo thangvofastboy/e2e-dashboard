@@ -716,6 +716,20 @@ Ba nguồn (reporter, watcher, hook) cùng gọi một hàm `archive()`. Hàm n�
 
 ---
 
+## 🖥️ Pane E2E trong Claude Code (mod)
+
+Mod [`e2e-dashboard-tab`](mods/e2e-dashboard-tab/README.md) thêm một pane theo dõi run ngay trong session Claude Code: tiến độ, thời gian còn lại, pass rate, gate / SLO / ngân sách, test flaky, nút chạy / dừng run. Trên Claude Desktop có thêm biểu đồ SVG chuyển động.
+
+```text
+/plugin marketplace add thangvofastboy/e2e-dashboard
+/plugin install e2e-dashboard-tab@e2e-dashboard
+/reload-plugins
+```
+
+Mở pane: `/e2e-pane` (hoặc `/e2e-dashboard pane`). Cần dashboard đang chạy (`/e2e-dashboard`). Theme và chuyển động: `/e2e-pane theme ocean`, `/e2e-pane motion off`. Chi tiết, giới hạn và cách gỡ: [mods/e2e-dashboard-tab/README.md](mods/e2e-dashboard-tab/README.md).
+
+---
+
 ## 🔄 Cập nhật & phát hành
 
 **Người dùng:** gõ `/e2e-dashboard version` để xem có bản mới, `/e2e-dashboard update` để cập nhật. Lệnh chạy `claude plugin marketplace update` + `claude plugin update`, rồi tự gọi `/reload-plugins`: không cần khởi động lại Claude Code.

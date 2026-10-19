@@ -1,0 +1,9 @@
+{
+  "name": "e2e-dashboard-tab",
+  "version": "0.1.1",
+  "description": "/e2e-pane: pane theo dõi run e2e-dashboard (tiến độ, pass rate, gate, SLO, flaky) trong Claude Code",
+  "author": {
+    "name": "thangvofastboy"
+  },
+  "types": "./types/index.d.ts"
+}

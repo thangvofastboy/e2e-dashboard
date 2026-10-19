@@ -39,3 +39,7 @@ coverage/
 *~
 .DS_Store
 Thumbs.db
+# types written by Claude Code while a mod is loaded from this folder (--plugin-dir)
+mods/*/.claude-plugin/types/
+# harness session state written inside a mod folder
+mods/*/hooks/.claude/

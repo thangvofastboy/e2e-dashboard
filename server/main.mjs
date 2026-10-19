@@ -126,7 +126,7 @@ export function liveFileWriter(projectRoot, { minIntervalMs = 1000 } = {}) {
     await mkdir(dirname(path), { recursive: true }).catch(() => {});
     const tmp = `${path}.tmp-${randomBytes(4).toString('hex')}`;
     // counts: finished tests by status; running: titles of up to 3 tests in flight (for the pane, not the Live page)
-    const counts = {};
+    const counts = Object.create(null); // statuses come from reporter events: no prototype keys
     const running = [];
     for (const t of s.tests ?? []) {
       if (t.status !== 'running') counts[t.status] = (counts[t.status] ?? 0) + 1;

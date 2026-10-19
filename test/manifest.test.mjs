@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 
 const json = (p) => JSON.parse(readFileSync(new URL(`../${p}`, import.meta.url), 'utf8'));
 
@@ -27,4 +27,15 @@ test('plugin, package and reporter versions agree', async () => {
 
 test('fixture is a report-1 document', () => {
   assert.equal(json('test/fixtures/report-v1.valid.json').schemaVersion, 'report-1');
+});
+
+test('mod e2e-dashboard-tab: marketplace entry, version, hooks module and types match the mod folder', () => {
+  const entry = json('.claude-plugin/marketplace.json').plugins.find((p) => p.name === 'e2e-dashboard-tab');
+  assert.equal(entry?.source, './mods/e2e-dashboard-tab');
+  const mod = json('mods/e2e-dashboard-tab/.claude-plugin/plugin.json');
+  assert.equal(mod.name, 'e2e-dashboard-tab');
+  assert.equal(entry.version, mod.version, 'bump the mod version in plugin.json and in marketplace.json together');
+  const here = (rel) => new URL(`../mods/e2e-dashboard-tab/${rel}`, import.meta.url);
+  for (const m of json('mods/e2e-dashboard-tab/hooks/hooks.json').modules) assert.ok(existsSync(here(`hooks/${m}`)), `hooks module ${m}`);
+  assert.ok(existsSync(here(mod.types)), 'types file named in plugin.json');
 });
