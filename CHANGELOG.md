@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.21.0 — 2026-10-19
+
+- **`live.json` có số đếm và tên test đang chạy**: thêm `counts` (số test đã xong theo trạng thái) và `running` (tối đa 3 tên test đang chạy). Trước đây file chỉ có tiến độ `done/total`. Dùng cho pane theo dõi realtime; trang Live không đổi.
+
 ## v0.20.2 — 2026-10-16
 
 - **Sau `/e2e-dashboard update` không cần chạy `setup` nữa**: mở lại `/e2e-dashboard` trong project thì dashboard tự cập nhật reporter và các dòng cấu hình (reporter, `E2E_BROWSER`, trace) lên bản mới, kết quả hiện ngay trong output. Project chưa setup lần nào thì không bị đụng.
