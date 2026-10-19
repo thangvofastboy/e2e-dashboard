@@ -1,6 +1,6 @@
 # Changelog
 
-## Chưa phát hành
+## v0.25.0 — 2026-10-19
 
 - **Record: đăng nhập trước, lưu phiên**: nút *Đăng nhập trước* mở trình duyệt để đăng nhập (SSO, OTP, captcha) rồi lưu cookie / localStorage thành phiên ở `.e2e-dashboard/auth/` (0600, không commit). Record chọn phiên đó để mở ra đã đăng nhập; spec lưu mang `test.use({ storageState })`. Có nút xoá phiên; API chỉ trả tên và thời điểm lưu, không trả nội dung phiên.
 - **Record: dựng phiên từ cookie hoặc link**: dán chuỗi `Cookie` từ DevTools và/hoặc một link đăng nhập một lần, bấm *Lưu phiên từ cookie / link*. Chỉ cookie thì ghi thẳng, không cần màn hình; có link thì mở bằng chromium ẩn rồi lưu phiên. Không dùng AI; cookie và link đi qua file tạm 0600, không qua dòng lệnh, và bị che trong thông báo lỗi.
