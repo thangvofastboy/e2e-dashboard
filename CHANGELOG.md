@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.22.1 — 2026-10-19
+
+- **Sửa cập nhật `e2e` tự động**: `/e2e-dashboard update-e2e` (và lần mở session sau khi plugin đổi bản) không còn chạy lại ở mọi lần mở session khi project không có e2e. Chỉ thử lại khi dashboard đang có run hoặc npm không trả lời; khi npm không trả lời, bản e2e không còn bị ghi nhận là "đã mới nhất".
+- **Sửa trạng thái "đang chạy" bị kẹt**: một `live.json` không được ghi trong 5 phút được coi là run đã dừng (dashboard chết giữa chừng). Áp dụng cho cả việc cập nhật `e2e` và pane.
+- **Sửa token khi hai dashboard khởi động cùng lúc** trên một thư mục home mới: chỉ còn một token được ghi, bên kia đọc lại token đó.
+
 ## v0.22.0 — 2026-10-19
 
 - **`/e2e-dashboard update` cập nhật luôn `e2e` và các engine** (`@e2e-dev/web`, …) lên bản mới nhất trên npm, kể cả khi plugin đã là bản mới nhất. Khi plugin tự cập nhật, lần mở session đầu tiên sau đó (mỗi project, mỗi phiên bản plugin) cũng cập nhật `e2e` ở nền. Không chạy khi dashboard đang có run; tắt bằng `"e2e": { "autoUpdate": false }` trong `~/.e2e-dashboard/config.json`. Lệnh con mới `update-e2e` chạy riêng việc này. Lần `update` đầu tiên từ bản cũ chỉ cập nhật plugin.
