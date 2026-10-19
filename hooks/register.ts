@@ -118,15 +118,45 @@ async function runCli($: EngineInterface, argv: string[]) {
   })
   const out = `${run.stdout}${run.stderr}`.trim() || `dashboard.mjs thoát mã ${run.exitCode}`
   // the config edit needs the model: the namespaced markdown command hands it to Claude
+  // publishing needs the model (the Artifact tool): the namespaced markdown command hands the file to Claude
+  if (out.startsWith('ARTIFACT_REQUEST')) return `${out.split('\n').slice(1).join('\n')}\n\nĐể đăng thành Artifact, chạy:\n  /${BARE}:${BARE} ${argv.join(' ')}`
   if (out.startsWith('FIX_REQUEST')) return `Để Claude sửa test này, chạy:\n  /${BARE}:${BARE} ${argv.join(' ')}`
   return out.includes('NEEDS_MANUAL_EDIT') ? `${out}\n\nChạy /${BARE}:${BARE} setup để Claude sửa config giúp.` : out
+}
+
+// The pane belongs to the mod e2e-dashboard-tab; the plugin only forwards `pane` to its `/e2e-pane` command.
+async function openPane($: EngineInterface, args: string[]) {
+  const out = await $.command.run({ command: 'e2e-pane', args: args.join(' ') }).catch(() => null)
+  return out?.text ?? 'Pane E2E chưa có. Cài mod e2e-dashboard-tab rồi thử lại, hoặc mở dashboard bằng /e2e-dashboard.'
+}
+
+// `update-e2e` exists from v0.21.1: an older cached plugin prints its usage text instead, which is dropped.
+async function updateE2e($: EngineInterface) {
+  const run = await $.process
+    .run(['node', `${$.plugin.root}/bin/dashboard.mjs`, 'update-e2e'], { timeoutMs: 300000, env: { CLAUDE_PLUGIN_ROOT: $.plugin.root } })
+    .catch(() => null)
+  const out = run ? `${run.stdout}${run.stderr}`.trim() : ''
+  return { done: run?.exitCode === 0 && !out.startsWith('Dùng:'), out: out.startsWith('Dùng:') ? '' : out }
 }
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command
-      .register({ name: BARE, description: 'Mở dashboard e2e (live, lịch sử, debug)', argumentHint: '[setup|export [runId]|stop|status|digest [ngày]|projects|statusline [install]|quarantine|import <path>|share push|pull|fix [runId] [resultId]|gate|report [week|month] [--send]|publish [dir]|mark <loại> <mô tả>|triage|ci-sync|update|version]' })
+      .register({ name: BARE, description: 'Mở dashboard e2e (live, lịch sử, debug)', argumentHint: '[pane [theme <tên>]|artifact [week|month]|setup|export [runId]|stop|status|digest [ngày]|projects|statusline [install]|quarantine|import <path>|share push|pull|fix [runId] [resultId]|gate|report [week|month] [--send]|publish [dir]|mark <loại> <mô tả>|triage|ci-sync|update|version]' })
       .catch(() => undefined)
+    // After a plugin update, bring e2e up to date once per project and plugin version, not on every session start.
+    const key = `e2e-updated:${await $.session.cwd()}`
+    const version = await currentVersion($)
+    if ((await $.store.get(key)) !== version) {
+      $.clock.after(2000, () => {
+        void updateE2e($)
+          .then(async r => {
+            if (r.done) await $.store.set(key, version)
+            if (/^(✓ Đã cập nhật|✗)/.test(r.out)) $.ui.toast(r.out)
+          })
+          .catch(() => undefined)
+      })
+    }
     return next(e)
   })
 
@@ -136,7 +166,12 @@ export const register: Register = on => {
     const sub = argv[0]
     if (sub !== 'update' && sub !== 'version' && e.command !== BARE) return next(e)
     try {
-      if (sub === 'update') return { text: await updatePlugin($) }
+      if (sub === 'pane') return { text: await openPane($, argv.slice(1)) }
+      if (sub === 'update') {
+        const plugin = await updatePlugin($)
+        const e2e = await updateE2e($)
+        return { text: e2e.out ? `${plugin}\n${e2e.out}` : plugin }
+      }
       if (sub === 'version') return { text: await versionText($) }
       return { text: await runCli($, argv) }
     } catch (error) {

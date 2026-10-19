@@ -8,7 +8,7 @@ import { syncIndex } from './runindex.mjs';
 import { playwrightToReport } from './playwright.mjs';
 import { readUserConfig, aiPrefs } from './system.mjs';
 import { resolveLinear, detectMcpLinear } from './linear-mcp.mjs';
-import { mkdir, writeFile, rm, readFile, rename } from 'node:fs/promises';
+import { mkdir, writeFile, rm, readFile, rename, lstat } from 'node:fs/promises';
 import { join, resolve, basename, dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -18,7 +18,7 @@ import { createScheduler, scheduleTimes, createTestWatcher } from './automation.
 import { webhookConfig, sendWebhooks, mentionMap, mentionsFor } from './webhook.mjs';
 import { readCodeowners, ownersOf } from './owners.mjs';
 import { readQuarantine, quarantineFlags } from './quarantine.mjs';
-import { registerProject } from './projects.mjs';
+import { registerProject, homeDir } from './projects.mjs';
 import { createScheduleRunner, recordRun, scheduleRootAllowed } from './schedules.mjs';
 import { createRunner } from './runner.mjs';
 import { createAi, AI_NO_TOOLS_ARGS } from './ai.mjs';
@@ -71,6 +71,27 @@ export async function finishDashboardRun({ projectRoot, beforeId, rerunOf, outpu
   return meta ? id : null;
 }
 const randomToken = () => randomBytes(24).toString('hex');
+// One token per user, kept in ~/.e2e-dashboard/token (0600), so the bookmarked link keeps working across restarts.
+// Tests get a fresh random token and never touch the real home dir.
+const tokenPath = (env = process.env) => join(homeDir(env), 'token');
+export async function loadOrCreateToken(env = process.env) {
+  if (env.NODE_TEST_CONTEXT) return randomToken();
+  const p = tokenPath(env);
+  if ((await lstat(p).catch(() => null))?.isSymbolicLink()) throw new Error(`Từ chối đọc token qua symlink: ${p}`);
+  const saved = await readFile(p, 'utf8').then((t) => t.trim(), () => '');
+  if (/^[A-Za-z0-9_-]{32,}$/.test(saved)) return saved;
+  return resetToken(env);
+}
+export async function resetToken(env = process.env) {
+  const p = tokenPath(env);
+  if ((await lstat(p).catch(() => null))?.isSymbolicLink()) throw new Error(`Từ chối ghi token qua symlink: ${p}`);
+  await mkdir(dirname(p), { recursive: true, mode: 0o700 });
+  const tmp = `${p}.tmp-${randomBytes(4).toString('hex')}`;
+  const token = randomToken();
+  await writeFile(tmp, `${token}\n`, { mode: 0o600 });
+  await rename(tmp, p);
+  return token;
+}
 
 function listen(server, port) {
   return new Promise((ok, fail) => {
@@ -149,7 +170,8 @@ function watchCrashes(projectRoot) {
   });
 }
 
-export async function startServer({ projectRoot, port, token = randomToken(), uiDir = UI_DIR, register = true, notifier }) {
+export async function startServer({ projectRoot, port, token, uiDir = UI_DIR, register = true, notifier }) {
+  token ??= await loadOrCreateToken();
   // .e2e-dashboard/ là symlink (repo clone cài sẵn): từ chối trước khi bật watcher / timer nào
   if (!(await ensureDataDir(projectRoot))) throw new Error('unsafe data dir');
   const cfg = readConfig(projectRoot);

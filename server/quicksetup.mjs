@@ -318,6 +318,14 @@ export async function updateE2ePackages(root, { latest = npmLatest, installed = 
   }
 }
 
+// One line for the CLI and the plugin's `/e2e-dashboard update`.
+export function describeE2eUpdate(r) {
+  if (r.status === 'updated') return `✓ Đã cập nhật e2e: ${r.packages.map((p) => `${p.name} ${p.from ?? '?'} → ${p.to}`).join(', ')}`;
+  if (r.status === 'failed') return `✗ Cập nhật e2e lỗi (mã ${r.exitCode}): chạy tay ${r.command}`;
+  if (r.status === 'up-to-date') return `✓ e2e đã là bản mới nhất (${r.packages.map((p) => `${p.name} ${p.from ?? '?'}`).join(', ')})`;
+  return `ℹ Chưa cập nhật e2e: ${r.reason}`;
+}
+
 // setup: hàm setup() của bin/dashboard.mjs. CLI (bin/dashboard.mjs là entry, đang ở top-level await) phải truyền vào:
 // import lại chính module đang chạy sẽ chờ nó chạy xong → treo, Node thoát với "unsettled top-level await"
 async function runSteps(root, ids, { onEvent = () => {}, signal, inherit = false, plan: given, setup: setupFn, ...planOpts } = {}) {

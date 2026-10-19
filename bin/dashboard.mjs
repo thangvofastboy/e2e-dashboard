@@ -2,7 +2,7 @@
 // Entry for /e2e-dashboard: start | setup | doctor | export | stop | status | digest | report | gate | fix | triage | quarantine | import | share | publish | mark | ci-sync | projects | statusline.
 import { spawn, spawnSync } from 'node:child_process';
 import { readFile, writeFile, copyFile, mkdir, rm, appendFile, lstat } from 'node:fs/promises';
-import { existsSync, openSync, closeSync } from 'node:fs';
+import { existsSync, openSync, closeSync, readFileSync } from 'node:fs';
 import { join, basename, dirname, resolve, relative } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -344,6 +344,33 @@ export async function main(argv, cwd) {
     const st = await autoUpdateStatus();
     return { code: st.error ? 1 : 0, out: st.error ?? `Tự cập nhật plugin: ${st.enabled ? 'đang bật' : st.off ? 'đang tắt' : 'chưa bật'} (${st.path}). Bật: /e2e-dashboard autoupdate on · Tắt: /e2e-dashboard autoupdate off` };
   }
+  if (first === 'token') {
+    // the token itself is never printed: start / status show the link. `reset` makes a new one (restart the dashboard after)
+    const { loadOrCreateToken, resetToken } = await import('../server/main.mjs');
+    if (argv[1] === 'reset') {
+      await resetToken();
+      return { code: 0, out: 'Đã tạo token mới. Dashboard đang chạy vẫn dùng token cũ: dừng bằng /e2e-dashboard stop rồi mở lại; link cũ sẽ không dùng được nữa.' };
+    }
+    await loadOrCreateToken();
+    return { code: 0, out: `Token dashboard lưu tại ${join(homeDir(), 'token')} (quyền 0600). Link trên trang status / start không đổi giữa các lần khởi động.` };
+  }
+  if (first === 'update-e2e') {
+    // exit code: 0 done (updated, already latest, or switched off), 1 failed, 3 nothing done yet (retry later)
+    const { readUserConfig } = await import('../server/system.mjs');
+    if (readUserConfig().e2e?.autoUpdate === false) return { code: 0, out: 'Tự cập nhật e2e đang tắt ("e2e": { "autoUpdate": false } trong ~/.e2e-dashboard/config.json).' };
+    const projectRoot = findProjectRoot(cwd);
+    if (!projectRoot) return { code: 3, out: 'Không thấy project e2e (e2e.config.*) từ thư mục hiện tại trở lên.' };
+    const running = () => {
+      try {
+        return JSON.parse(readFileSync(dataPath(projectRoot, 'live.json'), 'utf8')).status === 'running';
+      } catch {
+        return false;
+      }
+    };
+    const { updateE2ePackages, describeE2eUpdate } = await import('../server/quicksetup.mjs');
+    const r = await updateE2ePackages(projectRoot, { idle: () => !running() });
+    return { code: r.status === 'failed' ? 1 : r.status === 'skipped' ? 3 : 0, out: describeE2eUpdate(r) };
+  }
   if (first === 'projects') {
     const list = await projectSummaries(findProjectRoot(cwd) ?? cwd);
     if (!list.length) return { code: 0, out: 'Chưa có project nào mở dashboard.' };
@@ -485,6 +512,13 @@ export async function main(argv, cwd) {
     const file = await writeText(root, `reports/${kind}-preview.html`, reportHtml(data));
     return { code: 0, out: `${reportMarkdown(data)}\n\nBản HTML: ${file}\nGửi đi: /e2e-dashboard report ${kind === 'monthly' ? 'month ' : ''}--send` };
   }
+  if (cmd === 'artifact') {
+    // The same static, script-free HTML as `report`; the plugin's markdown command hands the file to Claude to publish as an Artifact.
+    const kind = argv.includes('month') || argv.includes('monthly') ? 'month' : 'week';
+    const data = await buildReport(root, { kind });
+    const file = await writeText(root, `reports/${kind}-artifact.html`, reportHtml(data));
+    return { code: 0, out: `ARTIFACT_REQUEST ${file}\n${reportMarkdown(data)}` };
+  }
   if (cmd === 'publish') {
     const r = await publishSite(root, { dir: argv[1] && !argv[1].startsWith('--') ? resolve(cwd, argv[1]) : null });
     return { code: 0, out: `Đã xuất trang báo cáo tĩnh (${r.runs} run): ${r.index}\nĐẩy thư mục ${r.dir} lên GitHub Pages hoặc thư mục chung để cả team xem.` };
@@ -512,7 +546,7 @@ export async function main(argv, cwd) {
     const label = { new: '🆕 Mới', investigating: '🔍 Đang xem', known: '📌 Đã biết', fixed: '✅ Đã sửa', ignored: '🙈 Bỏ qua' };
     return { code: 0, out: b.rows.map((r) => `${label[r.status]} ${r.title} [${r.target ?? '?'}]${r.assignee ? ` · ${r.assignee}` : ''}${r.failingNow ? ` · fail ${r.streak} run` : ' · không còn fail'}`).join('\n') };
   }
-  return { code: 1, out: 'Dùng: /e2e-dashboard [setup [--quick]|1-setup|config|setting [--init] [--app-url URL] [--app-command CMD]|ai [--provider ID] [--api-key KEY]|os|doctor [--dry-run]|export [runId]|stop|status|digest [ngày]|report [week|month] [--send]|publish [dir]|mark <loại> <mô tả>|triage|ci-sync|projects|statusline [install]|quarantine|import …|share push|pull [dir]|fix [runId] [resultId]|gate]' };
+  return { code: 1, out: 'Dùng: /e2e-dashboard [pane|artifact [week|month]|setup [--quick]|1-setup|config|setting [--init] [--app-url URL] [--app-command CMD]|ai [--provider ID] [--api-key KEY]|os|doctor [--dry-run]|export [runId]|stop|status|digest [ngày]|report [week|month] [--send]|publish [dir]|mark <loại> <mô tả>|triage|ci-sync|projects|statusline [install]|quarantine|import …|share push|pull [dir]|fix [runId] [resultId]|gate]' };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

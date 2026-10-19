@@ -311,3 +311,29 @@ test('updateE2ePackages: không hạ bản đang cài mới hơn latest, không 
   const busyRun = project({ devDependencies: { e2e: '^0.17.0' } });
   assert.equal((await updateE2ePackages(busyRun, { latest, installed: () => '0.17.0', os: 'linux', nodeVersion: '24.9.0', idle: () => false, run: () => assert.fail() })).status, 'skipped');
 });
+
+test('describeE2eUpdate: one line per outcome', async () => {
+  const { describeE2eUpdate } = await import('../server/quicksetup.mjs');
+  assert.match(describeE2eUpdate({ status: 'updated', packages: [{ name: 'e2e', from: '0.21.1', to: '0.21.2' }] }), /^✓ Đã cập nhật e2e: e2e 0\.21\.1 → 0\.21\.2$/);
+  assert.match(describeE2eUpdate({ status: 'failed', exitCode: 1, command: 'npm i -D e2e@1' }), /^✗ .*mã 1.*npm i -D e2e@1$/);
+  assert.match(describeE2eUpdate({ status: 'up-to-date', packages: [{ name: 'e2e', from: '0.21.2' }] }), /^✓ e2e đã là bản mới nhất \(e2e 0\.21\.2\)$/);
+  assert.match(describeE2eUpdate({ status: 'skipped', reason: 'Đang có run' }), /^ℹ .*Đang có run$/);
+});
+
+test('CLI update-e2e: no project → exit 3 (retry later); switched off in the user config → exit 0', async () => {
+  const { main } = await import('../bin/dashboard.mjs');
+  const home = mkdtempSync(join(tmpdir(), 'e2ed-home-'));
+  const prev = process.env.E2E_DASHBOARD_HOME;
+  process.env.E2E_DASHBOARD_HOME = home;
+  try {
+    const bare = mkdtempSync(join(tmpdir(), 'e2ed-bare-'));
+    assert.equal((await main(['update-e2e'], bare)).code, 3);
+    writeFileSync(join(home, 'config.json'), JSON.stringify({ e2e: { autoUpdate: false } }));
+    const off = await main(['update-e2e'], bare);
+    assert.equal(off.code, 0);
+    assert.match(off.out, /đang tắt/);
+  } finally {
+    if (prev === undefined) delete process.env.E2E_DASHBOARD_HOME;
+    else process.env.E2E_DASHBOARD_HOME = prev;
+  }
+});

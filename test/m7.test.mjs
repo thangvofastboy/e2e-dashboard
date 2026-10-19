@@ -436,6 +436,12 @@ test('API, CLI and MCP for the tracking features', async () => {
   assert.equal((await main(['mark', 'party', 'x'], root)).code, 1);
   assert.match((await main(['triage'], root)).out, /Đã biết/);
   assert.match((await main(['report'], root)).out, /Báo cáo e2e tuần[^]*weekly-preview\.html/);
+  // artifact: the same static report, handed to Claude to publish (script-free, so any host CSP can show it)
+  const art = await main(['artifact'], root);
+  const [head, ...md] = art.out.split('\n');
+  assert.match(head, /^ARTIFACT_REQUEST .*week-artifact\.html$/);
+  assert.match(md.join('\n'), /Báo cáo e2e tuần/);
+  assert.doesNotMatch(readFileSync(head.slice('ARTIFACT_REQUEST '.length), 'utf8'), /<script/i);
   assert.equal((await main(['ci-sync'], root)).code, 1);
   const call = async (name, args = {}) => (await handleMessage({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, root)).result.content[0].text;
   assert.match(await call('e2e_trends', { days: 30 }), /Đang fail:\n- t1/);
