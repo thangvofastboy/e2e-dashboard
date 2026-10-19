@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.22.0 — 2026-10-19
+
+- **`/e2e-dashboard update` cập nhật luôn `e2e` và các engine** (`@e2e-dev/web`, …) lên bản mới nhất trên npm, kể cả khi plugin đã là bản mới nhất. Khi plugin tự cập nhật, lần mở session đầu tiên sau đó (mỗi project, mỗi phiên bản plugin) cũng cập nhật `e2e` ở nền. Không chạy khi dashboard đang có run; tắt bằng `"e2e": { "autoUpdate": false }` trong `~/.e2e-dashboard/config.json`. Lệnh con mới `update-e2e` chạy riêng việc này. Lần `update` đầu tiên từ bản cũ chỉ cập nhật plugin.
+- **Token của dashboard cố định**: lưu ở `~/.e2e-dashboard/token` (quyền 0600), nên link bookmark dùng được qua các lần khởi động lại. `/e2e-dashboard token` cho biết nơi lưu, `/e2e-dashboard token reset` tạo token mới. Cổng vẫn là 4477, bận thì thử 4478–4496.
+- **`/e2e-dashboard artifact [week|month]`**: tạo báo cáo HTML tĩnh (không script) rồi nhờ Claude đăng thành Artifact sau khi bạn đồng ý (hoặc kèm `--yes`).
+- **`/e2e-dashboard pane [theme <tên>]`** chuyển cho lệnh `/e2e-pane` của mod `e2e-dashboard-tab`.
+
 ## v0.21.0 — 2026-10-19
 
 - **`live.json` có số đếm và tên test đang chạy**: thêm `counts` (số test đã xong theo trạng thái) và `running` (tối đa 3 tên test đang chạy). Trước đây file chỉ có tiến độ `done/total`. Dùng cho pane theo dõi realtime; trang Live không đổi.
