@@ -1,6 +1,6 @@
 # Changelog
 
-## Chưa phát hành
+## v0.24.0 — 2026-10-19
 
 - **Record thao tác → testcase → test**: trang *Record thao tác* mở trình duyệt qua `playwright codegen`, ghi lại thao tác, AI sinh testcase và kết quả mong đợi, bạn sửa rồi lưu `tests/recorded/<tên>.spec.ts` (chạy bằng runner Playwright có sẵn); tuỳ chọn **AI Gen e2e** tạo `*.e2e.ts`. Mật khẩu / token bị che thành `process.env.E2E_SECRET_<n>` trước khi lưu và trước khi gửi cho AI. Cần máy có màn hình.
 
