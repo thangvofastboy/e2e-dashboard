@@ -1,6 +1,6 @@
 # Changelog
 
-## Chưa phát hành
+## v0.26.0 — 2026-10-19
 
 - **Pane E2E nằm trong plugin**: `/e2e-pane` do chính plugin `e2e-dashboard` đăng ký, không còn mod riêng `e2e-dashboard-tab` để cài. `/e2e-dashboard pane` hết báo "Pane E2E chưa có: cài mod…" (nếu vừa cập nhật mà pane chưa sẵn sàng thì nhắc `/reload-plugins`). Ai đã cài mod cũ được nhắc gỡ một lần cho mỗi phiên bản (`/plugin uninstall e2e-dashboard-tab@e2e-dashboard`); chưa gỡ thì plugin vẫn chạy bình thường nhưng sẽ mở hai pane. Mod bị bỏ khỏi marketplace.
 - **Record: giao diện làm lại theo 3 bước** (Trang cần test → Phiên đăng nhập → Ghi thao tác): ô nhập và textarea có style như phần còn lại của web (nhãn, viền, focus, textarea mono kéo giãn được), phiên đã lưu là các nút chọn/xoá thay cho ô chọn, ba cách tạo phiên thành ba tab, nút chính luôn hiện chữ. Kiểm tra khổ hẹp (không tràn ngang) và chế độ tối.
