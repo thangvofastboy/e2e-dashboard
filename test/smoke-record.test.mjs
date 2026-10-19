@@ -4,7 +4,7 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +18,9 @@ const SPEC = `import { test, expect } from '@playwright/test';\n\ntest('test', a
 const AI_JSON = '```json\n{"testcases":[{"title":"Đăng nhập thành công","steps":["Mở trang đăng nhập","Nhập email và mật khẩu","Bấm Đăng nhập"],"expected":"Thấy lời chào"}]}\n```';
 const E2E_REPLY = '```ts\nimport { test } from "@e2e-dev/web";\ntest("đăng nhập", async () => {});\n```\nPATH: tests/recorded/dang-nhap.e2e.ts';
 const headers = { 'x-e2e-dashboard-token': 't', 'content-type': 'application/json' };
+const COOKIE_VALUE = 'cookie-secret-value-123';
+const LOGIN_STATE = JSON.stringify({ cookies: [{ name: 'sid', value: COOKIE_VALUE, domain: 'shop.test', path: '/' }], origins: [] });
+const SPEC_WITH_STATE = SPEC.replace("\n\ntest('test'", "\n\ntest.use({\n  storageState: '.e2e-dashboard/auth/admin.json'\n});\n\ntest('test'");
 
 const closers = [];
 async function boot({ env = { DISPLAY: ':0' } } = {}) {
@@ -30,20 +33,22 @@ async function boot({ env = { DISPLAY: ':0' } } = {}) {
     const child = new EventEmitter();
     child.stderr = new EventEmitter();
     child.kill = () => true;
-    procs.push({ child, out: args[args.indexOf('-o') + 1] });
+    const after = (flag) => (args.includes(flag) ? args[args.indexOf(flag) + 1] : null);
+    procs.push({ child, out: after('-o'), storage: after('--save-storage'), loadStorage: after('--load-storage') });
     return child;
   };
   const recorder = createRecorder({ projectRoot: root, spawnImpl, env, os: 'linux', browsers: () => ({ chromium: true }) });
   const prompts = [];
-  const ai = { run: async ({ prompt, onEvent }) => { prompts.push(prompt); onEvent({ type: 'done', isError: false, result: prompt.includes('runner `e2e`') ? E2E_REPLY : AI_JSON }); } };
+  const ai = { run: async ({ prompt, onEvent }) => { prompts.push(prompt); const path = /PATH: (\S+)\s*$/.exec(prompt)?.[1]; onEvent({ type: 'done', isError: false, result: prompt.includes('runner `e2e`') ? E2E_REPLY.replace(/PATH: \S+/, `PATH: ${path}`) : AI_JSON }); } };
   const server = http.createServer(createApp({ projectRoot: root, token: 't', uiDir: UI, live: createLive({ throttleMs: 1 }), ai, recorder }));
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   closers.push(() => { recorder.close(); server.close(); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const post = (p, body = {}) => fetch(base + p, { method: 'POST', headers, body: JSON.stringify(body) });
   const get = (p) => fetch(base + p, { headers });
-  const finish = (i = 0) => { writeFileSync(procs[i].out, SPEC); procs[i].child.emit('close', 0, null); };
-  return { root, post, get, finish, prompts, base };
+  const finish = (i = 0, text = SPEC) => { writeFileSync(procs[i].out, text); procs[i].child.emit('close', 0, null); };
+  const finishLogin = (i = 0, state = LOGIN_STATE) => { writeFileSync(procs[i].storage, state); procs[i].child.emit('close', 0, null); };
+  return { root, post, get, finish, finishLogin, procs, prompts, base };
 }
 after(() => closers.forEach((c) => c()));
 
@@ -122,6 +127,80 @@ test('trùng tên: 409 giữ phiên, đổi tên thì lưu được', async () =
   assert.equal(renamed.status, 200);
   assert.ok(existsSync(join(root, 'tests/recorded/gio-hang.spec.ts')));
   assert.ok(existsSync(join(root, 'tests/recorded/gio-hang-2.spec.ts')));
+});
+
+test('Đăng nhập trước → lưu phiên → Record có phiên → spec mang storageState; cookie không lộ qua API', async () => {
+  const { root, post, get, finish, finishLogin, procs, prompts } = await boot();
+
+  assert.deepEqual((await (await get('/api/record/auth')).json()).sessions, []);
+  assert.equal((await post('/api/record/start', { url: 'https://shop.test/', name: 'x', auth: 'admin' })).status, 400, 'chưa có phiên thì không dùng được');
+
+  assert.equal((await post('/api/record/login', { url: 'https://shop.test/login', name: 'Admin' })).status, 200);
+  const running = await (await get('/api/record/status')).json();
+  assert.equal(running.state, 'recording');
+  assert.equal(running.kind, 'login');
+  finishLogin(0);
+  const done = await (await get('/api/record/status')).json();
+  assert.equal(done.state, 'done');
+  assert.equal(done.kind, 'login');
+  assert.equal((await post('/api/record/analyze')).status, 400, 'phiên đăng nhập không có gì để phân tích');
+  assert.equal((await post('/api/record/discard')).status, 200);
+
+  const list = await (await get('/api/record/auth')).text();
+  assert.ok(!list.includes(COOKIE_VALUE), 'danh sách phiên không chứa cookie');
+  assert.deepEqual(JSON.parse(list).sessions.map((s) => s.name), ['admin']);
+  assert.equal(statSync(join(root, '.e2e-dashboard/auth/admin.json')).mode & 0o777, 0o600);
+
+  assert.equal((await post('/api/record/start', { url: 'https://shop.test/', name: 'Giỏ hàng', auth: 'admin' })).status, 200);
+  assert.equal(procs[1].loadStorage, '.e2e-dashboard/auth/admin.json');
+  assert.ok(!JSON.stringify(await (await get('/api/record/status')).json()).includes(COOKIE_VALUE));
+  finish(1, SPEC_WITH_STATE);
+  const analyzed = await (await post('/api/record/analyze')).json();
+  assert.equal(analyzed.testcases.length, 1);
+  assert.equal((await post('/api/record/save', { testcases: analyzed.testcases })).status, 200);
+  const spec = readFileSync(join(root, 'tests/recorded/gio-hang.spec.ts'), 'utf8');
+  assert.match(spec, /storageState: '\.e2e-dashboard\/auth\/admin\.json'/);
+  assert.equal(JSON.parse(readFileSync(join(root, 'tests/recorded/gio-hang.cases.json'), 'utf8')).auth, 'admin');
+  assert.equal((await post('/api/record/gen-e2e', { slug: 'gio-hang' })).status, 200);
+  assert.match(prompts.at(-1), /đăng nhập sẵn/, 'AI Gen e2e được dặn về phiên đăng nhập');
+  assert.ok(existsSync(join(root, 'tests/recorded/gio-hang.e2e.ts')));
+
+  assert.equal((await post('/api/record/auth/delete', { name: 'admin' })).status, 200);
+  assert.deepEqual((await (await get('/api/record/auth')).json()).sessions, []);
+  assert.equal((await post('/api/record/auth/delete', { name: 'admin' })).status, 404);
+  assert.equal((await post('/api/record/start', { url: 'https://shop.test/', name: 'y', auth: 'admin' })).status, 400);
+});
+
+test('Dán chuỗi Cookie → phiên → Record dùng phiên; cookie không lộ qua API, máy không màn hình vẫn dựng được', async () => {
+  const { root, post, get, procs } = await boot({ env: {} }); // không có DISPLAY: Record bị khoá nhưng dựng phiên từ cookie thì không
+  const cookie = `Cookie: sid=${COOKIE_VALUE}; theme=dark`;
+  assert.equal((await post('/api/record/prepare', { name: 'Admin', url: 'https://shop.test/login', cookie: 'khong-co-dau-bang' })).status, 400);
+  const r = await post('/api/record/prepare', { name: 'Admin', url: 'https://shop.test/login', cookie });
+  assert.equal(r.status, 200);
+  const text = await r.text();
+  assert.ok(!text.includes(COOKIE_VALUE), 'response không chứa cookie');
+  assert.deepEqual(JSON.parse(text).sessions.map((s) => s.name), ['admin']);
+  const file = join(root, '.e2e-dashboard/auth/admin.json');
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+  const state = JSON.parse(readFileSync(file, 'utf8'));
+  assert.deepEqual(state.cookies.map((c) => [c.name, c.domain, c.secure]), [['sid', 'shop.test', true], ['theme', 'shop.test', true]]);
+  assert.ok(!(await (await get('/api/record/auth')).text()).includes(COOKIE_VALUE));
+  assert.equal(procs.length, 0, 'không mở trình duyệt');
+  assert.equal((await post('/api/record/prepare', { name: 'x', url: 'https://shop.test/', cookie: 'a=1', link: 'javascript:alert(1)' })).status, 400);
+});
+
+test('Nhờ AI chuẩn bị phiên: project chưa bật AI thì 400 rõ ràng, đầu vào sai 400, prompt và bí mật không lộ ra phản hồi', async () => {
+  const { post, procs } = await boot();
+  const ok = { name: 'Admin', url: 'https://shop.test/login', prompt: 'Đăng nhập bằng {{E2E_ADMIN_PASSWORD}}' };
+  const r = await post('/api/record/prepare-ai', ok);
+  assert.equal(r.status, 400);
+  const text = await r.text();
+  assert.match(JSON.parse(text).error, /AI/);
+  assert.ok(!text.includes('E2E_ADMIN_PASSWORD'), 'phản hồi không lặp lại prompt');
+  for (const bad of [{ ...ok, name: '!!!' }, { ...ok, url: 'javascript:x' }, { ...ok, prompt: '' }, { ...ok, prompt: 7 }]) {
+    assert.equal((await post('/api/record/prepare-ai', bad)).status, 400);
+  }
+  assert.equal(procs.length, 0, 'không mở codegen');
 });
 
 test('máy không có màn hình: start 400 kèm lý do, status báo canRecord=false', async () => {
