@@ -125,9 +125,15 @@ async function runCli($: EngineInterface, argv: string[]) {
 }
 
 // The pane belongs to the mod e2e-dashboard-tab; the plugin only forwards `pane` to its `/e2e-pane` command.
-async function openPane($: EngineInterface, args: string[]) {
-  const out = await $.command.run({ command: 'e2e-pane', args: args.join(' ') }).catch(() => null)
-  return out?.text ?? 'Pane E2E chưa có. Cài mod e2e-dashboard-tab rồi thử lại, hoặc mở dashboard bằng /e2e-dashboard.'
+// `$.command.run` is rejected inside a hook the turn waits on (this one), so it starts from a timer, after this
+// command has returned; the mod prints its own "đã mở" line. No mod: nobody answers, the run rejects, a toast says so.
+function openPane($: EngineInterface, args: string[]) {
+  $.clock.after(200, () => {
+    void $.command
+      .run({ command: 'e2e-pane', args: args.join(' ') })
+      .catch(() => $.ui.toast('Pane E2E chưa có: cài mod e2e-dashboard-tab (xem mods/e2e-dashboard-tab/README.md) rồi thử lại.'))
+  })
+  return 'Đang mở pane E2E…'
 }
 
 // `update-e2e` exists from v0.21.1: an older cached plugin prints its usage text instead, which is dropped.
@@ -166,7 +172,7 @@ export const register: Register = on => {
     const sub = argv[0]
     if (sub !== 'update' && sub !== 'version' && e.command !== BARE) return next(e)
     try {
-      if (sub === 'pane') return { text: await openPane($, argv.slice(1)) }
+      if (sub === 'pane') return { text: openPane($, argv.slice(1)) }
       if (sub === 'update') {
         const plugin = await updatePlugin($)
         const e2e = await updateE2e($)
