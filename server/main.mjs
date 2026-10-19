@@ -93,7 +93,14 @@ export function liveFileWriter(projectRoot, { minIntervalMs = 1000 } = {}) {
     if (isLink(join(projectRoot, DATA_DIR)) || isLink(dirname(path))) return;
     await mkdir(dirname(path), { recursive: true }).catch(() => {});
     const tmp = `${path}.tmp-${randomBytes(4).toString('hex')}`;
-    const body = { status: s.status, runStatus: s.runStatus ?? null, runId: s.runId ?? null, done: s.done ?? 0, total: s.total ?? 0, startedAt: s.startedAt ?? null, at: new Date().toISOString() };
+    // counts: finished tests by status; running: titles of up to 3 tests in flight (for the pane, not the Live page)
+    const counts = {};
+    const running = [];
+    for (const t of s.tests ?? []) {
+      if (t.status !== 'running') counts[t.status] = (counts[t.status] ?? 0) + 1;
+      else if (running.length < 3) running.push(String(t.title ?? '').slice(0, 120));
+    }
+    const body = { status: s.status, runStatus: s.runStatus ?? null, runId: s.runId ?? null, done: s.done ?? 0, total: s.total ?? 0, startedAt: s.startedAt ?? null, counts, running, at: new Date().toISOString() };
     await writeFile(tmp, JSON.stringify(body)).then(() => rename(tmp, path)).catch(() => rm(tmp, { force: true }));
   };
   return {
@@ -149,7 +156,7 @@ export async function startServer({ projectRoot, port, token = randomToken(), ui
   const preferred = port ?? cfg.port ?? 4477;
   const live = createLive();
   const liveFile = liveFileWriter(projectRoot);
-  live.subscribe((s) => liveFile.update(s));
+  live.subscribe(() => liveFile.update(live.view())); // full state: counts need every test, not the patch
   notifier ??= createNotifier({ mode: notifyMode(cfg), project: basename(projectRoot) });
   const startedAt = Date.now();
   let last = null; // shown in /api/info so a skipped report (bad schema, unsafe path) is not silent

@@ -221,6 +221,21 @@ test('live.json follows the live state, throttled while running', async () => {
   assert.equal(existsSync(join(root, '.e2e-dashboard/runtime/live.json')), false);
 });
 
+test('live.json: counts finished tests by status, names up to 3 running ones', async () => {
+  const root = tmp();
+  mkdirSync(join(root, '.e2e-dashboard'));
+  const w = liveFileWriter(root, { minIntervalMs: 0 });
+  const tests = [
+    { status: 'passed', title: 'a' }, { status: 'passed', title: 'b' }, { status: 'failed', title: 'c' },
+    { status: 'running', title: 'd' }, { status: 'running', title: 'e' }, { status: 'running', title: 'f' }, { status: 'running', title: 'g' },
+  ];
+  await w.update({ status: 'running', done: 3, total: 7, tests });
+  const body = JSON.parse(readFileSync(join(root, '.e2e-dashboard/runtime/live.json'), 'utf8'));
+  assert.deepEqual(body.counts, { passed: 2, failed: 1 });
+  assert.deepEqual(body.running, ['d', 'e', 'f']);
+  await w.close();
+});
+
 test('listDirs: thư mục là symlink (vd. ~/code) cũng hiện; symlink tới file thì không', async () => {
   const { symlinkSync: ln } = await import('node:fs');
   const a = tmp();
