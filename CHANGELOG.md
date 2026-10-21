@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.28.0 — 2026-10-21
+
+- **Lọc loại file test ở trang Tests**: ô *Loại file* với ba lựa chọn: `.e2e.ts` (mặc định), `.spec.ts / .test.ts` (Playwright), *Tất cả*. Lựa chọn lưu trong URL (`kind=`).
+
 ## v0.27.0 — 2026-10-21
 
 - **`/e2e-dashboard demo <file[:dòng]>`**: chạy đúng một test e2e (`*.e2e.ts`) với video bật, để quay lại thao tác làm tài liệu hướng dẫn. Dashboard tự bật nếu chưa chạy, in link trang Live; video nằm ở tab *Video & ảnh* của run khi xong. Test Playwright (`*.spec.ts`) bị từ chối vì Playwright không nhận tuỳ chọn video từ dashboard.
