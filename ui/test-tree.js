@@ -1,5 +1,14 @@
 import { isFailed } from './model.js';
 
+// Loại file test (ô lọc ở trang Tests). Khớp đúng luật của server: *.e2e.* đi qua e2e, *.spec.* đi qua Playwright.
+export const TEST_KINDS = [['e2e', '.e2e.ts'], ['spec', '.spec.ts / .test.ts'], ['all', 'Tất cả']];
+export function testKind(file) {
+  if (/\.e2e\.[cm]?[jt]sx?$/.test(file)) return 'e2e';
+  if (/\.(?:spec|test)\.[cm]?[jt]sx?$/.test(file)) return 'spec';
+  return 'other';
+}
+export const matchesKind = (file, kind) => kind === 'all' || testKind(file) === kind;
+
 // Cây thư mục từ `file` của từng test (tách theo / và \). Node: { name, path, children, tests, count, failCount };
 // node có tests là file, test không có file nằm ở gốc. Dùng chung cho trang /tests và ô chọn test (test-picker.js).
 export function buildTree(rows, isFail = (r) => isFailed(r.history?.[0]?.status)) {

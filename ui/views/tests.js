@@ -3,13 +3,13 @@ import { selectionToRun, isFailed } from '../model.js';
 import { openRunDialog } from './run-dialog.js';
 import { icon } from '../icons.js';
 import { fmtDuration, escapeHtml, STATUS, statusBadge } from '../format.js';
-import { buildTree, treeTests, findNode } from '../test-tree.js';
+import { buildTree, treeTests, findNode, TEST_KINDS, matchesKind } from '../test-tree.js';
 import { runHref, testHref, replaceParams } from '../router.js';
 import { toast } from '../toast.js';
 import { postJson } from '../api.js';
 import { openAiPanel } from './ai-panel.js';
 
-let filter = { file: '', tag: '', target: '', failed: false, q: '' };
+let filter = { file: '', tag: '', target: '', failed: false, q: '', kind: 'e2e' };
 const picked = new Set(); // TestRow keys chosen to run
 
 export function historyCells(history, n = 10) {
@@ -77,7 +77,8 @@ function impactPanel() {
 }
 
 export async function renderTests(main, route = {}) {
-  filter = { file: route.params?.file ?? filter.file, tag: route.params?.tag ?? filter.tag, target: route.params?.target ?? filter.target, failed: route.params ? route.params.failed === '1' : filter.failed, q: route.params?.q ?? filter.q };
+  const kind = route.params?.kind ?? filter.kind;
+  filter = { file: route.params?.file ?? filter.file, tag: route.params?.tag ?? filter.tag, target: route.params?.target ?? filter.target, failed: route.params ? route.params.failed === '1' : filter.failed, q: route.params?.q ?? filter.q, kind: TEST_KINDS.some(([v]) => v === kind) ? kind : 'e2e' };
   convertible = null;
   const load = () => Promise.all([getJson(isExport() ? '/api/tests' : '/api/tests?unrun=1'), isExport() ? { list: [] } : getJson('/api/quarantine').catch(() => ({ list: [] }))]);
   let [all, q] = await load();
@@ -93,13 +94,13 @@ export async function renderTests(main, route = {}) {
     const failing = (r) => isFailed(r.history?.[0]?.status);
     const nFail = all.filter(failing).length;
     const ql = filter.q.trim().toLowerCase(); // lọc theo tên test (và tên file)
-    const rows = all.filter((r) => (!ql || `${r.title} ${r.file}`.toLowerCase().includes(ql)) && (!filter.file || r.file === filter.file) && (!filter.tag || r.tags.includes(filter.tag)) && (!filter.target || r.target === filter.target) && (!filter.failed || failing(r)));
+    const rows = all.filter((r) => (!ql || `${r.title} ${r.file}`.toLowerCase().includes(ql)) && (!filter.file || r.file === filter.file) && (!filter.tag || r.tags.includes(filter.tag)) && (!filter.target || r.target === filter.target) && matchesKind(r.file, filter.kind) && (!filter.failed || failing(r)));
     const sel = (k, values, label) => `<label>${label} <select name="${k}" data-f="${k}"><option value="">Tất cả</option>${values
       .map((v) => `<option ${filter[k] === v ? 'selected' : ''}>${escapeHtml(v)}</option>`)
       .join('')}</select></label>`;
     const tree = buildTree(rows);
     main.innerHTML = `<h1>Tests</h1>${impactPanel()}<div class="tests-head">
-      <div class="filters"><input type="search" class="tests-q" data-q value="${escapeHtml(filter.q)}" placeholder="Lọc theo tên test…" aria-label="Lọc theo tên test" autocomplete="off">${isExport() ? '' : `<button type="button" class="primary" data-run-picked ${picked.size ? '' : 'disabled'}>${icon('play', { size: 14 })}Chạy ${picked.size} test</button>
+      <div class="filters"><input type="search" class="tests-q" data-q value="${escapeHtml(filter.q)}" placeholder="Lọc theo tên test…" aria-label="Lọc theo tên test" autocomplete="off"><label class="kind-filter">Loại file <select data-f="kind" aria-label="Loại file test">${TEST_KINDS.map(([v, l]) => `<option value="${v}"${filter.kind === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label>${isExport() ? '' : `<button type="button" class="primary" data-run-picked ${picked.size ? '' : 'disabled'}>${icon('play', { size: 14 })}Chạy ${picked.size} test</button>
         <button type="button" data-reload title="Tải lại danh sách test, giữ lựa chọn">${icon('rerun', { size: 14 })}Tải lại</button>
         <button type="button" class="btn-ai" data-ai-ticket title="Dán ticket (Jira / Linear…), AI viết nháp file .e2e.ts theo quy ước của project">${icon('sparkles', { size: 14 })}Viết test từ ticket</button>
         <button type="button" class="btn-ai" data-ai-dupes title="Tìm test đi cùng luồng / kiểm tra cùng điều, đề xuất gộp">${icon('sparkles', { size: 14 })}AI tìm test trùng</button>
