@@ -8,6 +8,7 @@ import { runHref, testHref, replaceParams } from '../router.js';
 import { toast } from '../toast.js';
 import { postJson } from '../api.js';
 import { openAiPanel } from './ai-panel.js';
+import { openSourceDialog } from './source-dialog.js';
 
 let filter = { file: '', tag: '', target: '', failed: false, q: '', kind: 'e2e' };
 const picked = new Set(); // TestRow keys chosen to run
@@ -58,7 +59,7 @@ function nodeHtml(node) {
     const s = fileSummary(c.tests);
     return `<details class="tt-file" data-path="${escapeHtml(c.path)}"${openState.get(c.path) ? ' open' : ''}>
       <summary>${pick(c)}${icon('file', { size: 14 })}<code>${escapeHtml(c.name)}</code> ${counts(c)}
-        <span class="muted small">· pass ${s.passRate ?? '—'}% · TB ${fmtDuration(s.avgMs)}</span>${s.status ? ` ${statusBadge(s.status)}` : ''}</summary>
+        <span class="muted small">· pass ${s.passRate ?? '—'}% · TB ${fmtDuration(s.avgMs)}</span>${s.status ? ` ${statusBadge(s.status)}` : ''}${isExport() || c.path.endsWith('#') ? '' : ` <button type="button" class="icon-btn tt-edit" data-edit-file="${escapeHtml(c.path)}" title="Xem / sửa file" aria-label="Xem / sửa ${escapeHtml(c.name)}">${icon('edit', { size: 14 })}</button>`}</summary>
       <table class="table"><thead><tr><th>Test</th><th>Target</th><th>10 run gần nhất (cũ → mới)</th><th class="num">TB</th></tr></thead><tbody>${c.tests.map(testRowHtml).join('')}</tbody></table></details>`;
   });
   return dirs.join('') + files.join('');
@@ -134,6 +135,11 @@ export async function renderTests(main, route = {}) {
         syncPicked();
       });
     }
+    // nút trong <summary>: chặn mở / đóng file khi bấm
+    main.querySelectorAll('[data-edit-file]').forEach((b) => b.addEventListener('click', (e) => {
+      e.preventDefault();
+      openSourceDialog(b.dataset.editFile, { onSaved: () => main.querySelector('[data-reload]')?.click() }); // sửa tên / thêm test: danh sách đổi
+    }));
     main.querySelector('[data-reload]')?.addEventListener('click', async (e) => {
       e.currentTarget.setAttribute('aria-busy', 'true');
       try {

@@ -30,6 +30,7 @@ import { runGate, sloConfig, sloHistory } from './gate.mjs';
 import { environmentBreakdown, sloStatus } from './insights.mjs';
 import { csvRuns, csvTests, csvFlaky } from './csv.mjs';
 import { readChangelog } from './changelog.mjs';
+import { readTestSource, writeTestSource } from './testsource.mjs';
 import { cleanupRuns, storageUsage, pruneVideos, deleteRun } from './storage.mjs';
 import { webhookConfig, sendWebhooks } from './webhook.mjs';
 import { readCodeowners, ownersOf } from './owners.mjs';
@@ -451,6 +452,15 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       if (p === '/api/info') return send(res, 200, { version: VERSION, pid: process.pid, project: basename(projectRoot), root: projectRoot, reporter: reporterStatus(projectRoot), lastArchive: lastArchive(), thresholds: readConfig(projectRoot).thresholds ?? null, runner: runner.state() });
       if (p === '/api/runs') return send(res, 200, await listRuns(projectRoot));
       if (p === '/api/tests/convertible') return send(res, 200, { files: await cachedConvertible() }); // trước /api/tests: file .ts chưa chạy được bằng e2e
+      if (p === '/api/tests/source') {
+        // xem file test trên trang Tests: chỉ file danh sách Tests quét được
+        try {
+          return send(res, 200, await readTestSource(projectRoot, url.searchParams.get('file') ?? '', (await scanTests(projectRoot)).files));
+        } catch (e) {
+          if (e.status) return send(res, e.status, { error: e.message });
+          throw e;
+        }
+      }
       if (p === '/api/tests') {
         // ?root=: test của project khác trong danh sách Projects (form Lịch chạy); thư mục lạ thì từ chối
         const root = url.searchParams.get('root');
@@ -1219,6 +1229,15 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
         return send(res, 200, { ...(await writeEnvFile(projectRoot, body.name, body.content)), env: await envSummary(projectRoot) });
       }
       if (p === '/api/system/user') return send(res, 200, await writeUser(env, await readBody(req)));
+      if (p === '/api/tests/source') {
+        const b = await readBody(req);
+        try {
+          return send(res, 200, await writeTestSource(projectRoot, String(b.file ?? ''), b.content, b.mtime, (await scanTests(projectRoot)).files));
+        } catch (e) {
+          if (e.status) return send(res, e.status, { error: e.message });
+          throw e;
+        }
+      }
       if (p === '/api/tests/draft') {
         // lưu test nháp AI viết từ ticket: chỉ trong project, đuôi .e2e.ts, không ghi đè, không đi qua symlink
         const b = await readBody(req);

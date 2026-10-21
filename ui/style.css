@@ -305,6 +305,19 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .icon-btn { min-height: 32px; padding: 4px 6px; border-color: transparent; background: transparent; }
 dialog#run-dialog { border: 1px solid var(--border); border-radius: 14px; padding: 0; width: min(520px, calc(100vw - 32px)); background: var(--surface); color: var(--text-primary); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35); }
 dialog#run-dialog::backdrop { background: rgba(15, 23, 42, 0.5); }
+/* ---- xem / sửa file test (trang Tests): cùng khung với hộp thoại Run, rộng hơn cho mã */
+dialog#source-dialog { border: 1px solid var(--border); border-radius: 14px; padding: 0; width: min(1100px, calc(100vw - 32px)); background: var(--surface); color: var(--text-primary); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35); }
+dialog#source-dialog::backdrop { background: rgba(15, 23, 42, 0.5); }
+#source-dialog h2 code { font-size: 0.85em; overflow-wrap: anywhere; }
+/* ô sửa có tô màu cú pháp: <pre> nằm dưới, textarea trong suốt nằm trên, cùng font, khoảng cách và cuộn */
+#source-dialog .src-wrap { position: relative; height: min(70vh, 720px); }
+#source-dialog .src-hl, #source-dialog .src-ta { position: absolute; inset: 0; box-sizing: border-box; margin: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font: 0.9em/1.5 var(--mono, ui-monospace, monospace); tab-size: 2; white-space: pre; overflow: auto; }
+#source-dialog .src-hl { background: var(--surface-2); color: var(--text-primary); pointer-events: none; overflow: hidden; }
+#source-dialog .src-ta { background: transparent; color: transparent; caret-color: var(--text-primary); resize: none; width: 100%; height: 100%; }
+#source-dialog .src-ta::selection { background: color-mix(in srgb, var(--series-1) 30%, transparent); }
+#source-dialog .src-ta:focus-visible { outline: none; border-color: var(--series-1); }
+#source-dialog footer [data-state] { margin-right: auto; }
+.tt-file .tt-edit { min-height: 24px; padding: 2px 4px; vertical-align: middle; }
 .run-form { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; }
 .run-form header, .run-form footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .run-form footer { justify-content: flex-end; }
