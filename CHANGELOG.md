@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.29.0 — 2026-10-21
+
+- **Xem và sửa file test ngay trên trang Tests**: mỗi file `.e2e.ts`, `.spec.ts`, `.test.ts` trong cây có nút ✎. Bấm mở hộp thoại có tô màu cú pháp để sửa tại chỗ; Ctrl/Cmd+S lưu, lưu xong danh sách tự tải lại. Nếu file đã đổi trên đĩa trong lúc sửa thì dashboard từ chối ghi đè. Chỉ mở được file mà danh sách Tests quét được, không đi qua symlink. Bản HTML export không có nút này.
+
 ## v0.28.0 — 2026-10-21
 
 - **Lọc loại file test ở trang Tests**: ô *Loại file* với ba lựa chọn: `.e2e.ts` (mặc định), `.spec.ts / .test.ts` (Playwright), *Tất cả*. Lựa chọn lưu trong URL (`kind=`).
