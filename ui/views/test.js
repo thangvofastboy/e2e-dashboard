@@ -42,7 +42,8 @@ export async function renderTest(main, route) {
         ${t.owners?.length ? `<span class="owners">${icon('users', { size: 13 })}${escapeHtml(t.owners.join(', '))}</span>` : ''}
         ${t.quarantine ? `<span class="lock-badge">${icon('lock', { size: 11 })}cách ly đến ${escapeHtml(t.quarantine.until.slice(0, 10))}</span>` : ''}</div></div>
       <div class="actions">${isExport() ? '' : `<button type="button" class="primary" data-run>${icon('play', { size: 14 })}Chạy test này</button>
-        <button type="button" class="btn-ai" data-split title="AI đề xuất chia test này thành nhiều test case nhỏ, mỗi test kiểm tra một ý">${icon('sparkles', { size: 14 })}AI chia nhỏ test</button>
+        ${/\.e2e\.[cm]?[jt]sx?(:\d+)?$/.test(spec) ? `<button type="button" data-demo title="Chạy test này với video bật, để quay lại thao tác làm tài liệu hướng dẫn">${icon('video', { size: 14 })}Quay phim</button>` : ''}
+        <button type="button" class="btn-ai" data-splittitle="AI đề xuất chia test này thành nhiều test case nhỏ, mỗi test kiểm tra một ý">${icon('sparkles', { size: 14 })}AI chia nhỏ test</button>
         ${t.flaky && lastFail ? `<button type="button" class="btn-ai" data-why>${icon('sparkles', { size: 14 })}Vì sao flaky?</button>` : ''}`}</div></div>
     <section class="kpis">
       <div class="kpi tone-${toneFor(rate)}"><div class="kpi-label">Pass rate (${escapeHtml(done.length)} run)</div><div class="kpi-value">${fmtPct(rate)}</div><div class="kpi-sub">${meter(rate, toneFor(rate), '')}</div></div>
@@ -60,6 +61,7 @@ export async function renderTest(main, route) {
     </div>
     ${shots.length ? `<section class="panel"><h2>${icon('image', { size: 15 })} Ảnh lúc fail theo thời gian</h2><div class="shots">${shots.map((r) => `<a href="${runHref(r.runId, r.resultId)}" title="${escapeHtml(when(r))}"><img loading="lazy" src="${escapeHtml(fileUrl(r.runId, `artifacts/${r.screenshot}`))}" alt="ảnh ${escapeHtml(when(r))}"></a>`).join('')}</div></section>` : ''}`;
   main.querySelector('[data-run]')?.addEventListener('click', () => openRunDialog({ tests: [spec], targets: [t.target], agents: [t.agent], title: `Chạy ${t.title}` }));
+  main.querySelector('[data-demo]')?.addEventListener('click', () => openRunDialog({ tests: [spec], targets: [t.target], agents: [t.agent], title: `Quay phim · ${t.title}`, preset: { video: 'on' } }));
   main.querySelector('[data-split]')?.addEventListener('click', () => openAiPanel({ action: 'split-tests', runId: null, title: `Chia nhỏ · ${t.title}`, extra: { key: route.key } }));
   main.querySelector('[data-why]')?.addEventListener('click', () => openAiPanel({ action: 'why-flaky', runId: lastFail.runId, resultId: lastFail.resultId, title: `Vì sao flaky · ${t.title}` }));
 }

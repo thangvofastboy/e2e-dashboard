@@ -484,6 +484,7 @@ Lệnh này copy `e2e-dashboard.reporter.mjs` (kèm `.d.mts`) vào project và t
 | `/e2e-dashboard setting …` | 🧩 | Viết tắt của `config …` (cũng nhận `settings`) |
 | `/e2e-dashboard doctor [--dry-run]` | 🩺 | Chuyển dữ liệu theo bố cục cũ sang bố cục mới (runs theo ngày, `state/`, `runtime/`), dựng lại chỉ mục SQLite nếu đã bật. `--dry-run` chỉ liệt kê, không ghi |
 | `/e2e-dashboard export [runId]` | 📤 | Xuất một run (mặc định là run mới nhất) thành HTML tự chứa |
+| `/e2e-dashboard demo <test>` | 🎬 | Chạy đúng một test e2e (`*.e2e.ts`, có thể kèm `:dòng`) với video bật, để quay lại thao tác làm tài liệu hướng dẫn. Video nằm ở tab "Video & ảnh" của run khi xong |
 | `/e2e-dashboard status` | ℹ️ | Xem server có đang chạy không |
 | `/e2e-dashboard digest [ngày]` | 📰 | In digest Markdown (mặc định 7 ngày), lưu vào `.e2e-dashboard/digests/` |
 | `/e2e-dashboard projects` | 📁 | Liệt kê các project đã mở dashboard, health score, URL nếu đang chạy |

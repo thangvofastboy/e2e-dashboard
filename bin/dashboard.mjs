@@ -27,6 +27,7 @@ import { syncTriage, triageBoard } from '../server/triage.mjs';
 import { writeText } from '../server/jsonstate.mjs';
 import { ensureEnvFile } from '../server/system.mjs';
 import { patchBrowser } from '../server/browsers.mjs';
+import { runnerFor } from '../server/playwright.mjs';
 
 const PLUGIN = fileURLToPath(new URL('..', import.meta.url));
 const MAIN = join(PLUGIN, 'server/main.mjs');
@@ -420,6 +421,23 @@ export async function main(argv, cwd) {
     return { code: 0, out: [dryRun ? 'Doctor (xem trước, chưa đổi gì):' : 'Doctor:', ...r.lines.map((l) => `- ${l}`), ...r.warn.map((w) => `- Lưu ý: ${w}`)].join('\n') };
   }
   if (cmd === 'stop') return { code: 0, out: (await stop(root)) ? 'Đã tắt dashboard.' : 'Dashboard không chạy.' };
+  if (cmd === 'demo') {
+    // quay video thao tác của một test: chạy đúng test đó với video=on; video hiện ở tab "Video & ảnh" khi run xong
+    const test = argv[1];
+    if (!test) return { code: 1, out: 'Dùng: /e2e-dashboard demo <file[:dòng]>, ví dụ /e2e-dashboard demo tests/login.e2e.ts:12' };
+    if (runnerFor([test]) !== 'e2e') return { code: 1, out: 'Quay video chỉ hỗ trợ test e2e (*.e2e.ts). Test Playwright (*.spec.ts) chưa quay được qua dashboard.' };
+    const { url } = await start(root, { open: false });
+    const { origin, searchParams } = new URL(url);
+    const res = await fetch(`${origin}/api/run`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-e2e-dashboard-token': searchParams.get('token') },
+      body: JSON.stringify({ tests: [test], video: 'on' }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (res.status === 409) return { code: 1, out: 'Đang có run khác chạy. Chờ xong rồi quay lại.' };
+    if (!res.ok) return { code: 1, out: `Không quay được: ${(await res.json().catch(() => ({}))).error ?? res.status}` };
+    return { code: 0, out: [`Đang quay ${test}.`, `Theo dõi: ${url}#/live`, 'Khi run xong, video nằm ở tab "Video & ảnh" của run đó.'].join('\n') };
+  }
   if (cmd === 'status') {
     const s = await running(root);
     return { code: 0, out: s ? `Đang chạy: http://127.0.0.1:${s.port}/?token=${s.token}` : 'Dashboard không chạy.' };

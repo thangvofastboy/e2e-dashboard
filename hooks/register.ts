@@ -162,7 +162,7 @@ async function updateE2e($: EngineInterface) {
 // on("session.start") không matcher, và chỉ theo dõi được `$` truyền cho hàm có tên tĩnh).
 export async function startPlugin($: EngineInterface) {
   await $.command
-    .register({ name: BARE, description: 'Mở dashboard e2e (live, lịch sử, debug)', argumentHint: '[pane [theme <tên>]|artifact [week|month]|setup|export [runId]|stop|status|digest [ngày]|projects|statusline [install]|quarantine|import <path>|share push|pull|fix [runId] [resultId]|gate|report [week|month] [--send]|publish [dir]|mark <loại> <mô tả>|triage|ci-sync|update|version]' })
+    .register({ name: BARE, description: 'Mở dashboard e2e (live, lịch sử, debug)', argumentHint: '[pane [theme <tên>]|artifact [week|month]|setup|export [runId]|demo <test>|stop|status|digest [ngày]|projects|statusline [install]|quarantine|import <path>|share push|pull|fix [runId] [resultId]|gate|report [week|month] [--send]|publish [dir]|mark <loại> <mô tả>|triage|ci-sync|update|version]' })
     .catch(() => undefined)
   // After a plugin update, bring e2e up to date once per project and plugin version, not on every session start.
   const key = `e2e-updated:${await $.session.cwd()}`

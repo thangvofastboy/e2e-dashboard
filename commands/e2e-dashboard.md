@@ -1,6 +1,6 @@
 ---
-description: Mở dashboard e2e (live, lịch sử, debug, phân tích). Tham số tuỳ chọn: artifact | setup | 1-setup | config | setting | ai | autoupdate | os | doctor | export [runId] | stop | status | digest | report | gate | fix | triage | quarantine | import | share | publish | mark | ci-sync | projects | statusline | version | update
-argument-hint: "[artifact [week|month]|setup [--quick [--yes]]|1-setup [--yes]|config|setting [--init] [--app-url URL] [--app-command CMD] [--yes]|ai [--provider ID] [--api-key KEY] [--login]|autoupdate [on|off]|os|doctor [--dry-run]|export [runId]|stop|status|digest [ngày]|report [week|month] [--send]|gate|fix [runId] [resultId]|triage|quarantine|import <path|junit.xml>|share push|pull|publish [dir]|mark <loại> <mô tả>|ci-sync|projects|statusline [install]|version|update]"
+description: Mở dashboard e2e (live, lịch sử, debug, phân tích). Tham số tuỳ chọn: artifact | setup | 1-setup | config | setting | ai | autoupdate | os | doctor | export [runId] | demo <test> | stop | status | digest | report | gate | fix | triage | quarantine | import | share | publish | mark | ci-sync | projects | statusline | version | update
+argument-hint: "[artifact [week|month]|setup [--quick [--yes]]|1-setup [--yes]|config|setting [--init] [--app-url URL] [--app-command CMD] [--yes]|ai [--provider ID] [--api-key KEY] [--login]|autoupdate [on|off]|os|doctor [--dry-run]|export [runId]|demo <test>|stop|status|digest [ngày]|report [week|month] [--send]|gate|fix [runId] [resultId]|triage|quarantine|import <path|junit.xml>|share push|pull|publish [dir]|mark <loại> <mô tả>|ci-sync|projects|statusline [install]|version|update]"
 allowed-tools: Bash(node:*), Bash(npx e2e run:*), Bash(git log:*), Bash(git diff:*), Read, Edit, Grep, Glob
 ---
 

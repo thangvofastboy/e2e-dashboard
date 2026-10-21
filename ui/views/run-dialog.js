@@ -29,7 +29,7 @@ export function runOptionsHtml({ repeatEach = null, preset = {}, updateSnapshots
         ${fld('Shard', '<input type="text" name="shard" placeholder="1/4" pattern="\\d+/\\d+">', 'Chia suite để chạy một phần: 1/4 là phần 1 trong 4. Mặc định: chạy toàn bộ.')}
         ${fld('Max failures', '<input type="number" name="maxFailures" min="1" max="1000" placeholder="không giới hạn">', 'Dừng cả run sau N test fail. Mặc định: không giới hạn.')}
         ${fld('Trace', `<select name="trace">${['', ...MODES].map((m) => `<option value="${m}">${m || 'theo config'}</option>`).join('')}</select>`, 'Khi nào ghi trace để debug. Mặc định: theo config.')}
-        ${fld('Video', `<select name="video">${['', ...MODES].map((m) => `<option value="${m}">${m || 'theo config'}</option>`).join('')}</select>`, 'Khi nào quay video. Mặc định: theo config.')}
+        ${fld('Video', `<select name="video">${['', ...MODES].map((m) => `<option value="${m}"${m === preset.video ? ' selected' : ''}>${m || 'theo config'}</option>`).join('')}</select>`, 'Khi nào quay video. Mặc định: theo config.')}
       </div>
       <div class="run-grid">
         ${sw('strictCache', '--strict-cache', 'Cache nghiêm ngặt của e2e (dùng cho CI): không chấp nhận cache thiếu hoặc lệch. Mặc định: tắt.')}
