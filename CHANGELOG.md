@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.27.0 — 2026-10-21
+
+- **`/e2e-dashboard demo <file[:dòng]>`**: chạy đúng một test e2e (`*.e2e.ts`) với video bật, để quay lại thao tác làm tài liệu hướng dẫn. Dashboard tự bật nếu chưa chạy, in link trang Live; video nằm ở tab *Video & ảnh* của run khi xong. Test Playwright (`*.spec.ts`) bị từ chối vì Playwright không nhận tuỳ chọn video từ dashboard.
+- **Nút *Quay phim* ở trang chi tiết test**: mở hộp Chạy test với ô Video đặt sẵn `on`. Chỉ hiện cho test `*.e2e.ts`.
+- **Sửa màu mục menu Record, AI hỗ trợ QC, Setup**: ba mục này chưa có màu nhấn, nên khi được chọn icon bị mất trên nền sáng. Có test chặn mục menu mới thiếu màu.
+
 ## v0.26.0 — 2026-10-19
 
 - **Pane E2E nằm trong plugin**: `/e2e-pane` do chính plugin `e2e-dashboard` đăng ký, không còn mod riêng `e2e-dashboard-tab` để cài. `/e2e-dashboard pane` hết báo "Pane E2E chưa có: cài mod…" (nếu vừa cập nhật mà pane chưa sẵn sàng thì nhắc `/reload-plugins`). Ai đã cài mod cũ được nhắc gỡ một lần cho mỗi phiên bản (`/plugin uninstall e2e-dashboard-tab@e2e-dashboard`); chưa gỡ thì plugin vẫn chạy bình thường nhưng sẽ mở hai pane. Mod bị bỏ khỏi marketplace.
