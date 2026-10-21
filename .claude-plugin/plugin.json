@@ -1,6 +1,6 @@
 {
   "name": "e2e-dashboard",
-  "version": "0.28.0",
+  "version": "0.29.0",
   "description": "/e2e-dashboard: live, history and debugging dashboard for e2e (tester-army/e2e) test runs",
   "author": {
     "name": "thangvofastboy"
