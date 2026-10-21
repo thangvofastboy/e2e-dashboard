@@ -1138,6 +1138,7 @@ td > :where(button, a.button) + :where(button, a.button), p > :where(button, a.b
 /* menu: các mục chưa có màu (trước đây icon rơi về màu chữ mặc định) */
 .n-manual { --hue: #0284c7; } .n-verify { --hue: #16a34a; } .n-build { --hue: #4f46e5; } .n-quality { --hue: #0f766e; } .n-linear-issues { --hue: #5e6ad2; }
 .n-qc-templates { --hue: #c026d3; } .n-system { --hue: #52525b; } .n-feedback { --hue: #f97316; }
+.n-qc-ai { --hue: #7c3aed; } .n-record { --hue: #e11d48; } .n-setup { --hue: #0891b2; }
 
 /* batch2-live */
 .failed-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
