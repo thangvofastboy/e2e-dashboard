@@ -82,10 +82,26 @@ export function parseCommand(cmd) {
 }
 
 // sửa URL app / bundleId (mobile) / lệnh khởi động. command: chuỗi rỗng = bỏ (comment lại), undefined = giữ nguyên
-export function patchE2eConfig(source, { appUrl, bundleId, command } = {}) {
+// mobile: 'ios' | 'android' = thêm target mobile (bundleId bắt buộc) vào config chưa có, giữ nguyên target web
+export function patchE2eConfig(source, { appUrl, bundleId, command, mobile } = {}) {
   let out = source;
   const changed = [];
   const problems = [];
+  if (mobile) {
+    const targets = /\btargets\s*:\s*\[/.exec(out);
+    if (!['ios', 'android'].includes(mobile)) problems.push(`Nền tảng mobile không hợp lệ: ${mobile} (ios hoặc android)`);
+    else if (configEngines(out).mobile) problems.push('Config đã có target mobile: sửa bundleId ở ô bên dưới');
+    else if (!bundleId || !BUNDLE_ID.test(bundleId)) problems.push(`bundleId không hợp lệ: ${bundleId ?? ''} (nhập package Android / bundle id iOS, chỉ chữ, số, . _ -)`);
+    else if (!targets) problems.push('Không thấy `targets: [` trong config: thêm tay target mobile');
+    else {
+      out = `${out.slice(0, targets.index + targets[0].length)}\n    { name: ${str(mobile)}, engine: mobile({ platform: ${str(mobile)} }), app: { bundleId: ${str(bundleId)} } },\n    ${out.slice(targets.index + targets[0].length).replace(/^\s+/, '')}`;
+      const imports = [...out.matchAll(/^import [^\n]*;[ \t]*$/gm)].pop();
+      const line = "import { mobile } from '@e2e-dev/mobile';";
+      out = imports ? `${out.slice(0, imports.index + imports[0].length)}\n${line}${out.slice(imports.index + imports[0].length)}` : `${line}\n${out}`;
+      changed.push(`target mobile (${mobile})`);
+    }
+    bundleId = undefined; // đã ghi cùng target mới
+  }
   if (bundleId !== undefined && bundleId !== null && bundleId !== '') {
     const found = [...out.matchAll(BUNDLE)];
     if (!BUNDLE_ID.test(bundleId)) problems.push(`bundleId không hợp lệ: ${bundleId} (chỉ chữ, số, . _ -)`);

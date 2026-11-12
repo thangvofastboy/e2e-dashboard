@@ -1283,10 +1283,10 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       if (p === '/api/selfheal/reject') return send(res, 200, { ok: Boolean(await selfHeal?.reject(String((await readBody(req)).fingerprint ?? ''))) });
       if (p === '/api/system/e2e-config') {
         // chỉ URL app (hoặc bundleId của target mobile) và lệnh khởi động; e2econfig kiểm tra URL (http/https) và lệnh (không nháy, không ; | & $)
-        const { appUrl, bundleId, command } = await readBody(req);
-        if ((bundleId !== undefined && typeof bundleId !== 'string') || (appUrl !== undefined && typeof appUrl !== 'string') || (command !== undefined && typeof command !== 'string') || String(appUrl ?? '').length > 2000 || String(command ?? '').length > 500) return send(res, 400, { error: 'invalid body' });
+        const { appUrl, bundleId, command, mobile } = await readBody(req);
+        if ((mobile !== undefined && typeof mobile !== 'string') || (bundleId !== undefined && typeof bundleId !== 'string') || (appUrl !== undefined && typeof appUrl !== 'string') || (command !== undefined && typeof command !== 'string') || String(appUrl ?? '').length > 2000 || String(command ?? '').length > 500) return send(res, 400, { error: 'invalid body' });
         const { updateE2eConfig } = await import('./e2econfig.mjs');
-        return send(res, 200, await updateE2eConfig(projectRoot, { appUrl, bundleId, command }));
+        return send(res, 200, await updateE2eConfig(projectRoot, { appUrl, bundleId, command, mobile }));
       }
       if (p === '/api/system/ai') {
         // đổi provider trong e2e.config (+ API key vào .env); gói npm cài qua Quick Setup, đăng nhập subscription chạy trong terminal
@@ -1423,16 +1423,16 @@ export function createApp({ projectRoot, token, uiDir, live, onEvent = () => {},
       }
       if (p === '/api/project-context') {
         // thư mục test, các thư mục khác + mô tả (và prompt nếu gửi) của một project; lưu xong AI đọc lại để ghi nhớ
-        const { root: r, testDir, sources, prompt, appUrl, bundleId, command } = await readBody(req);
+        const { root: r, testDir, sources, prompt, appUrl, bundleId, command, mobile } = await readBody(req);
         const root = await knownRoot(r);
         if (!root) return send(res, 400, { error: 'Project chưa có trong danh sách Projects' });
         if ((testDir !== undefined && typeof testDir !== 'string') || (sources !== undefined && !Array.isArray(sources)) || (prompt !== undefined && typeof prompt !== 'string')) return send(res, 400, { error: 'invalid body' });
-        if ((appUrl !== undefined && typeof appUrl !== 'string') || (bundleId !== undefined && typeof bundleId !== 'string') || (command !== undefined && typeof command !== 'string') || String(appUrl ?? '').length > 2000 || String(command ?? '').length > 500) return send(res, 400, { error: 'invalid body' });
+        if ((mobile !== undefined && typeof mobile !== 'string') || (appUrl !== undefined && typeof appUrl !== 'string') || (bundleId !== undefined && typeof bundleId !== 'string') || (command !== undefined && typeof command !== 'string') || String(appUrl ?? '').length > 2000 || String(command ?? '').length > 500) return send(res, 400, { error: 'invalid body' });
         try {
           // URL app / lệnh khởi động ghi vào e2e.config.* của project đó (cùng kiểm tra như trang Setup)
           // thứ tự để không lưu nửa vời: kiểm tra config (không ghi) → lưu bối cảnh (testDir / sources sai thì ném lỗi ở đây,
           // config chưa đổi) → ghi config. Trường app không đổi thì UI không gửi, nên bước cuối hầu như không lỗi
-          const app = appUrl !== undefined || bundleId !== undefined || command !== undefined ? { appUrl, bundleId, command } : null;
+          const app = appUrl !== undefined || bundleId !== undefined || command !== undefined || mobile !== undefined ? { appUrl, bundleId, command, mobile } : null;
           if (app) {
             const { checkE2eConfig } = await import('./e2econfig.mjs');
             const problems = await checkE2eConfig(root, app);

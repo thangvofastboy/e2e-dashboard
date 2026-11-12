@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.30.0 — 2026-11-12
+
+- **Thêm app mobile ngay trên web**: ở *1 Click Setup* và hộp *Sửa project* có ô **Thêm app mobile** (Android / iOS) và **bundleId**. Lưu thì dashboard thêm target `@e2e-dev/mobile` vào `e2e.config.*`, vẫn giữ target web; sau đó bấm *Cài tất cả* để cài engine mobile. Trước đây chỉ làm được bằng `/e2e-dashboard config --init --engine mobile` trong terminal.
+- **`/e2e-dashboard` chạy ngay**: lệnh có `immediate: true`, chạy luôn mà không phải chờ Claude xong lượt hiện tại.
+
 ## v0.29.0 — 2026-10-21
 
 - **Xem và sửa file test ngay trên trang Tests**: mỗi file `.e2e.ts`, `.spec.ts`, `.test.ts` trong cây có nút ✎. Bấm mở hộp thoại có tô màu cú pháp để sửa tại chỗ; Ctrl/Cmd+S lưu, lưu xong danh sách tự tải lại. Nếu file đã đổi trên đĩa trong lúc sửa thì dashboard từ chối ghi đè. Chỉ mở được file mà danh sách Tests quét được, không đi qua symlink. Bản HTML export không có nút này.

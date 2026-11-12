@@ -106,3 +106,19 @@ test('config mobile: đọc engine, platform, bundleId; sửa bundleId; nhiều 
   const two = MOBILE.replace("app: { bundleId: 'com.android.settings' } }", "app: { bundleId: 'a.b' } }, { name: 'ip', engine: pixel, app: { bundleId: 'c.d' } }");
   assert.match(patchE2eConfig(two, { bundleId: 'x.y' }).problems[0], /2 bundleId/);
 });
+
+test('patchE2eConfig mobile: thêm target mobile vào config web, giữ target web; lỗi khi thiếu bundleId hoặc đã có mobile', () => {
+  const r = patchE2eConfig(INIT, { mobile: 'android', bundleId: 'com.example.app' });
+  assert.deepEqual(r.problems, []);
+  assert.deepEqual(r.changed, ['target mobile (android)']);
+  const c = readE2eConfig(r.source);
+  assert.equal(c.engine, 'mobile');
+  assert.deepEqual(c.bundleIds, ['com.example.app']);
+  assert.deepEqual(c.platforms, ['android']);
+  assert.equal(c.appUrl, readE2eConfig(INIT).appUrl);
+  assert.equal(c.targets, 2);
+  assert.match(r.source, /^import \{ mobile \} from '@e2e-dev\/mobile';$/m);
+  assert.match(patchE2eConfig(INIT, { mobile: 'ios' }).problems[0], /bundleId/);
+  assert.match(patchE2eConfig(INIT, { mobile: 'symbian', bundleId: 'a' }).problems[0], /không hợp lệ/);
+  assert.match(patchE2eConfig(r.source, { mobile: 'ios', bundleId: 'b' }).problems[0], /đã có target mobile/);
+});

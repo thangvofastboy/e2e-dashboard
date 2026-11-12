@@ -127,6 +127,7 @@ export function appFieldsHtml(app, row) {
       ? row(`App mobile${plat}`, `<code>${ids.map(escapeHtml).join('</code>, <code>')}</code>`, `${ids.length} target có bundleId riêng: sửa tay trong ${escapeHtml(app.file)}.`)
       : row(`App mobile: bundleId${plat}`, `<input name="bundleId" value="${escapeHtml(ids[0] ?? '')}" placeholder="com.example.app" autocomplete="off" spellcheck="false" aria-label="bundleId app mobile"${ids.length ? ' required' : ''}>`, ids.length ? 'Package Android / bundle id iOS mà app.open() mở trên máy ảo hoặc điện thoại.' : `Config chưa có <code>bundleId</code>: thêm tay <code>app: { bundleId: … }</code> vào target trong ${escapeHtml(app.file)}.`));
   }
+  else out.push(row('Thêm app mobile', `<select name="mobile" aria-label="Thêm target mobile"><option value="">Không (chỉ web)</option><option value="android">Android</option><option value="ios">iOS (cần macOS + Xcode)</option></select><input name="bundleId" placeholder="com.example.app" autocomplete="off" spellcheck="false" aria-label="bundleId app mobile">`, `Chọn nền tảng và nhập bundleId (package Android / bundle id iOS): dashboard thêm target mobile vào ${escapeHtml(app.file ?? 'e2e.config')}, giữ target web. Sau đó bấm Cài tất cả ở 1 Click Setup để cài engine mobile.`));
   if (!mobile || app.command) out.push(row('Lệnh khởi động app', `<input name="command" value="${escapeHtml(app.command ?? '')}" placeholder="npm run dev" autocomplete="off" spellcheck="false" aria-label="Lệnh khởi động app">`, 'Runner tự chạy lệnh này trước test và tắt sau đó. Để trống nếu bạn tự chạy app.'));
   return out.join('');
 }
@@ -135,9 +136,9 @@ export function appFieldsHtml(app, row) {
 // là bản rút gọn (args có khoảng trắng / $ không quay về y nguyên): gửi lại khi không đổi sẽ ghi sai hoặc bị từ chối
 export function readAppFields(f) {
   const v = {};
-  for (const k of ['appUrl', 'bundleId', 'command']) {
+  for (const k of ['appUrl', 'bundleId', 'command', 'mobile']) {
     const el = f.elements[k];
-    if (el && el.value.trim() !== el.defaultValue.trim()) v[k] = el.value.trim();
+    if (el && el.value.trim() !== (el.defaultValue ?? '').trim()) v[k] = el.value.trim(); // select không có defaultValue
   }
   return v;
 }
